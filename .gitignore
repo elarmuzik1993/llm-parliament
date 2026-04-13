@@ -1,15 +1,49 @@
+# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
+*$py.class
+*.so
+
+# Distribution / packaging
 dist/
 build/
-.eggs/
+*.egg-info/
 *.egg
+.eggs/
+
+# Virtual environments
 .venv/
 venv/
-.env
-keys.env
-*.log
-.ruff_cache/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing / linting
 .pytest_cache/
+.ruff_cache/
 .mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Secrets — never commit
+.env
+*.env
+keys.env
+.parliament/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# Claude Code
+.claude/
