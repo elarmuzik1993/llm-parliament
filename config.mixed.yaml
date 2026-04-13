@@ -1,0 +1,24 @@
+# Mixed config — 1 cloud (best Speaker) + 2 local (cheap debate).
+# Cheaper than full cloud, better synthesis than full local.
+
+parliament:
+  name: "House of AI"
+
+  members:
+    - name: "Claude"
+      provider: anthropic
+      model: claude-sonnet-4-6
+
+    - name: "Llama"
+      provider: ollama
+      model: llama3.1
+
+    - name: "Gemma"
+      provider: ollama
+      model: gemma2
+
+providers:
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+  ollama:
+    base_url: http://localhost:11434/v1

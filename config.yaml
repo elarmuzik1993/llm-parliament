@@ -1,0 +1,23 @@
+# Default config — local Ollama models, zero cost, no API keys needed.
+# Requires: ollama installed + models pulled.
+#   ollama pull llama3.1 && ollama pull mistral && ollama pull gemma2
+
+parliament:
+  name: "House of AI"
+
+  members:
+    - name: "Llama"
+      provider: ollama
+      model: llama3.1
+
+    - name: "Mistral"
+      provider: ollama
+      model: mistral
+
+    - name: "Gemma"
+      provider: ollama
+      model: gemma2
+
+providers:
+  ollama:
+    base_url: http://localhost:11434/v1

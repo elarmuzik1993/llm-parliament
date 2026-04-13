@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-parliament"
+version = "0.1.0"
+description = "Multi-agent debate for better AI decisions. Research-backed, local-first."
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.11"
+authors = [{ name = "Boris" }]
+keywords = ["llm", "multi-agent", "debate", "ai", "ollama", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
+dependencies = [
+    "openai>=1.0",     # also covers Ollama via custom base_url
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+google = ["google-genai>=1.0"]
+cloud = [
+    "anthropic>=0.40",
+    "google-genai>=1.0",
+]
+cli = [
+    "click>=8.0",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+]
+all = [
+    "llm-parliament[cloud,cli]",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+parliament = "parliament.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/TODO/llm-parliament"
+Issues = "https://github.com/TODO/llm-parliament/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/parliament"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100

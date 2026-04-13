@@ -1,0 +1,27 @@
+# Cloud config — best quality, requires API keys.
+# Set keys via: parliament keys set anthropic sk-ant-...
+# Or env vars: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY
+
+parliament:
+  name: "House of AI"
+
+  members:
+    - name: "Claude"
+      provider: anthropic
+      model: claude-sonnet-4-6
+
+    - name: "GPT"
+      provider: openai
+      model: gpt-4o
+
+    - name: "Gemini"
+      provider: google
+      model: gemini-2.0-flash
+
+providers:
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+  openai:
+    api_key: ${OPENAI_API_KEY}
+  google:
+    api_key: ${GOOGLE_API_KEY}
