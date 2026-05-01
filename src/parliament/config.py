@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +109,28 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
         resolved = raw
 
     return yaml.safe_load(resolved)
+
+
+def save_config(config: dict[str, Any], config_path: Path) -> None:
+    """Atomically save a parliament config file."""
+    config_path = Path(config_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    payload = yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=str(config_path.parent),
+        prefix=f".{config_path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        tmp.write(payload)
+        if not payload.endswith("\n"):
+            tmp.write("\n")
+        tmp_path = Path(tmp.name)
+
+    tmp_path.replace(config_path)
 
 
 def build_parliament_from_config(

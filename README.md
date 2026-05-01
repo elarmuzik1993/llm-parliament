@@ -123,10 +123,12 @@ Type                Edit the question field
 Enter               Run debate when question is focused
 Tab                 Switch between question and members
 Up/down or j/k      Move through models
-Enter               Open selected model settings when members are focused
+Enter               Open selected member settings when members are focused
 s                   Open settings when members are focused; save result from verdict screen
+e                   Edit the selected member from the detail view
 Left/backspace/Esc  Return from settings to dashboard
 Ctrl+U              Clear the question field
+Ctrl+S              Save member edits
 q                   Quit when focused on members/settings
 Ctrl+Q              Quit from anywhere
 ```
@@ -134,6 +136,14 @@ Ctrl+Q              Quit from anywhere
 The TUI settings screen lets you set the local directory used for saved
 Hansard Markdown responses. By default, saved responses go to
 `~/.parliament/hansards`.
+
+Member editing stays inside the TUI. The editor lets you change `Name`,
+`Provider`, `Model`, and `Base URL`, while `Tier`, `Role`, and API key status
+remain derived and read-only. Model pickers include supported presets plus a
+`Custom model` escape hatch.
+
+Inside the member editor, `Enter` opens provider/model pickers when those
+fields are focused and saves the edit when the base URL field is focused.
 
 ## Development
 

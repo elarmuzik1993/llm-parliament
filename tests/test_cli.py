@@ -15,9 +15,10 @@ def test_bare_command_launches_tui(monkeypatch):
         calls["speaker"] = speaker_override
         return ["settings"]
 
-    def fake_run_tui(settings, config, speaker_override=None):
+    def fake_run_tui(settings, config, config_path, speaker_override=None):
         calls["settings"] = settings
         calls["run_config"] = config
+        calls["run_config_path"] = config_path
         calls["run_speaker"] = speaker_override
 
     import parliament.tui
@@ -33,6 +34,7 @@ def test_bare_command_launches_tui(monkeypatch):
         "speaker": None,
         "settings": ["settings"],
         "run_config": {"loaded": True},
+        "run_config_path": None,
         "run_speaker": None,
     }
 

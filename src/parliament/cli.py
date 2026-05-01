@@ -149,7 +149,7 @@ def main(ctx: click.Context, config_path: Path | None, speaker: str | None, mock
 
         config = _mock_config() if mock else load_config(config_path)
         settings = build_model_settings(config, speaker_override=speaker)
-        run_tui(settings, config, speaker_override=speaker)
+        run_tui(settings, config, config_path, speaker_override=speaker)
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1)
@@ -267,7 +267,7 @@ def tui(config_path: Path | None, speaker: str | None, mock: bool):
 
         config = _mock_config() if mock else load_config(config_path)
         settings = build_model_settings(config, speaker_override=speaker)
-        run_tui(settings, config, speaker_override=speaker)
+        run_tui(settings, config, config_path, speaker_override=speaker)
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1)

@@ -2,11 +2,16 @@
 
 import json
 
+import yaml
+
 from parliament.core.types import Bill, Hansard, Member, Response, Synthesis
 from parliament.tui import (
     AppSettings,
+    MemberEditorState,
     build_model_settings,
     load_app_settings,
+    _model_picker_options,
+    _save_member_edit,
     save_app_settings,
     save_hansard,
 )
@@ -101,3 +106,87 @@ def test_save_hansard_writes_markdown(monkeypatch, tmp_path):
     assert "Proceed." in content
     assert "## First Reading" in content
     assert "## Debate" in content
+
+
+def test_member_edit_updates_active_config(tmp_path):
+    config = {
+        "parliament": {
+            "name": "House of AI",
+            "members": [
+                {"name": "Llama", "provider": "ollama", "model": "llama3.1"},
+                {"name": "Gemma", "provider": "ollama", "model": "gemma2"},
+            ],
+        },
+        "providers": {
+            "ollama": {"base_url": "http://localhost:11434/v1"},
+        },
+    }
+    config_path = tmp_path / "config.yaml"
+
+    editor = MemberEditorState(
+        member_index=0,
+        draft={
+            "name": "Llama",
+            "provider": "ollama",
+            "model": "mistral",
+            "base_url": "http://localhost:11435/v1",
+        },
+    )
+
+    updated = _save_member_edit(config, config_path, editor)
+
+    loaded = yaml.safe_load(config_path.read_text())
+    assert loaded["parliament"]["members"][0]["model"] == "mistral"
+    assert loaded["providers"]["ollama"]["base_url"] == "http://localhost:11435/v1"
+    assert updated["parliament"]["members"][0]["model"] == "mistral"
+
+
+def test_member_edit_preserves_placeholder_secrets(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+parliament:
+  name: House of AI
+  members:
+    - name: Claude
+      provider: anthropic
+      model: claude-sonnet-4-6
+providers:
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+""".strip()
+        + "\n"
+    )
+    runtime_config = {
+        "parliament": {
+            "name": "House of AI",
+            "members": [
+                {"name": "Claude", "provider": "anthropic", "model": "claude-sonnet-4-6"},
+            ],
+        },
+        "providers": {
+            "anthropic": {"api_key": "sk-ant-real-secret"},
+        },
+    }
+    editor = MemberEditorState(
+        member_index=0,
+        draft={
+            "name": "Claude",
+            "provider": "anthropic",
+            "model": "claude-opus-4-6",
+            "base_url": "",
+        },
+    )
+
+    _save_member_edit(runtime_config, config_path, editor)
+
+    saved = config_path.read_text()
+    assert "${ANTHROPIC_API_KEY}" in saved
+    assert "sk-ant-real-secret" not in saved
+
+
+def test_model_picker_options_include_custom():
+    options = _model_picker_options("ollama")
+
+    assert "__custom__" in options
+    assert "llama3.1" in options

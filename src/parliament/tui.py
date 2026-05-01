@@ -13,7 +13,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from parliament.config import PARLIAMENT_DIR, build_parliament_from_config, load_keys
+import yaml
+
+from parliament.config import (
+    DEFAULT_CONFIG,
+    PARLIAMENT_DIR,
+    build_parliament_from_config,
+    load_keys,
+    save_config,
+)
 from parliament.core.model_tiers import get_tier, get_tier_label
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
@@ -25,6 +33,42 @@ KEY_PROVIDERS = {
 }
 SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
 DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
+SUPPORTED_PROVIDERS = ["ollama", "anthropic", "openai", "google", "mock"]
+MODEL_CATALOG: dict[str, list[str]] = {
+    "ollama": [
+        "llama3.1",
+        "llama3.1:8b",
+        "llama3.1:70b",
+        "mistral",
+        "mistral:7b",
+        "mistral-large",
+        "gemma2",
+        "gemma2:9b",
+        "gemma2:2b",
+        "qwen2:7b",
+        "qwen2:72b",
+        "phi3:mini",
+        "tinyllama",
+    ],
+    "anthropic": [
+        "claude-sonnet-4-6",
+        "claude-opus-4-6",
+    ],
+    "openai": [
+        "gpt-4o",
+        "gpt-4o-mini",
+    ],
+    "google": [
+        "gemini-2.0-flash",
+        "gemini-2.0-pro",
+    ],
+    "mock": [
+        "mock-v1",
+        "mock-v2",
+        "mock-v3",
+    ],
+}
+MEMBER_FIELDS = ["name", "provider", "model", "base_url"]
 
 
 @dataclass(frozen=True)
@@ -42,6 +86,20 @@ class AppSettings:
     """User-configurable TUI settings."""
 
     save_dir: str
+
+
+@dataclass
+class MemberEditorState:
+    """In-TUI state for editing a parliament member."""
+
+    member_index: int
+    draft: dict[str, str]
+    field_index: int = 0
+    mode: str = "form"
+    picker_index: int = 0
+    picker_kind: str = ""
+    picker_options: list[str] | None = None
+    custom_input: str = ""
 
 
 def load_app_settings() -> AppSettings:
@@ -97,10 +155,11 @@ def build_model_settings(
 def run_tui(
     settings: list[ModelSettings],
     config: dict[str, Any],
+    config_path: Path | None,
     speaker_override: str | None = None,
 ) -> None:
     """Run the curses TUI."""
-    curses.wrapper(_run, settings, config, speaker_override)
+    curses.wrapper(_run, settings, config, config_path, speaker_override)
 
 
 def _speaker_name(members: list[Member], override: str | None) -> str:
@@ -125,14 +184,87 @@ def _api_key_status(provider: str) -> str:
     return "configured" if os.environ.get(env_var) else "missing"
 
 
+def _member_base_url(config: dict[str, Any], provider: str) -> str:
+    provider_config = config.get("providers", {}).get(provider, {})
+    if "base_url" in provider_config:
+        return str(provider_config["base_url"])
+    if provider == "ollama":
+        return "http://localhost:11434/v1"
+    return ""
+
+
+def _member_draft_from_config(config: dict[str, Any], member_index: int) -> MemberEditorState:
+    member = config["parliament"]["members"][member_index]
+    return MemberEditorState(
+        member_index=member_index,
+        draft={
+            "name": str(member["name"]),
+            "provider": str(member["provider"]),
+            "model": str(member["model"]),
+            "base_url": _member_base_url(config, str(member["provider"])),
+        },
+    )
+
+
+def _available_models(provider: str) -> list[str]:
+    return MODEL_CATALOG.get(provider, [])
+
+
+def _provider_choices() -> list[str]:
+    return SUPPORTED_PROVIDERS[:]
+
+
+def _ensure_provider_model_compatibility(draft: dict[str, str]) -> None:
+    provider = draft["provider"]
+    models = _available_models(provider)
+    if models and draft["model"] not in models:
+        draft["model"] = models[0]
+
+
+def _normalize_member_draft(draft: dict[str, str]) -> dict[str, str]:
+    return {
+        "name": draft["name"].strip(),
+        "provider": draft["provider"].strip(),
+        "model": draft["model"].strip(),
+        "base_url": draft["base_url"].strip(),
+    }
+
+
+def _load_editable_config(config_path: Path, fallback_config: dict[str, Any]) -> dict[str, Any]:
+    if Path(config_path).exists():
+        raw = yaml.safe_load(Path(config_path).read_text())
+        if isinstance(raw, dict):
+            return raw
+    return fallback_config
+
+
+def _apply_member_edit(config: dict[str, Any], member_index: int, draft: dict[str, str]) -> None:
+    members = config["parliament"]["members"]
+    member = members[member_index]
+    member["name"] = draft["name"]
+    member["provider"] = draft["provider"]
+    member["model"] = draft["model"]
+
+    providers = config.setdefault("providers", {})
+    if draft["base_url"]:
+        provider_config = providers.setdefault(draft["provider"], {})
+        provider_config["base_url"] = draft["base_url"]
+    elif draft["provider"] == "ollama":
+        provider_config = providers.setdefault("ollama", {})
+        provider_config["base_url"] = str(_member_base_url(config, "ollama"))
+
+
 def _run(
     stdscr,
     settings: list[ModelSettings],
     config: dict[str, Any],
+    config_path: Path | None,
     speaker_override: str | None,
 ) -> None:
     curses.curs_set(0)
     stdscr.keypad(True)
+
+    active_config_path = Path(config_path) if config_path else DEFAULT_CONFIG
     question = ""
     focus = "question"
     selected = 0
@@ -142,9 +274,10 @@ def _run(
     message = ""
     hansard: Hansard | None = None
     error_message = ""
+    result_message = ""
     app_settings = load_app_settings()
     settings_input = app_settings.save_dir
-    result_message = ""
+    member_editor: MemberEditorState | None = None
 
     while True:
         height, width = stdscr.getmaxyx()
@@ -164,6 +297,42 @@ def _run(
             )
         elif screen == "detail":
             _draw_detail(stdscr, settings[selected], question, height, width)
+        elif screen == "edit_member" and member_editor is not None:
+            _draw_member_editor(
+                stdscr,
+                config,
+                member_editor,
+                speaker_override,
+                height,
+                width,
+            )
+        elif screen == "provider_picker" and member_editor is not None:
+            _draw_picker(
+                stdscr,
+                "Choose Provider",
+                member_editor.picker_options or _provider_choices(),
+                member_editor.picker_index,
+                height,
+                width,
+            )
+        elif screen == "model_picker" and member_editor is not None:
+            _draw_picker(
+                stdscr,
+                "Choose Model",
+                member_editor.picker_options or [],
+                member_editor.picker_index,
+                height,
+                width,
+                footer="Enter: select  c: custom model  Esc: back",
+            )
+        elif screen == "custom_model" and member_editor is not None:
+            _draw_custom_input(
+                stdscr,
+                "Custom Model",
+                member_editor.custom_input,
+                height,
+                width,
+            )
         elif screen == "result" and hansard is not None:
             result_top = _draw_result(
                 stdscr,
@@ -184,6 +353,7 @@ def _run(
 
         if key == 17:  # Ctrl+Q
             return
+
         if screen == "dashboard":
             if focus != "question" and key in (ord("q"), ord("Q")):
                 return
@@ -222,7 +392,139 @@ def _run(
                 focus = "members"
             elif key in (curses.KEY_ENTER, 10, 13):
                 screen = "detail"
-        elif screen in ("detail", "error") and key in (
+
+        elif screen == "detail":
+            if key in (ord("e"), ord("E")):
+                member_editor = _member_draft_from_config(config, selected)
+                screen = "edit_member"
+            elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
+                screen = "dashboard"
+            elif key in (ord("q"), ord("Q")):
+                return
+
+        elif screen == "edit_member" and member_editor is not None:
+            if key in (curses.KEY_LEFT, 27, ord("b"), ord("B")):
+                member_editor = None
+                screen = "detail"
+            elif key in (curses.KEY_UP, curses.KEY_DOWN, 9):
+                member_editor.field_index = _cycle_index(
+                    member_editor.field_index,
+                    len(MEMBER_FIELDS),
+                    key,
+                )
+            elif key in (curses.KEY_ENTER, 10, 13):
+                field = MEMBER_FIELDS[member_editor.field_index]
+                if field == "provider":
+                    member_editor.picker_kind = "provider"
+                    member_editor.picker_options = _provider_choices()
+                    member_editor.picker_index = _current_picker_index(
+                        member_editor.picker_options,
+                        member_editor.draft["provider"],
+                    )
+                    screen = "provider_picker"
+                elif field == "model":
+                    member_editor.picker_kind = "model"
+                    member_editor.picker_options = _model_picker_options(
+                        member_editor.draft["provider"]
+                    )
+                    member_editor.picker_index = _current_picker_index(
+                        member_editor.picker_options,
+                        member_editor.draft["model"],
+                    )
+                    screen = "model_picker"
+                elif field == "base_url":
+                    try:
+                        config = _save_member_edit(
+                            config,
+                            active_config_path,
+                            member_editor,
+                        )
+                        settings = build_model_settings(config, speaker_override)
+                        selected = member_editor.member_index
+                        message = "Member saved."
+                        member_editor = None
+                        screen = "dashboard"
+                    except Exception as exc:
+                        error_message = str(exc)
+                        screen = "error"
+                else:
+                    member_editor.field_index = min(member_editor.field_index + 1, len(MEMBER_FIELDS) - 1)
+            elif key in (19,):  # Ctrl+S
+                try:
+                    config = _save_member_edit(
+                        config,
+                        active_config_path,
+                        member_editor,
+                    )
+                    settings = build_model_settings(config, speaker_override)
+                    selected = member_editor.member_index
+                    message = f"Saved member to {active_config_path}"
+                    member_editor = None
+                    screen = "dashboard"
+                except Exception as exc:
+                    error_message = str(exc)
+                    screen = "error"
+            else:
+                field = MEMBER_FIELDS[member_editor.field_index]
+                if field in ("name", "base_url"):
+                    member_editor.draft[field] = _handle_text_key(member_editor.draft[field], key)
+
+        elif screen == "provider_picker" and member_editor is not None:
+            if key in (curses.KEY_UP, ord("k")):
+                member_editor.picker_index = max(0, member_editor.picker_index - 1)
+            elif key in (curses.KEY_DOWN, ord("j")):
+                member_editor.picker_index = min(
+                    len(member_editor.picker_options or []) - 1,
+                    member_editor.picker_index + 1,
+                )
+            elif key in (curses.KEY_ENTER, 10, 13):
+                chosen = (member_editor.picker_options or _provider_choices())[member_editor.picker_index]
+                member_editor.draft["provider"] = chosen
+                member_editor.draft["base_url"] = _member_base_url(config, chosen)
+                member_editor.picker_kind = "model"
+                member_editor.picker_options = _model_picker_options(chosen)
+                member_editor.picker_index = 0
+                _ensure_provider_model_compatibility(member_editor.draft)
+                screen = "model_picker"
+            elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
+                screen = "edit_member"
+
+        elif screen == "model_picker" and member_editor is not None:
+            options = member_editor.picker_options or []
+            if key in (curses.KEY_UP, ord("k")):
+                member_editor.picker_index = max(0, member_editor.picker_index - 1)
+            elif key in (curses.KEY_DOWN, ord("j")):
+                member_editor.picker_index = min(len(options) - 1, member_editor.picker_index + 1)
+            elif key in (ord("c"), ord("C")):
+                member_editor.custom_input = member_editor.draft["model"]
+                screen = "custom_model"
+            elif key in (curses.KEY_ENTER, 10, 13):
+                if not options:
+                    continue
+                chosen = options[member_editor.picker_index]
+                if chosen == "__custom__":
+                    member_editor.custom_input = member_editor.draft["model"]
+                    screen = "custom_model"
+                else:
+                    member_editor.draft["model"] = chosen
+                    screen = "edit_member"
+            elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
+                screen = "edit_member"
+
+        elif screen == "custom_model" and member_editor is not None:
+            if key in (curses.KEY_LEFT, 27, ord("b"), ord("B")):
+                screen = "model_picker"
+            elif key in (curses.KEY_ENTER, 10, 13):
+                if member_editor.custom_input.strip():
+                    member_editor.draft["model"] = member_editor.custom_input.strip()
+                    screen = "edit_member"
+                else:
+                    error_message = "Model name cannot be empty."
+                    screen = "error"
+            else:
+                member_editor.custom_input = _handle_text_key(member_editor.custom_input, key)
+
+        elif screen in ("error", "app_settings") and key in (
             curses.KEY_LEFT,
             curses.KEY_BACKSPACE,
             27,
@@ -230,10 +532,7 @@ def _run(
             ord("B"),
         ):
             screen = "dashboard"
-        elif screen == "app_settings" and key in (curses.KEY_LEFT, 27, ord("b"), ord("B")):
-            screen = "dashboard"
-        elif key in (ord("q"), ord("Q")):
-            return
+
         elif screen == "result":
             if key in (curses.KEY_DOWN, ord("j")):
                 result_top += 1
@@ -247,6 +546,7 @@ def _run(
                     result_message = f"Save failed: {exc}"
             elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
                 screen = "dashboard"
+
         elif screen == "app_settings":
             if key in (curses.KEY_ENTER, 10, 13):
                 app_settings = AppSettings(save_dir=settings_input.strip() or str(DEFAULT_SAVE_DIR))
@@ -271,6 +571,171 @@ def _handle_text_key(value: str, key: int) -> str:
     if 32 <= key <= 126:
         return value + chr(key)
     return value
+
+
+def _cycle_index(current: int, count: int, key: int) -> int:
+    if count <= 0:
+        return 0
+    if key in (curses.KEY_UP, curses.KEY_LEFT):
+        return (current - 1) % count
+    if key in (curses.KEY_DOWN, curses.KEY_RIGHT, 9):
+        return (current + 1) % count
+    return current
+
+
+def _current_picker_index(options: list[str], value: str) -> int:
+    try:
+        return options.index(value)
+    except ValueError:
+        return 0
+
+
+def _model_picker_options(provider: str) -> list[str]:
+    options = _available_models(provider)
+    if options:
+        return options + ["__custom__"]
+    return ["__custom__"]
+
+
+def _draw_picker(
+    stdscr,
+    title: str,
+    options: list[str],
+    selected: int,
+    height: int,
+    width: int,
+    footer: str = "Enter: select  Esc: back",
+) -> None:
+    _add_line(stdscr, 0, 0, title, curses.A_BOLD, width)
+    _add_line(stdscr, 1, 0, footer, curses.A_DIM, width)
+    visible = max(1, height - 4)
+    top = max(0, min(selected, max(0, len(options) - visible)))
+    for row, option in enumerate(options[top : top + visible], start=3):
+        idx = top + row - 3
+        label = "Add custom model" if option == "__custom__" else option
+        label = f"> {label}" if idx == selected else f"  {label}"
+        attr = curses.A_REVERSE if idx == selected else curses.A_NORMAL
+        _add_line(stdscr, row, 0, label, attr, width)
+
+
+def _draw_custom_input(
+    stdscr,
+    title: str,
+    value: str,
+    height: int,
+    width: int,
+) -> None:
+    _add_line(stdscr, 0, 0, title, curses.A_BOLD, width)
+    _add_line(stdscr, 1, 0, "Enter: save  Esc: back  Ctrl+U: clear", curses.A_DIM, width)
+    _add_line(stdscr, 3, 0, f" {value or 'Type model name'}", curses.A_REVERSE, width)
+    _add_line(stdscr, max(0, height - 2), 0, "Custom models are saved into config as-is.", curses.A_DIM, width)
+
+
+def _draw_member_editor(
+    stdscr,
+    config: dict[str, Any],
+    editor: MemberEditorState,
+    speaker_override: str | None,
+    height: int,
+    width: int,
+) -> None:
+    preview_members = _preview_members(config, editor)
+    speaker_name = _speaker_name(preview_members, speaker_override)
+    preview_member = preview_members[editor.member_index]
+    draft = editor.draft
+    rows = [
+        ("Name", draft["name"]),
+        ("Provider", draft["provider"]),
+        ("Model", draft["model"]),
+        ("Base URL", draft["base_url"] or "default"),
+        ("Tier", get_tier_label(preview_member.tier)),
+        ("Role", _member_role(preview_member, speaker_name)),
+        ("API key", _api_key_status(draft["provider"])),
+    ]
+
+    _add_line(stdscr, 0, 0, f"Edit Member: {draft['name'] or '(unnamed)'}", curses.A_BOLD, width)
+    _add_line(
+        stdscr,
+        1,
+        0,
+        "Up/down/Tab: field  Enter: picker/save  Ctrl+S: save  Esc: cancel",
+        curses.A_DIM,
+        width,
+    )
+    _add_line(stdscr, 3, 0, "Editable", curses.A_BOLD, width)
+    for idx, (label, value) in enumerate(rows[:4], start=5):
+        prefix = ">" if MEMBER_FIELDS[idx - 5] == MEMBER_FIELDS[editor.field_index] else " "
+        attr = curses.A_REVERSE if MEMBER_FIELDS[idx - 5] == MEMBER_FIELDS[editor.field_index] else curses.A_NORMAL
+        _add_line(stdscr, idx, 0, f"{prefix} {label:<10} {value}", attr, width)
+
+    preview_y = 11
+    _add_line(stdscr, preview_y, 0, "Derived", curses.A_BOLD, width)
+    for idx, (label, value) in enumerate(rows[4:], start=preview_y + 2):
+        _add_line(stdscr, idx, 0, f"{label:<10} {value}", curses.A_NORMAL, width)
+
+    _add_line(
+        stdscr,
+        max(0, height - 2),
+        0,
+        "Provider and model use pickers; model supports Add custom model.",
+        curses.A_DIM,
+        width,
+    )
+
+
+def _preview_members(config: dict[str, Any], editor: MemberEditorState) -> list[Member]:
+    members: list[Member] = []
+    raw_members = config["parliament"]["members"]
+    for idx, raw in enumerate(raw_members):
+        if idx == editor.member_index:
+            draft = editor.draft
+            members.append(
+                Member(
+                    name=draft["name"],
+                    provider_name=draft["provider"],
+                    model=draft["model"],
+                    tier=get_tier(draft["model"]),
+                )
+            )
+        else:
+            members.append(
+                Member(
+                    name=str(raw["name"]),
+                    provider_name=str(raw["provider"]),
+                    model=str(raw["model"]),
+                    tier=get_tier(str(raw["model"])),
+                )
+            )
+    return members
+
+
+def _save_member_edit(
+    runtime_config: dict[str, Any],
+    config_path: Path,
+    editor: MemberEditorState,
+) -> dict[str, Any]:
+    draft = _normalize_member_draft(editor.draft)
+    if not draft["name"]:
+        raise ValueError("Member name cannot be empty.")
+    if draft["provider"] not in SUPPORTED_PROVIDERS:
+        raise ValueError(f"Unknown provider '{draft['provider']}'")
+    if not draft["model"]:
+        raise ValueError("Model cannot be empty.")
+
+    members = runtime_config["parliament"]["members"]
+    if editor.member_index >= len(members):
+        raise ValueError("Selected member no longer exists.")
+
+    for idx, member in enumerate(members):
+        if idx != editor.member_index and str(member["name"]).strip() == draft["name"]:
+            raise ValueError(f"Member name '{draft['name']}' already exists.")
+
+    editable_config = _load_editable_config(config_path, runtime_config)
+    _apply_member_edit(editable_config, editor.member_index, draft)
+    _apply_member_edit(runtime_config, editor.member_index, draft)
+
+    save_config(editable_config, config_path)
+    return runtime_config
 
 
 def _draw_dashboard(
