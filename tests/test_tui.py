@@ -1,6 +1,15 @@
-"""TUI state-building tests."""
+"""TUI state-building and persistence tests."""
 
-from parliament.tui import build_model_settings
+import json
+
+from parliament.core.types import Bill, Hansard, Member, Response, Synthesis
+from parliament.tui import (
+    AppSettings,
+    build_model_settings,
+    load_app_settings,
+    save_app_settings,
+    save_hansard,
+)
 
 
 def test_build_model_settings_roles_and_key_status(monkeypatch):
@@ -49,3 +58,46 @@ def test_build_model_settings_speaker_override(monkeypatch):
     by_name = {setting.member.name: setting for setting in settings}
     assert by_name["Llama"].role == "Speaker / member"
     assert by_name["Claude"].role == "Member"
+
+
+def test_app_settings_round_trip(monkeypatch, tmp_path):
+    settings_file = tmp_path / "settings.json"
+    monkeypatch.setattr("parliament.tui.SETTINGS_FILE", settings_file)
+
+    save_app_settings(AppSettings(save_dir=str(tmp_path / "hansards")))
+
+    loaded = load_app_settings()
+    assert loaded.save_dir == str(tmp_path / "hansards")
+    assert json.loads(settings_file.read_text()) == {"save_dir": str(tmp_path / "hansards")}
+
+
+def test_save_hansard_writes_markdown(monkeypatch, tmp_path):
+    hansard = Hansard(
+        bill=Bill(content="Should we use PostgreSQL?"),
+        members=[
+            Member(name="A", provider_name="mock", model="mock-v1", tier=3),
+            Member(name="B", provider_name="mock", model="mock-v2", tier=3),
+        ],
+        first_reading=[Response(member_name="A", content="yes", phase="first_reading")],
+        debate=[Response(member_name="B", content="agree", phase="debate")],
+        synthesis=Synthesis(
+            speaker_name="A",
+            consensus="Use PostgreSQL.",
+            recommendation="Proceed.",
+        ),
+    )
+
+    path = save_hansard(hansard, str(tmp_path / "responses"))
+
+    assert path.parent == tmp_path / "responses"
+    assert path.suffix == ".md"
+    assert path.exists()
+    content = path.read_text()
+    assert "type: parliament-hansard" in content
+    assert "# Should we use PostgreSQL?" in content
+    assert "## Question" in content
+    assert "Should we use PostgreSQL?" in content
+    assert "### Recommendation" in content
+    assert "Proceed." in content
+    assert "## First Reading" in content
+    assert "## Debate" in content

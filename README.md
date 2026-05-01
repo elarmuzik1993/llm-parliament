@@ -117,11 +117,16 @@ Enter               Run debate when question is focused
 Tab                 Switch between question and members
 Up/down or j/k      Move through models
 Enter               Open selected model settings when members are focused
+s                   Open settings when members are focused; save result from verdict screen
 Left/backspace/Esc  Return from settings to dashboard
 Ctrl+U              Clear the question field
 q                   Quit when focused on members/settings
 Ctrl+Q              Quit from anywhere
 ```
+
+The TUI settings screen lets you set the local directory used for saved
+Hansard Markdown responses. By default, saved responses go to
+`~/.parliament/hansards`.
 
 ## Development
 

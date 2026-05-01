@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import curses
+import json
 import os
+import re
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from parliament.config import build_parliament_from_config, load_keys
+from parliament.config import PARLIAMENT_DIR, build_parliament_from_config, load_keys
 from parliament.core.model_tiers import get_tier, get_tier_label
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
@@ -18,6 +22,8 @@ KEY_PROVIDERS = {
     "openai": "OPENAI_API_KEY",
     "google": "GOOGLE_API_KEY",
 }
+SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
+DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
 
 
 @dataclass(frozen=True)
@@ -28,6 +34,33 @@ class ModelSettings:
     role: str
     api_key_status: str
     base_url: str
+
+
+@dataclass(frozen=True)
+class AppSettings:
+    """User-configurable TUI settings."""
+
+    save_dir: str
+
+
+def load_app_settings() -> AppSettings:
+    """Load persisted TUI settings."""
+    if not SETTINGS_FILE.exists():
+        return AppSettings(save_dir=str(DEFAULT_SAVE_DIR))
+
+    try:
+        data = json.loads(SETTINGS_FILE.read_text())
+    except json.JSONDecodeError:
+        return AppSettings(save_dir=str(DEFAULT_SAVE_DIR))
+
+    save_dir = data.get("save_dir") or str(DEFAULT_SAVE_DIR)
+    return AppSettings(save_dir=str(save_dir))
+
+
+def save_app_settings(settings: AppSettings) -> None:
+    """Persist TUI settings."""
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS_FILE.write_text(json.dumps({"save_dir": settings.save_dir}, indent=2) + "\n")
 
 
 def build_model_settings(
@@ -108,6 +141,9 @@ def _run(
     message = ""
     hansard: Hansard | None = None
     error_message = ""
+    app_settings = load_app_settings()
+    settings_input = app_settings.save_dir
+    result_message = ""
 
     while True:
         height, width = stdscr.getmaxyx()
@@ -128,9 +164,19 @@ def _run(
         elif screen == "detail":
             _draw_detail(stdscr, settings[selected], question, height, width)
         elif screen == "result" and hansard is not None:
-            result_top = _draw_result(stdscr, hansard, result_top, height, width)
+            result_top = _draw_result(
+                stdscr,
+                hansard,
+                result_top,
+                result_message,
+                app_settings.save_dir,
+                height,
+                width,
+            )
         elif screen == "error":
             _draw_error(stdscr, error_message, height, width)
+        elif screen == "app_settings":
+            _draw_app_settings(stdscr, settings_input, height, width)
 
         stdscr.refresh()
         key = stdscr.getch()
@@ -154,6 +200,7 @@ def _run(
                                 speaker_override,
                             )
                             result_top = 0
+                            result_message = ""
                             screen = "result"
                         except Exception as exc:
                             error_message = str(exc)
@@ -163,6 +210,9 @@ def _run(
                 else:
                     question, focus = _handle_question_key(question, key)
                     message = ""
+            elif key in (ord("s"), ord("S")):
+                settings_input = app_settings.save_dir
+                screen = "app_settings"
             elif key in (curses.KEY_DOWN, ord("j")) and selected < len(settings) - 1:
                 selected += 1
                 focus = "members"
@@ -179,6 +229,8 @@ def _run(
             ord("B"),
         ):
             screen = "dashboard"
+        elif screen == "app_settings" and key in (curses.KEY_LEFT, 27, ord("b"), ord("B")):
+            screen = "dashboard"
         elif key in (ord("q"), ord("Q")):
             return
         elif screen == "result":
@@ -186,20 +238,38 @@ def _run(
                 result_top += 1
             elif key in (curses.KEY_UP, ord("k")) and result_top > 0:
                 result_top -= 1
+            elif key in (ord("s"), ord("S")) and hansard is not None:
+                try:
+                    saved_path = save_hansard(hansard, app_settings.save_dir)
+                    result_message = f"Saved to {saved_path}"
+                except OSError as exc:
+                    result_message = f"Save failed: {exc}"
             elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
                 screen = "dashboard"
+        elif screen == "app_settings":
+            if key in (curses.KEY_ENTER, 10, 13):
+                app_settings = AppSettings(save_dir=settings_input.strip() or str(DEFAULT_SAVE_DIR))
+                save_app_settings(app_settings)
+                message = f"Save directory set to {app_settings.save_dir}"
+                screen = "dashboard"
+            else:
+                settings_input = _handle_text_key(settings_input, key)
 
 
 def _handle_question_key(question: str, key: int) -> tuple[str, str]:
-    if key in (curses.KEY_BACKSPACE, 127, 8):
-        return question[:-1], "question"
-    if key == 21:  # Ctrl+U
-        return "", "question"
-    if 32 <= key <= 126:
-        return question + chr(key), "question"
     if key in (curses.KEY_DOWN, curses.KEY_UP):
         return question, "members"
-    return question, "question"
+    return _handle_text_key(question, key), "question"
+
+
+def _handle_text_key(value: str, key: int) -> str:
+    if key in (curses.KEY_BACKSPACE, 127, 8):
+        return value[:-1]
+    if key == 21:  # Ctrl+U
+        return ""
+    if 32 <= key <= 126:
+        return value + chr(key)
+    return value
 
 
 def _draw_dashboard(
@@ -218,7 +288,7 @@ def _draw_dashboard(
         stdscr,
         1,
         0,
-        "Enter: run question  Tab: members  Up/down: models  Ctrl+U: clear  Ctrl+Q: quit",
+        "Enter: run  Tab: members  s: settings from members  Ctrl+U: clear  Ctrl+Q: quit",
         curses.A_DIM,
         width,
     )
@@ -328,16 +398,33 @@ def _run_debate(
     return asyncio.run(parliament.ask(question))
 
 
-def _draw_result(stdscr, hansard: Hansard, top: int, height: int, width: int) -> int:
+def _draw_result(
+    stdscr,
+    hansard: Hansard,
+    top: int,
+    message: str,
+    save_dir: str,
+    height: int,
+    width: int,
+) -> int:
     lines = _result_lines(hansard)
-    visible = max(1, height - 3)
+    visible = max(1, height - 4)
     max_top = max(0, len(lines) - visible)
     top = min(top, max_top)
 
     _add_line(stdscr, 0, 0, "Verdict", curses.A_BOLD, width)
-    _add_line(stdscr, 1, 0, "Up/down: scroll  b/Esc/backspace: dashboard  q: quit", curses.A_DIM, width)
+    _add_line(
+        stdscr,
+        1,
+        0,
+        f"s: save  Up/down: scroll  b/Esc/backspace: dashboard  q: quit  Dir: {save_dir}",
+        curses.A_DIM,
+        width,
+    )
+    if message:
+        _add_line(stdscr, 2, 0, message, curses.A_BOLD, width)
 
-    for idx, line in enumerate(lines[top : top + visible], start=3):
+    for idx, line in enumerate(lines[top : top + visible], start=4):
         attr = curses.A_BOLD if line.isupper() else curses.A_NORMAL
         _add_line(stdscr, idx, 0, line, attr, width)
 
@@ -355,6 +442,99 @@ def _draw_error(stdscr, error_message: str, height: int, width: int) -> None:
     if "Connection" in error_message or "connect" in error_message.lower():
         _add_line(stdscr, 5, 0, "Try `parliament --mock` for a no-service test run.", curses.A_DIM, width)
     _add_line(stdscr, max(0, height - 2), 0, "The one-shot CLI is still available with --mock.", curses.A_DIM, width)
+
+
+def _draw_app_settings(stdscr, save_dir: str, height: int, width: int) -> None:
+    _add_line(stdscr, 0, 0, "Settings", curses.A_BOLD, width)
+    _add_line(stdscr, 1, 0, "Enter: save  Ctrl+U: clear  b/Esc/backspace: cancel", curses.A_DIM, width)
+    _add_line(stdscr, 3, 0, "Hansard save directory", curses.A_BOLD, width)
+    value = save_dir or str(DEFAULT_SAVE_DIR)
+    if len(value) > width - 5:
+        value = value[-(width - 5):]
+    _add_line(stdscr, 4, 0, f" {value}", curses.A_REVERSE, width)
+    _add_line(
+        stdscr,
+        max(0, height - 2),
+        0,
+        "Saved verdicts are written as Markdown Hansard files.",
+        curses.A_DIM,
+        width,
+    )
+
+
+def save_hansard(hansard: Hansard, save_dir: str) -> Path:
+    """Save a Hansard Markdown file into the configured local directory."""
+    directory = Path(save_dir).expanduser()
+    directory.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    slug = _slugify(hansard.bill.title or hansard.bill.content)
+    path = directory / f"{timestamp}-{slug}-{hansard.id[:8]}.md"
+    path.write_text(_hansard_markdown(hansard))
+    return path
+
+
+def _hansard_markdown(hansard: Hansard) -> str:
+    synthesis = hansard.synthesis
+    duration = hansard.duration_ms / 1000
+    calls = len(hansard.members) * 2 + 1
+    members = ", ".join(f"{m.name} ({m.provider_name}/{m.model})" for m in hansard.members)
+
+    lines = [
+        "---",
+        f"id: {hansard.id}",
+        f"created_at: {hansard.created_at}",
+        "type: parliament-hansard",
+        "---",
+        "",
+        f"# {hansard.bill.title}",
+        "",
+        "## Question",
+        "",
+        hansard.bill.content,
+        "",
+        "## Verdict",
+        "",
+    ]
+
+    for heading, value in (
+        ("Consensus", synthesis.consensus),
+        ("Split", synthesis.split),
+        ("Risks", synthesis.risks),
+        ("Recommendation", synthesis.recommendation),
+    ):
+        if value:
+            lines.extend([f"### {heading}", "", value, ""])
+
+    lines.extend([
+        "## First Reading",
+        "",
+    ])
+    for response in hansard.first_reading:
+        lines.extend([f"### {response.member_name}", "", response.content, ""])
+
+    lines.extend([
+        "## Debate",
+        "",
+    ])
+    for response in hansard.debate:
+        lines.extend([f"### {response.member_name}", "", response.content, ""])
+
+    lines.extend([
+        "## Session",
+        "",
+        f"- Speaker: {synthesis.speaker_name}",
+        f"- Members: {members}",
+        f"- Calls: {calls}",
+        f"- Duration: {duration:.1f}s",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.lower()).strip("-")
+    return slug[:48] or "parliament-response"
 
 
 def _result_lines(hansard: Hansard) -> list[str]:
