@@ -38,6 +38,13 @@ Optional provider extras are available when you want cloud model support:
 pip install "llm-parliament[cloud,cli]"
 ```
 
+On Windows, install with the `cli` extra so the TUI gets the required
+`windows-curses` package:
+
+```powershell
+pip install "llm-parliament[cli]"
+```
+
 The default config uses local Ollama-compatible models and does not need API
 keys. Cloud configs require provider SDKs and keys.
 

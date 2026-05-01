@@ -7,6 +7,7 @@ import curses
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -395,6 +396,8 @@ def _run_debate(
         providers=providers,
         speaker_override=speaker_override,
     )
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     return asyncio.run(parliament.ask(question))
 
 

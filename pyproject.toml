@@ -37,6 +37,7 @@ cli = [
     "click>=8.0",
     "rich>=13.0",
     "pyyaml>=6.0",
+    "windows-curses>=2.4; platform_system == 'Windows'",
 ]
 all = [
     "llm-parliament[cloud,cli]",
