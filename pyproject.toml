@@ -51,8 +51,8 @@ dev = [
 parliament = "parliament.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/TODO/llm-parliament"
-Issues = "https://github.com/TODO/llm-parliament/issues"
+Homepage = "https://github.com/elarmuzik1993/llm-parliament"
+Issues = "https://github.com/elarmuzik1993/llm-parliament/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/parliament"]

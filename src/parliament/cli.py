@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from parliament.config import (
+    KEYS_FILE,
     build_parliament_from_config,
     load_config,
     load_keys,
@@ -23,6 +25,11 @@ from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard
 
 console = Console()
+KEY_PROVIDERS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GOOGLE_API_KEY",
+}
 
 
 def _make_progress_callback(status: dict):
@@ -64,10 +71,13 @@ def _render_synthesis(hansard: Hansard) -> None:
     members = len(hansard.members)
     calls = members * 2 + 1
     speaker = hansard.synthesis.speaker_name
-    console.print(
-        f"[dim]Session: {duration:.1f}s | {calls} calls | "
-        f"Speaker: {speaker} | {members} members[/dim]"
-    )
+    summary = Table.grid(padding=(0, 2))
+    summary.add_column(style="dim")
+    summary.add_column(style="dim")
+    summary.add_column(style="dim")
+    summary.add_row(f"Session: {duration:.1f}s", f"Calls: {calls}", f"Speaker: {speaker}")
+    summary.add_row(f"Members: {members}", f"Hansard: {hansard.id[:8]}", "")
+    console.print(summary)
 
 
 def _render_verbose(hansard: Hansard) -> None:
@@ -82,10 +92,54 @@ def _render_verbose(hansard: Hansard) -> None:
         console.print(Panel(r.content, title=f"{r.member_name} (critique)", border_style="magenta"))
 
 
-@click.group()
-def main():
+def _mask_key(value: str) -> str:
+    """Mask an API key while leaving enough context to identify it."""
+    if len(value) <= 10:
+        return "****"
+    return f"{value[:6]}****{value[-4:]}"
+
+
+def _configured_keys() -> list[tuple[str, str, str, str]]:
+    """Return configured key rows as provider, env var, masked value, source."""
+    file_keys = load_keys()
+    rows = []
+
+    for provider, env_var in KEY_PROVIDERS.items():
+        in_file = env_var in file_keys
+        value = os.environ.get(env_var) or file_keys.get(env_var)
+        if not value:
+            continue
+
+        source = "file" if in_file else "environment"
+        if in_file and file_keys[env_var] != value:
+            source = "file + environment"
+
+        rows.append((provider, env_var, _mask_key(value), source))
+
+    return rows
+
+
+@click.group(invoke_without_command=True)
+@click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
+@click.option("--speaker", default=None, help="Override Speaker selection in the TUI")
+@click.pass_context
+def main(ctx: click.Context, config_path: Path | None, speaker: str | None):
     """LLM Parliament — multi-agent debate for better AI decisions."""
-    pass
+    if ctx.invoked_subcommand is not None:
+        return
+
+    try:
+        from parliament.tui import build_model_settings, run_tui
+
+        config = load_config(config_path)
+        settings = build_model_settings(config, speaker_override=speaker)
+        run_tui(settings)
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
 
 
 @main.command()
@@ -126,10 +180,15 @@ def ask(question: str, config_path: Path | None, speaker: str | None, verbose: b
             console.print(f"[yellow]Warning: {warning}[/yellow]")
 
         # Show session header
-        member_names = " . ".join(m.name for m in members)
-        console.print("\n[bold]PARLIAMENT SESSION[/bold]")
-        console.print(f"[dim]Members: {member_names}[/dim]")
-        console.print(f"[dim]Bill: {question[:80]}[/dim]\n")
+        member_names = " | ".join(m.name for m in members)
+        bill = question if len(question) <= 100 else question[:97].rstrip() + "..."
+        console.print()
+        console.print(Panel.fit(
+            f"[bold]Question[/bold]\n{bill}\n\n[dim]Members: {member_names}[/dim]",
+            title="Parliament Session",
+            border_style="bright_blue",
+        ))
+        console.print()
 
         # Windows: SelectorEventLoop required for asyncio + openai/httpx
         if sys.platform == "win32":
@@ -166,7 +225,7 @@ def members(config_path: Path | None):
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1)
 
-    table = Table(title="Parliament Members")
+    table = Table(title="Parliament Members", show_lines=False)
     table.add_column("Name", style="bold")
     table.add_column("Provider")
     table.add_column("Model")
@@ -181,6 +240,25 @@ def members(config_path: Path | None):
         console.print("[yellow]Warning: large capability gap between members[/yellow]")
 
 
+@main.command()
+@click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
+@click.option("--speaker", default=None, help="Override Speaker selection")
+def tui(config_path: Path | None, speaker: str | None):
+    """Browse models and settings in an interactive terminal UI."""
+    try:
+        from parliament.tui import build_model_settings, run_tui
+
+        config = load_config(config_path)
+        settings = build_model_settings(config, speaker_override=speaker)
+        run_tui(settings)
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
+
 @main.group()
 def keys():
     """Manage API keys."""
@@ -193,20 +271,28 @@ def keys():
 def keys_set(provider: str, key: str):
     """Save an API key."""
     save_key(provider, key)
-    console.print(f"[green]Saved {provider} key[/green]")
+    env_var = KEY_PROVIDERS[provider]
+    console.print(f"[green]Saved {provider} key[/green] [dim]({env_var} in {KEYS_FILE})[/dim]")
 
 
 @keys.command("list")
 def keys_list():
     """Show configured API keys (masked)."""
-    loaded = load_keys()
-    if not loaded:
-        console.print("[dim]No keys configured. Keys file: {KEYS_FILE}[/dim]")
+    rows = _configured_keys()
+    if not rows:
+        console.print(f"[dim]No API keys configured. Keys file: {KEYS_FILE}[/dim]")
         return
 
-    for var, value in loaded.items():
-        masked = value[:6] + "****" + value[-4:] if len(value) > 10 else "****"
-        console.print(f"  {var}: {masked}")
+    table = Table(title="API Keys")
+    table.add_column("Provider", style="bold")
+    table.add_column("Environment Variable")
+    table.add_column("Key")
+    table.add_column("Source")
+
+    for provider, env_var, masked, source in rows:
+        table.add_row(provider, env_var, masked, source)
+
+    console.print(table)
 
 
 @keys.command("remove")
@@ -214,9 +300,9 @@ def keys_list():
 def keys_remove(provider: str):
     """Remove an API key."""
     if remove_key(provider):
-        console.print(f"[green]Removed {provider} key[/green]")
+        console.print(f"[green]Removed {provider} key from {KEYS_FILE}[/green]")
     else:
-        console.print(f"[yellow]{provider} key not found[/yellow]")
+        console.print(f"[yellow]{provider} key not found in {KEYS_FILE}[/yellow]")
 
 
 if __name__ == "__main__":
