@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import curses
 import os
 from dataclasses import dataclass
 from typing import Any
 
-from parliament.config import load_keys
+from parliament.config import build_parliament_from_config, load_keys
 from parliament.core.model_tiers import get_tier, get_tier_label
-from parliament.core.types import Member
+from parliament.core.parliament import Parliament
+from parliament.core.types import Hansard, Member
 
 KEY_PROVIDERS = {
     "anthropic": "ANTHROPIC_API_KEY",
@@ -58,9 +60,13 @@ def build_model_settings(
     ]
 
 
-def run_tui(settings: list[ModelSettings]) -> None:
+def run_tui(
+    settings: list[ModelSettings],
+    config: dict[str, Any],
+    speaker_override: str | None = None,
+) -> None:
     """Run the curses TUI."""
-    curses.wrapper(_run, settings)
+    curses.wrapper(_run, settings, config, speaker_override)
 
 
 def _speaker_name(members: list[Member], override: str | None) -> str:
@@ -85,23 +91,46 @@ def _api_key_status(provider: str) -> str:
     return "configured" if os.environ.get(env_var) else "missing"
 
 
-def _run(stdscr, settings: list[ModelSettings]) -> None:
+def _run(
+    stdscr,
+    settings: list[ModelSettings],
+    config: dict[str, Any],
+    speaker_override: str | None,
+) -> None:
     curses.curs_set(0)
     stdscr.keypad(True)
     question = ""
     focus = "question"
     selected = 0
     top = 0
+    result_top = 0
     screen = "dashboard"
+    message = ""
+    hansard: Hansard | None = None
+    error_message = ""
 
     while True:
         height, width = stdscr.getmaxyx()
         stdscr.erase()
 
         if screen == "dashboard":
-            top = _draw_dashboard(stdscr, settings, question, focus, selected, top, height, width)
-        else:
+            top = _draw_dashboard(
+                stdscr,
+                settings,
+                question,
+                focus,
+                selected,
+                top,
+                message,
+                height,
+                width,
+            )
+        elif screen == "detail":
             _draw_detail(stdscr, settings[selected], question, height, width)
+        elif screen == "result" and hansard is not None:
+            result_top = _draw_result(stdscr, hansard, result_top, height, width)
+        elif screen == "error":
+            _draw_error(stdscr, error_message, height, width)
 
         stdscr.refresh()
         key = stdscr.getch()
@@ -114,7 +143,26 @@ def _run(stdscr, settings: list[ModelSettings]) -> None:
             if key == 9:
                 focus = "members" if focus == "question" else "question"
             elif focus == "question":
-                question, focus = _handle_question_key(question, key)
+                if key in (curses.KEY_ENTER, 10, 13):
+                    if question.strip():
+                        message = ""
+                        try:
+                            hansard = _run_debate(
+                                stdscr,
+                                question.strip(),
+                                config,
+                                speaker_override,
+                            )
+                            result_top = 0
+                            screen = "result"
+                        except Exception as exc:
+                            error_message = str(exc)
+                            screen = "error"
+                    else:
+                        message = "Type a question before pressing Enter."
+                else:
+                    question, focus = _handle_question_key(question, key)
+                    message = ""
             elif key in (curses.KEY_DOWN, ord("j")) and selected < len(settings) - 1:
                 selected += 1
                 focus = "members"
@@ -123,15 +171,26 @@ def _run(stdscr, settings: list[ModelSettings]) -> None:
                 focus = "members"
             elif key in (curses.KEY_ENTER, 10, 13):
                 screen = "detail"
-        elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
+        elif screen in ("detail", "error") and key in (
+            curses.KEY_LEFT,
+            curses.KEY_BACKSPACE,
+            27,
+            ord("b"),
+            ord("B"),
+        ):
             screen = "dashboard"
         elif key in (ord("q"), ord("Q")):
             return
+        elif screen == "result":
+            if key in (curses.KEY_DOWN, ord("j")):
+                result_top += 1
+            elif key in (curses.KEY_UP, ord("k")) and result_top > 0:
+                result_top -= 1
+            elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
+                screen = "dashboard"
 
 
 def _handle_question_key(question: str, key: int) -> tuple[str, str]:
-    if key in (curses.KEY_ENTER, 10, 13):
-        return question, "members"
     if key in (curses.KEY_BACKSPACE, 127, 8):
         return question[:-1], "question"
     if key == 21:  # Ctrl+U
@@ -150,6 +209,7 @@ def _draw_dashboard(
     focus: str,
     selected: int,
     top: int,
+    message: str,
     height: int,
     width: int,
 ) -> int:
@@ -158,11 +218,13 @@ def _draw_dashboard(
         stdscr,
         1,
         0,
-        "Tab: switch field  Up/down: models  Enter: settings  Ctrl+U: clear question  Ctrl+Q: quit",
+        "Enter: run question  Tab: members  Up/down: models  Ctrl+U: clear  Ctrl+Q: quit",
         curses.A_DIM,
         width,
     )
     _draw_question(stdscr, question, focus == "question", 3, width)
+    if message:
+        _add_line(stdscr, 5, 0, message, curses.A_BOLD, width)
 
     member_top = 8
     settings_x = max(44, width // 2)
@@ -241,6 +303,86 @@ def _draw_detail(stdscr, setting: ModelSettings, question: str, height: int, wid
         if idx >= height:
             break
         _add_line(stdscr, idx, 2, f"{label:<10} {value}", curses.A_NORMAL, width)
+
+
+def _run_debate(
+    stdscr,
+    question: str,
+    config: dict[str, Any],
+    speaker_override: str | None,
+) -> Hansard:
+    height, width = stdscr.getmaxyx()
+    stdscr.erase()
+    _add_line(stdscr, 0, 0, "Running Parliament", curses.A_BOLD, width)
+    _add_line(stdscr, 2, 0, f"Question: {question}", curses.A_NORMAL, width)
+    _add_line(stdscr, 4, 0, "First Reading -> Debate -> Division", curses.A_DIM, width)
+    _add_line(stdscr, max(0, height - 2), 0, "Please wait...", curses.A_DIM, width)
+    stdscr.refresh()
+
+    members, providers = build_parliament_from_config(config)
+    parliament = Parliament(
+        members=members,
+        providers=providers,
+        speaker_override=speaker_override,
+    )
+    return asyncio.run(parliament.ask(question))
+
+
+def _draw_result(stdscr, hansard: Hansard, top: int, height: int, width: int) -> int:
+    lines = _result_lines(hansard)
+    visible = max(1, height - 3)
+    max_top = max(0, len(lines) - visible)
+    top = min(top, max_top)
+
+    _add_line(stdscr, 0, 0, "Verdict", curses.A_BOLD, width)
+    _add_line(stdscr, 1, 0, "Up/down: scroll  b/Esc/backspace: dashboard  q: quit", curses.A_DIM, width)
+
+    for idx, line in enumerate(lines[top : top + visible], start=3):
+        attr = curses.A_BOLD if line.isupper() else curses.A_NORMAL
+        _add_line(stdscr, idx, 0, line, attr, width)
+
+    if top > 0:
+        _add_line(stdscr, 0, width - 8, "more ^", curses.A_DIM, width)
+    if top < max_top:
+        _add_line(stdscr, height - 1, width - 8, "more v", curses.A_DIM, width)
+    return top
+
+
+def _draw_error(stdscr, error_message: str, height: int, width: int) -> None:
+    _add_line(stdscr, 0, 0, "Parliament Error", curses.A_BOLD, width)
+    _add_line(stdscr, 1, 0, "b/Esc/backspace: dashboard  q: quit", curses.A_DIM, width)
+    _add_line(stdscr, 3, 0, error_message or "Unknown error", curses.A_NORMAL, width)
+    if "Connection" in error_message or "connect" in error_message.lower():
+        _add_line(stdscr, 5, 0, "Try `parliament --mock` for a no-service test run.", curses.A_DIM, width)
+    _add_line(stdscr, max(0, height - 2), 0, "The one-shot CLI is still available with --mock.", curses.A_DIM, width)
+
+
+def _result_lines(hansard: Hansard) -> list[str]:
+    synthesis = hansard.synthesis
+    duration = hansard.duration_ms / 1000
+    calls = len(hansard.members) * 2 + 1
+    lines = [
+        f"Question: {hansard.bill.content}",
+        "",
+    ]
+
+    for heading, value in (
+        ("CONSENSUS", synthesis.consensus),
+        ("SPLIT", synthesis.split),
+        ("RISKS", synthesis.risks),
+        ("RECOMMENDATION", synthesis.recommendation),
+    ):
+        if value:
+            lines.extend([heading, *value.splitlines(), ""])
+
+    lines.extend([
+        "-" * 40,
+        f"Session: {duration:.1f}s",
+        f"Calls: {calls}",
+        f"Speaker: {synthesis.speaker_name}",
+        f"Hansard: {hansard.id}",
+    ])
+    return lines
 
 
 def _settings_rows(setting: ModelSettings) -> list[tuple[str, str]]:

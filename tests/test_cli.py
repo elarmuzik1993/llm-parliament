@@ -15,8 +15,10 @@ def test_bare_command_launches_tui(monkeypatch):
         calls["speaker"] = speaker_override
         return ["settings"]
 
-    def fake_run_tui(settings):
+    def fake_run_tui(settings, config, speaker_override=None):
         calls["settings"] = settings
+        calls["run_config"] = config
+        calls["run_speaker"] = speaker_override
 
     import parliament.tui
 
@@ -30,7 +32,17 @@ def test_bare_command_launches_tui(monkeypatch):
         "config": {"loaded": True},
         "speaker": None,
         "settings": ["settings"],
+        "run_config": {"loaded": True},
+        "run_speaker": None,
     }
+
+
+def test_mock_config_uses_mock_members():
+    config = cli._mock_config()
+
+    members = config["parliament"]["members"]
+    assert [member["provider"] for member in members] == ["mock", "mock", "mock"]
+    assert [member["name"] for member in members] == ["Mock-A", "Mock-B", "Mock-C"]
 
 
 def test_keys_list_empty_shows_keys_file(monkeypatch, tmp_path):

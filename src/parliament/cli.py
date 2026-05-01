@@ -32,6 +32,21 @@ KEY_PROVIDERS = {
 }
 
 
+def _mock_config() -> dict:
+    """Return a config that runs entirely against mock providers."""
+    return {
+        "parliament": {
+            "name": "Mock Parliament",
+            "members": [
+                {"name": "Mock-A", "provider": "mock", "model": "mock-v1"},
+                {"name": "Mock-B", "provider": "mock", "model": "mock-v2"},
+                {"name": "Mock-C", "provider": "mock", "model": "mock-v3"},
+            ],
+        },
+        "providers": {},
+    }
+
+
 def _make_progress_callback(status: dict):
     """Return a callback that updates a shared status dict for Rich display."""
     def on_progress(phase: str, member: str, state: str):
@@ -122,8 +137,9 @@ def _configured_keys() -> list[tuple[str, str, str, str]]:
 @click.group(invoke_without_command=True)
 @click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
 @click.option("--speaker", default=None, help="Override Speaker selection in the TUI")
+@click.option("--mock", is_flag=True, help="Use mock providers in the TUI")
 @click.pass_context
-def main(ctx: click.Context, config_path: Path | None, speaker: str | None):
+def main(ctx: click.Context, config_path: Path | None, speaker: str | None, mock: bool):
     """LLM Parliament — multi-agent debate for better AI decisions."""
     if ctx.invoked_subcommand is not None:
         return
@@ -131,9 +147,9 @@ def main(ctx: click.Context, config_path: Path | None, speaker: str | None):
     try:
         from parliament.tui import build_model_settings, run_tui
 
-        config = load_config(config_path)
+        config = _mock_config() if mock else load_config(config_path)
         settings = build_model_settings(config, speaker_override=speaker)
-        run_tui(settings)
+        run_tui(settings, config, speaker_override=speaker)
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1)
@@ -243,14 +259,15 @@ def members(config_path: Path | None):
 @main.command()
 @click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
 @click.option("--speaker", default=None, help="Override Speaker selection")
-def tui(config_path: Path | None, speaker: str | None):
+@click.option("--mock", is_flag=True, help="Use mock providers (dev/testing)")
+def tui(config_path: Path | None, speaker: str | None, mock: bool):
     """Browse models and settings in an interactive terminal UI."""
     try:
         from parliament.tui import build_model_settings, run_tui
 
-        config = load_config(config_path)
+        config = _mock_config() if mock else load_config(config_path)
         settings = build_model_settings(config, speaker_override=speaker)
-        run_tui(settings)
+        run_tui(settings, config, speaker_override=speaker)
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1)

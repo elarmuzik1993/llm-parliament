@@ -102,6 +102,9 @@ parliament members --config config.cloud.yaml
 # Open the full TUI dashboard
 parliament
 
+# Open the TUI with mock providers, no Ollama/API keys needed
+parliament --mock
+
 # Browse the same dashboard with a specific config
 parliament tui --config config.cloud.yaml
 ```
@@ -110,9 +113,10 @@ TUI controls:
 
 ```text
 Type                Edit the question field
+Enter               Run debate when question is focused
 Tab                 Switch between question and members
 Up/down or j/k      Move through models
-Enter               Open selected model settings
+Enter               Open selected model settings when members are focused
 Left/backspace/Esc  Return from settings to dashboard
 Ctrl+U              Clear the question field
 q                   Quit when focused on members/settings
