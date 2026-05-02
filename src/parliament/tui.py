@@ -876,30 +876,30 @@ def _draw_result(
     width: int,
 ) -> int:
     lines = _result_lines(hansard)
-    visible = max(1, height - 4)
+    body_top = 2
+    body_bottom = max(body_top, height - 3)
+    visible = max(1, body_bottom - body_top + 1)
     max_top = max(0, len(lines) - visible)
     top = min(top, max_top)
 
     _add_line(stdscr, 0, 0, "Verdict", curses.A_BOLD, width)
-    _add_line(
-        stdscr,
-        1,
-        0,
-        f"s: save  Up/down: scroll  b/Esc/backspace: dashboard  q: quit  Dir: {save_dir}",
-        curses.A_DIM,
-        width,
-    )
-    if message:
-        _add_line(stdscr, 2, 0, message, curses.A_BOLD, width)
 
-    for idx, line in enumerate(lines[top : top + visible], start=4):
+    for offset, line in enumerate(lines[top : top + visible]):
         attr = curses.A_BOLD if line.isupper() else curses.A_NORMAL
-        _add_line(stdscr, idx, 0, line, attr, width)
+        _add_line(stdscr, body_top + offset, 0, line, attr, width)
+
+    if message:
+        _add_line(stdscr, max(0, height - 2), 0, message, curses.A_BOLD, width)
+
+    controls = "s: save  Up/down: scroll  b/Esc/backspace: dashboard  q: quit"
+    if save_dir and len(controls) + len(save_dir) + 7 < width:
+        controls = f"{controls}  Dir: {save_dir}"
+    _add_line(stdscr, max(0, height - 1), 0, controls, curses.A_DIM, width)
 
     if top > 0:
-        _add_line(stdscr, 0, width - 8, "more ^", curses.A_DIM, width)
+        _add_line(stdscr, 0, max(0, width - 8), "more ^", curses.A_DIM, width)
     if top < max_top:
-        _add_line(stdscr, height - 1, width - 8, "more v", curses.A_DIM, width)
+        _add_line(stdscr, max(0, height - 2), max(0, width - 8), "more v", curses.A_DIM, width)
     return top
 
 
@@ -1047,9 +1047,15 @@ def _settings_rows(setting: ModelSettings) -> list[tuple[str, str]]:
 
 
 def _add_line(stdscr, y: int, x: int, text: str, attr: int, width: int) -> None:
-    if y < 0:
+    if y < 0 or x < 0:
+        return
+    height, _ = stdscr.getmaxyx()
+    if y >= height:
         return
     available = max(0, width - x - 1)
     if available == 0:
         return
-    stdscr.addnstr(y, x, text, available, attr)
+    try:
+        stdscr.addnstr(y, x, text, available, attr)
+    except curses.error:
+        pass
