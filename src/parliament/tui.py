@@ -15,6 +15,7 @@ from typing import Any
 
 import yaml
 
+from parliament.commands import COMMANDS, Command, CommandContext, SpeakerOp, dispatch
 from parliament.config import (
     DEFAULT_CONFIG,
     PARLIAMENT_DIR,
@@ -278,6 +279,7 @@ def _run(
     app_settings = load_app_settings()
     settings_input = app_settings.save_dir
     member_editor: MemberEditorState | None = None
+    palette_index = 0
 
     while True:
         height, width = stdscr.getmaxyx()
@@ -294,6 +296,7 @@ def _run(
                 message,
                 height,
                 width,
+                palette_index,
             )
         elif screen == "detail":
             _draw_detail(stdscr, settings[selected], question, height, width)
@@ -360,18 +363,64 @@ def _run(
             if key == 9:
                 focus = "members" if focus == "question" else "question"
             elif focus == "question":
+                palette_open = question.startswith("/") and not message
+                palette_matches = _palette_matches(question) if palette_open else []
+                if palette_open and palette_matches and key in (curses.KEY_DOWN, curses.KEY_UP):
+                    if key == curses.KEY_DOWN:
+                        palette_index = (palette_index + 1) % len(palette_matches)
+                    else:
+                        palette_index = (palette_index - 1) % len(palette_matches)
+                    continue
                 if key in (curses.KEY_ENTER, 10, 13):
-                    if question.strip():
+                    stripped = question.strip()
+                    if (
+                        palette_open
+                        and palette_matches
+                        and " " not in stripped
+                    ):
+                        # User picked a command from the palette.
+                        idx = min(palette_index, len(palette_matches) - 1)
+                        stripped = f"/{palette_matches[idx].name}"
+                    if stripped.startswith("/"):
+                        ctx = CommandContext(
+                            members=[s.member for s in settings],
+                            speaker_override=speaker_override,
+                            hansard=hansard,
+                            save_dir=app_settings.save_dir,
+                        )
+                        result = dispatch(stripped, ctx)
+                        if result.quit:
+                            return
+                        if result.clear_question:
+                            question = ""
+                        if result.speaker_op is SpeakerOp.CLEAR:
+                            speaker_override = None
+                            settings = build_model_settings(config, speaker_override)
+                        elif result.speaker_op is SpeakerOp.SET:
+                            speaker_override = result.speaker_value
+                            settings = build_model_settings(config, speaker_override)
+                        if result.clear_hansard:
+                            hansard = None
+                        message = result.message
+                        if result.open_screen == "app_settings":
+                            settings_input = app_settings.save_dir
+                            screen = "app_settings"
+                    elif stripped:
                         message = ""
                         try:
                             hansard = _run_debate(
                                 stdscr,
-                                question.strip(),
+                                stripped,
                                 config,
                                 speaker_override,
                             )
+                            question = ""
                             result_top = 0
-                            result_message = ""
+                            try:
+                                saved_path = save_hansard(hansard, app_settings.save_dir)
+                                result_message = f"Auto-saved to {saved_path}"
+                            except OSError as exc:
+                                result_message = f"Auto-save failed: {exc}"
                             screen = "result"
                         except Exception as exc:
                             error_message = str(exc)
@@ -379,7 +428,10 @@ def _run(
                     else:
                         message = "Type a question before pressing Enter."
                 else:
+                    prev = question
                     question, focus = _handle_question_key(question, key)
+                    if question != prev:
+                        palette_index = 0
                     message = ""
             elif key in (ord("s"), ord("S")):
                 settings_input = app_settings.save_dir
@@ -539,11 +591,13 @@ def _run(
             elif key in (curses.KEY_UP, ord("k")) and result_top > 0:
                 result_top -= 1
             elif key in (ord("s"), ord("S")) and hansard is not None:
-                try:
-                    saved_path = save_hansard(hansard, app_settings.save_dir)
-                    result_message = f"Saved to {saved_path}"
-                except OSError as exc:
-                    result_message = f"Save failed: {exc}"
+                # Auto-save already ran; only retry when it failed.
+                if not result_message.startswith("Auto-saved"):
+                    try:
+                        saved_path = save_hansard(hansard, app_settings.save_dir)
+                        result_message = f"Saved to {saved_path}"
+                    except OSError as exc:
+                        result_message = f"Save failed: {exc}"
             elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
                 screen = "dashboard"
 
@@ -748,21 +802,40 @@ def _draw_dashboard(
     message: str,
     height: int,
     width: int,
+    palette_index: int = 0,
 ) -> int:
     _add_line(stdscr, 0, 0, "LLM Parliament", curses.A_BOLD, width)
     _add_line(
         stdscr,
         1,
         0,
-        "Enter: run  Tab: members  s: settings from members  Ctrl+U: clear  Ctrl+Q: quit",
+        "Enter: run/command  Tab: members  /help: commands  Ctrl+U: clear  Ctrl+Q: quit",
         curses.A_DIM,
         width,
     )
     _draw_question(stdscr, question, focus == "question", 3, width)
-    if message:
-        _add_line(stdscr, 5, 0, message, curses.A_BOLD, width)
 
-    member_top = 8
+    palette_visible = focus == "question" and question.startswith("/") and not message
+    if palette_visible:
+        palette_lines = _command_palette_lines(question)
+        matches = _palette_matches(question)
+        for offset, line in enumerate(palette_lines):
+            if offset == 0:
+                attr = curses.A_BOLD
+            elif matches and offset - 1 == palette_index:
+                attr = curses.A_REVERSE
+            else:
+                attr = curses.A_DIM
+            _add_line(stdscr, 5 + offset, 0, line, attr, width)
+        overlay_height = len(palette_lines)
+    else:
+        message_lines = message.splitlines() if message else []
+        for offset, line in enumerate(message_lines):
+            attr = curses.A_BOLD if offset == 0 else curses.A_NORMAL
+            _add_line(stdscr, 5 + offset, 0, line, attr, width)
+        overlay_height = len(message_lines)
+
+    member_top = 8 if overlay_height <= 1 else 5 + overlay_height + 2
     settings_x = max(44, width // 2)
     list_width = settings_x - 2 if width >= 80 else width
     visible_rows = max(1, height - member_top - 2)
@@ -794,6 +867,28 @@ def _draw_dashboard(
         _add_line(stdscr, height - 1, width - 8, "more v", curses.A_DIM, width)
 
     return top
+
+
+def _palette_matches(question: str) -> list[Command]:
+    """Commands whose name or alias starts with the typed prefix."""
+    if not question.startswith("/"):
+        return []
+    typed = question[1:].split(" ", 1)[0].lower()
+    return [
+        c
+        for c in COMMANDS
+        if c.name.startswith(typed) or any(a.startswith(typed) for a in c.aliases)
+    ]
+
+
+def _command_palette_lines(question: str) -> list[str]:
+    """Header + filtered command list (no selection highlight)."""
+    matches = _palette_matches(question)
+    typed = question[1:].split(" ", 1)[0].lower() if question.startswith("/") else ""
+    if not matches:
+        return [f"No commands match '/{typed}'", "  Press Backspace or type /help"]
+    header = "Commands (Up/Down + Enter):" if not typed else f"Commands matching '/{typed}' (Up/Down + Enter):"
+    return [header] + [f"  /{c.name:<10} {c.summary}" for c in matches]
 
 
 def _draw_question(stdscr, question: str, focused: bool, y: int, width: int) -> None:
@@ -891,7 +986,7 @@ def _draw_result(
     if message:
         _add_line(stdscr, max(0, height - 2), 0, message, curses.A_BOLD, width)
 
-    controls = "s: save  Up/down: scroll  b/Esc/backspace: dashboard  q: quit"
+    controls = "Up/down: scroll  b/Esc/backspace: dashboard  q: quit"
     if save_dir and len(controls) + len(save_dir) + 7 < width:
         controls = f"{controls}  Dir: {save_dir}"
     _add_line(stdscr, max(0, height - 1), 0, controls, curses.A_DIM, width)
