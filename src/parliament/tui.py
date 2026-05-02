@@ -26,6 +26,7 @@ from parliament.config import (
 from parliament.core.model_tiers import get_tier, get_tier_label
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
+from parliament.model_catalog import fetch_ollama_models
 
 KEY_PROVIDERS = {
     "anthropic": "ANTHROPIC_API_KEY",
@@ -69,7 +70,7 @@ MODEL_CATALOG: dict[str, list[str]] = {
         "mock-v3",
     ],
 }
-MEMBER_FIELDS = ["name", "provider", "model", "base_url"]
+MEMBER_FIELDS = ["provider", "model", "base_url"]
 
 
 @dataclass(frozen=True)
@@ -158,9 +159,10 @@ def run_tui(
     config: dict[str, Any],
     config_path: Path | None,
     speaker_override: str | None = None,
+    mock: bool = False,
 ) -> None:
     """Run the curses TUI."""
-    curses.wrapper(_run, settings, config, config_path, speaker_override)
+    curses.wrapper(_run, settings, config, config_path, speaker_override, mock)
 
 
 def _speaker_name(members: list[Member], override: str | None) -> str:
@@ -207,8 +209,18 @@ def _member_draft_from_config(config: dict[str, Any], member_index: int) -> Memb
     )
 
 
-def _available_models(provider: str) -> list[str]:
-    return MODEL_CATALOG.get(provider, [])
+def _ollama_base_url(config: dict[str, Any]) -> str:
+    providers = config.get("providers", {}) if isinstance(config, dict) else {}
+    ollama_cfg = providers.get("ollama", {}) if isinstance(providers, dict) else {}
+    return str(ollama_cfg.get("base_url") or "http://localhost:11434/v1")
+
+
+def _available_models(provider: str, config: dict[str, Any] | None = None) -> list[str]:
+    if provider == "ollama" and config is not None:
+        live = fetch_ollama_models(_ollama_base_url(config))
+        if live is not None:
+            return live or list(MODEL_CATALOG.get("ollama", []))
+    return list(MODEL_CATALOG.get(provider, []))
 
 
 def _provider_choices() -> list[str]:
@@ -282,6 +294,7 @@ def _run(
     config: dict[str, Any],
     config_path: Path | None,
     speaker_override: str | None,
+    mock: bool = False,
 ) -> None:
     curses.curs_set(0)
     stdscr.keypad(True)
@@ -529,7 +542,8 @@ def _run(
                 elif field == "model":
                     member_editor.picker_kind = "model"
                     member_editor.picker_options = _model_picker_options(
-                        member_editor.draft["provider"]
+                        member_editor.draft["provider"],
+                        config,
                     )
                     member_editor.picker_index = _current_picker_index(
                         member_editor.picker_options,
@@ -539,14 +553,9 @@ def _run(
                 else:
                     # name or base_url: Enter saves the edit.
                     try:
-                        config = _save_member_edit(
-                            config,
-                            active_config_path,
-                            member_editor,
+                        config, settings, selected, message = _commit_member_edit(
+                            config, active_config_path, member_editor, speaker_override, mock
                         )
-                        settings = build_model_settings(config, speaker_override)
-                        selected = member_editor.member_index
-                        message = "Member saved."
                         member_editor = None
                         screen = "dashboard"
                     except Exception as exc:
@@ -554,14 +563,9 @@ def _run(
                         screen = "error"
             elif key in (19,):  # Ctrl+S
                 try:
-                    config = _save_member_edit(
-                        config,
-                        active_config_path,
-                        member_editor,
+                    config, settings, selected, message = _commit_member_edit(
+                        config, active_config_path, member_editor, speaker_override, mock
                     )
-                    settings = build_model_settings(config, speaker_override)
-                    selected = member_editor.member_index
-                    message = f"Saved member to {active_config_path}"
                     member_editor = None
                     screen = "dashboard"
                 except Exception as exc:
@@ -569,7 +573,7 @@ def _run(
                     screen = "error"
             else:
                 field = MEMBER_FIELDS[member_editor.field_index]
-                if field in ("name", "base_url"):
+                if field == "base_url":
                     member_editor.draft[field] = _handle_text_key(member_editor.draft[field], key)
 
         elif screen == "provider_picker" and member_editor is not None:
@@ -585,7 +589,7 @@ def _run(
                 member_editor.draft["provider"] = chosen
                 member_editor.draft["base_url"] = _member_base_url(config, chosen)
                 member_editor.picker_kind = "model"
-                member_editor.picker_options = _model_picker_options(chosen)
+                member_editor.picker_options = _model_picker_options(chosen, config)
                 member_editor.picker_index = 0
                 _ensure_provider_model_compatibility(member_editor.draft)
                 screen = "model_picker"
@@ -610,7 +614,15 @@ def _run(
                     screen = "custom_model"
                 else:
                     member_editor.draft["model"] = chosen
-                    screen = "edit_member"
+                    try:
+                        config, settings, selected, message = _commit_member_edit(
+                            config, active_config_path, member_editor, speaker_override, mock
+                        )
+                        member_editor = None
+                        screen = "dashboard"
+                    except Exception as exc:
+                        error_message = str(exc)
+                        screen = "error"
             elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
                 screen = "edit_member"
 
@@ -620,7 +632,15 @@ def _run(
             elif key in (curses.KEY_ENTER, 10, 13):
                 if member_editor.custom_input.strip():
                     member_editor.draft["model"] = member_editor.custom_input.strip()
-                    screen = "edit_member"
+                    try:
+                        config, settings, selected, message = _commit_member_edit(
+                            config, active_config_path, member_editor, speaker_override, mock
+                        )
+                        member_editor = None
+                        screen = "dashboard"
+                    except Exception as exc:
+                        error_message = str(exc)
+                        screen = "error"
                 else:
                     error_message = "Model name cannot be empty."
                     screen = "error"
@@ -695,8 +715,8 @@ def _current_picker_index(options: list[str], value: str) -> int:
         return 0
 
 
-def _model_picker_options(provider: str) -> list[str]:
-    options = _available_models(provider)
+def _model_picker_options(provider: str, config: dict[str, Any] | None = None) -> list[str]:
+    options = _available_models(provider, config)
     if options:
         return options + ["__custom__"]
     return ["__custom__"]
@@ -748,17 +768,20 @@ def _draw_member_editor(
     speaker_name = _speaker_name(preview_members, speaker_override)
     preview_member = preview_members[editor.member_index]
     draft = editor.draft
-    rows = [
-        ("Name", draft["name"]),
+    editable_rows = [
         ("Provider", draft["provider"]),
         ("Model", draft["model"]),
         ("Base URL", draft["base_url"] or "default"),
+    ]
+    derived_rows = [
+        ("Name", draft["name"] or "(set by model)"),
         ("Tier", get_tier_label(preview_member.tier)),
         ("Role", _member_role(preview_member, speaker_name)),
         ("API key", _api_key_status(draft["provider"])),
     ]
 
-    _add_line(stdscr, 0, 0, f"Edit Member: {draft['name'] or '(unnamed)'}", curses.A_BOLD, width)
+    title_name = draft["name"] or draft["model"] or "(unnamed)"
+    _add_line(stdscr, 0, 0, f"Edit Member: {title_name}", curses.A_BOLD, width)
     _add_line(
         stdscr,
         1,
@@ -768,14 +791,15 @@ def _draw_member_editor(
         width,
     )
     _add_line(stdscr, 3, 0, "Editable", curses.A_BOLD, width)
-    for idx, (label, value) in enumerate(rows[:4], start=5):
-        prefix = ">" if MEMBER_FIELDS[idx - 5] == MEMBER_FIELDS[editor.field_index] else " "
-        attr = curses.A_REVERSE if MEMBER_FIELDS[idx - 5] == MEMBER_FIELDS[editor.field_index] else curses.A_NORMAL
+    for idx, (label, value) in enumerate(editable_rows, start=5):
+        is_active = MEMBER_FIELDS[idx - 5] == MEMBER_FIELDS[editor.field_index]
+        prefix = ">" if is_active else " "
+        attr = curses.A_REVERSE if is_active else curses.A_NORMAL
         _add_line(stdscr, idx, 0, f"{prefix} {label:<10} {value}", attr, width)
 
-    preview_y = 11
+    preview_y = 5 + len(editable_rows) + 2
     _add_line(stdscr, preview_y, 0, "Derived", curses.A_BOLD, width)
-    for idx, (label, value) in enumerate(rows[4:], start=preview_y + 2):
+    for idx, (label, value) in enumerate(derived_rows, start=preview_y + 2):
         _add_line(stdscr, idx, 0, f"{label:<10} {value}", curses.A_NORMAL, width)
 
     _add_line(
@@ -814,14 +838,48 @@ def _preview_members(config: dict[str, Any], editor: MemberEditorState) -> list[
     return members
 
 
+def _autoname_members(members_list: list[dict]) -> None:
+    """Rewrite member['name'] to match model, with #2/#3 suffix on duplicates."""
+    counts: dict[str, int] = {}
+    for member in members_list:
+        model = str(member.get("model", "")).strip()
+        if not model:
+            continue
+        n = counts.get(model, 0) + 1
+        counts[model] = n
+        member["name"] = model if n == 1 else f"{model} #{n}"
+
+
+def _commit_member_edit(
+    runtime_config: dict[str, Any],
+    config_path: Path,
+    editor: MemberEditorState,
+    speaker_override: str | None,
+    mock: bool,
+) -> tuple[dict[str, Any], list[ModelSettings], int, str]:
+    """Save the editor draft and return the new (config, settings, selected, message)."""
+    runtime_config = _save_member_edit(
+        runtime_config,
+        config_path,
+        editor,
+        persist=not mock,
+    )
+    settings = build_model_settings(runtime_config, speaker_override)
+    message = (
+        "Mock mode: edit kept in memory only."
+        if mock
+        else "Member saved."
+    )
+    return runtime_config, settings, editor.member_index, message
+
+
 def _save_member_edit(
     runtime_config: dict[str, Any],
     config_path: Path,
     editor: MemberEditorState,
+    persist: bool = True,
 ) -> dict[str, Any]:
     draft = _normalize_member_draft(editor.draft)
-    if not draft["name"]:
-        raise ValueError("Member name cannot be empty.")
     if draft["provider"] not in SUPPORTED_PROVIDERS:
         raise ValueError(f"Unknown provider '{draft['provider']}'")
     if not draft["model"]:
@@ -831,15 +889,14 @@ def _save_member_edit(
     if editor.member_index >= len(members):
         raise ValueError("Selected member no longer exists.")
 
-    for idx, member in enumerate(members):
-        if idx != editor.member_index and str(member["name"]).strip() == draft["name"]:
-            raise ValueError(f"Member name '{draft['name']}' already exists.")
-
-    editable_config = _load_editable_config(config_path, runtime_config)
-    _apply_member_edit(editable_config, editor.member_index, draft)
+    if persist:
+        editable_config = _load_editable_config(config_path, runtime_config)
+        _apply_member_edit(editable_config, editor.member_index, draft)
+        _autoname_members(editable_config["parliament"]["members"])
+        save_config(editable_config, config_path)
     _apply_member_edit(runtime_config, editor.member_index, draft)
-
-    save_config(editable_config, config_path)
+    _autoname_members(runtime_config["parliament"]["members"])
+    editor.draft["name"] = runtime_config["parliament"]["members"][editor.member_index]["name"]
     return runtime_config
 
 
@@ -909,8 +966,7 @@ def _draw_dashboard(
         )
         return top
 
-    settings_x = max(44, width // 2)
-    list_width = settings_x - 2 if width >= 80 else width
+    list_width = width
     visible_rows = max(1, height - member_top - 2)
     if selected < top:
         top = selected
@@ -923,16 +979,11 @@ def _draw_dashboard(
         marker = ">" if idx == selected else " "
         member = setting.member
         text = (
-            f"{marker} {member.name:<16} {member.provider_name:<10} "
-            f"{member.model:<20} {get_tier_label(member.tier):<8}"
+            f"{marker} {member.name:<20} {member.provider_name:<10} "
+            f"{member.model:<24} {get_tier_label(member.tier):<8}"
         )
         attr = curses.A_REVERSE if idx == selected and focus == "members" else curses.A_NORMAL
         _add_line(stdscr, row, 0, text, attr, list_width)
-
-    if width >= 80:
-        _draw_settings_panel(stdscr, settings[selected], settings_x, member_top - 1, height, width)
-    elif height > member_top + len(settings) + 7:
-        _draw_settings_panel(stdscr, settings[selected], 0, member_top + visible_rows + 1, height, width)
 
     if top > 0:
         _add_line(stdscr, member_top - 1, max(0, list_width - 8), "more ^", curses.A_DIM, width)
@@ -987,24 +1038,6 @@ def _draw_question(stdscr, question: str, focused: bool, y: int, width: int) -> 
         value = value[-(width - 5):]
     style = attr if question else attr | curses.A_DIM
     _add_line(stdscr, y + 1, 0, f" {value}", style, width)
-
-
-def _draw_settings_panel(
-    stdscr,
-    setting: ModelSettings,
-    x: int,
-    y: int,
-    height: int,
-    width: int,
-) -> None:
-    member = setting.member
-    rows = _settings_rows(setting)
-    _add_line(stdscr, y, x, "Settings", curses.A_BOLD, width)
-    _add_line(stdscr, y + 1, x, member.name, curses.A_BOLD, width)
-    for idx, (label, value) in enumerate(rows, start=y + 3):
-        if idx >= height:
-            break
-        _add_line(stdscr, idx, x, f"{label:<10} {value}", curses.A_NORMAL, width)
 
 
 def _draw_detail(stdscr, setting: ModelSettings, question: str, height: int, width: int) -> None:

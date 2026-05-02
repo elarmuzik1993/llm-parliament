@@ -190,3 +190,88 @@ def test_model_picker_options_include_custom():
 
     assert "__custom__" in options
     assert "llama3.1" in options
+
+
+def test_member_save_autonames_from_model(tmp_path):
+    config = {
+        "parliament": {
+            "name": "House of AI",
+            "members": [
+                {"name": "Llama", "provider": "ollama", "model": "llama3.1"},
+                {"name": "Gemma", "provider": "ollama", "model": "gemma2"},
+            ],
+        },
+        "providers": {"ollama": {"base_url": "http://localhost:11434/v1"}},
+    }
+    config_path = tmp_path / "config.yaml"
+    editor = MemberEditorState(
+        member_index=0,
+        draft={
+            "name": "Llama",
+            "provider": "ollama",
+            "model": "mistral",
+            "base_url": "",
+        },
+    )
+
+    updated = _save_member_edit(config, config_path, editor)
+
+    assert updated["parliament"]["members"][0]["name"] == "mistral"
+    assert updated["parliament"]["members"][1]["name"] == "gemma2"
+    saved = yaml.safe_load(config_path.read_text())
+    assert saved["parliament"]["members"][0]["name"] == "mistral"
+
+
+def test_member_save_disambiguates_duplicate_models(tmp_path):
+    config = {
+        "parliament": {
+            "name": "House of AI",
+            "members": [
+                {"name": "First", "provider": "ollama", "model": "llama3:latest"},
+                {"name": "Second", "provider": "ollama", "model": "gemma2"},
+                {"name": "Third", "provider": "ollama", "model": "mistral"},
+            ],
+        },
+        "providers": {"ollama": {"base_url": "http://localhost:11434/v1"}},
+    }
+    config_path = tmp_path / "config.yaml"
+    editor = MemberEditorState(
+        member_index=1,
+        draft={
+            "name": "Second",
+            "provider": "ollama",
+            "model": "llama3:latest",
+            "base_url": "",
+        },
+    )
+
+    updated = _save_member_edit(config, config_path, editor)
+
+    names = [m["name"] for m in updated["parliament"]["members"]]
+    assert names == ["llama3:latest", "llama3:latest #2", "mistral"]
+
+
+def test_member_save_updates_editor_draft_name(tmp_path):
+    config = {
+        "parliament": {
+            "name": "House of AI",
+            "members": [
+                {"name": "OldName", "provider": "ollama", "model": "llama3.1"},
+            ],
+        },
+        "providers": {"ollama": {"base_url": "http://localhost:11434/v1"}},
+    }
+    config_path = tmp_path / "config.yaml"
+    editor = MemberEditorState(
+        member_index=0,
+        draft={
+            "name": "OldName",
+            "provider": "ollama",
+            "model": "gemma2",
+            "base_url": "",
+        },
+    )
+
+    _save_member_edit(config, config_path, editor)
+
+    assert editor.draft["name"] == "gemma2"
