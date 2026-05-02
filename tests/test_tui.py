@@ -185,11 +185,41 @@ providers:
     assert "sk-ant-real-secret" not in saved
 
 
-def test_model_picker_options_include_custom():
-    options = _model_picker_options("ollama")
+def test_model_picker_options_include_custom(monkeypatch):
+    from parliament import tui as tui_module
+    from parliament.model_catalog import PickerData
 
-    assert "__custom__" in options
+    monkeypatch.setattr(
+        tui_module,
+        "picker_data_for",
+        lambda provider, config=None: PickerData(models=["llama3.1"], notice=None),
+    )
+
+    options, notice = _model_picker_options("ollama")
+
+    assert options[-1] == "__custom__"
     assert "llama3.1" in options
+    assert notice is None
+
+
+def test_model_picker_options_propagates_notice(monkeypatch):
+    from parliament import tui as tui_module
+    from parliament.model_catalog import PickerData
+
+    monkeypatch.setattr(
+        tui_module,
+        "picker_data_for",
+        lambda provider, config=None: PickerData(
+            models=[],
+            notice="No API key for openai. Set one with: parliament keys set openai <key>",
+        ),
+    )
+
+    options, notice = _model_picker_options("openai")
+
+    assert options == ["__custom__"]
+    assert notice is not None
+    assert "No API key" in notice
 
 
 def test_member_save_autonames_from_model(tmp_path):

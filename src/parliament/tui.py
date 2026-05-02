@@ -26,7 +26,7 @@ from parliament.config import (
 from parliament.core.model_tiers import get_tier, get_tier_label
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
-from parliament.model_catalog import fetch_ollama_models
+from parliament.model_catalog import picker_data_for
 
 KEY_PROVIDERS = {
     "anthropic": "ANTHROPIC_API_KEY",
@@ -36,40 +36,6 @@ KEY_PROVIDERS = {
 SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
 DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
 SUPPORTED_PROVIDERS = ["ollama", "anthropic", "openai", "google", "mock"]
-MODEL_CATALOG: dict[str, list[str]] = {
-    "ollama": [
-        "llama3.1",
-        "llama3.1:8b",
-        "llama3.1:70b",
-        "mistral",
-        "mistral:7b",
-        "mistral-large",
-        "gemma2",
-        "gemma2:9b",
-        "gemma2:2b",
-        "qwen2:7b",
-        "qwen2:72b",
-        "phi3:mini",
-        "tinyllama",
-    ],
-    "anthropic": [
-        "claude-sonnet-4-6",
-        "claude-opus-4-6",
-    ],
-    "openai": [
-        "gpt-4o",
-        "gpt-4o-mini",
-    ],
-    "google": [
-        "gemini-2.0-flash",
-        "gemini-2.0-pro",
-    ],
-    "mock": [
-        "mock-v1",
-        "mock-v2",
-        "mock-v3",
-    ],
-}
 MEMBER_FIELDS = ["provider", "model", "base_url"]
 
 
@@ -101,6 +67,7 @@ class MemberEditorState:
     picker_index: int = 0
     picker_kind: str = ""
     picker_options: list[str] | None = None
+    picker_notice: str | None = None
     custom_input: str = ""
 
 
@@ -209,29 +176,8 @@ def _member_draft_from_config(config: dict[str, Any], member_index: int) -> Memb
     )
 
 
-def _ollama_base_url(config: dict[str, Any]) -> str:
-    providers = config.get("providers", {}) if isinstance(config, dict) else {}
-    ollama_cfg = providers.get("ollama", {}) if isinstance(providers, dict) else {}
-    return str(ollama_cfg.get("base_url") or "http://localhost:11434/v1")
-
-
-def _available_models(provider: str, config: dict[str, Any] | None = None) -> list[str]:
-    if provider == "ollama" and config is not None:
-        live = fetch_ollama_models(_ollama_base_url(config))
-        if live is not None:
-            return live or list(MODEL_CATALOG.get("ollama", []))
-    return list(MODEL_CATALOG.get(provider, []))
-
-
 def _provider_choices() -> list[str]:
     return SUPPORTED_PROVIDERS[:]
-
-
-def _ensure_provider_model_compatibility(draft: dict[str, str]) -> None:
-    provider = draft["provider"]
-    models = _available_models(provider)
-    if models and draft["model"] not in models:
-        draft["model"] = models[0]
 
 
 def _normalize_member_draft(draft: dict[str, str]) -> dict[str, str]:
@@ -368,6 +314,7 @@ def _run(
                 height,
                 width,
                 footer="Enter: select  c: custom model  Esc: back",
+                notice=member_editor.picker_notice,
             )
         elif screen == "custom_model" and member_editor is not None:
             _draw_custom_input(
@@ -541,12 +488,14 @@ def _run(
                     screen = "provider_picker"
                 elif field == "model":
                     member_editor.picker_kind = "model"
-                    member_editor.picker_options = _model_picker_options(
+                    options, notice = _model_picker_options(
                         member_editor.draft["provider"],
                         config,
                     )
+                    member_editor.picker_options = options
+                    member_editor.picker_notice = notice
                     member_editor.picker_index = _current_picker_index(
-                        member_editor.picker_options,
+                        options,
                         member_editor.draft["model"],
                     )
                     screen = "model_picker"
@@ -588,10 +537,12 @@ def _run(
                 chosen = (member_editor.picker_options or _provider_choices())[member_editor.picker_index]
                 member_editor.draft["provider"] = chosen
                 member_editor.draft["base_url"] = _member_base_url(config, chosen)
+                member_editor.draft["model"] = ""
                 member_editor.picker_kind = "model"
-                member_editor.picker_options = _model_picker_options(chosen, config)
+                options, notice = _model_picker_options(chosen, config)
+                member_editor.picker_options = options
+                member_editor.picker_notice = notice
                 member_editor.picker_index = 0
-                _ensure_provider_model_compatibility(member_editor.draft)
                 screen = "model_picker"
             elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
                 screen = "edit_member"
@@ -715,11 +666,13 @@ def _current_picker_index(options: list[str], value: str) -> int:
         return 0
 
 
-def _model_picker_options(provider: str, config: dict[str, Any] | None = None) -> list[str]:
-    options = _available_models(provider, config)
-    if options:
-        return options + ["__custom__"]
-    return ["__custom__"]
+def _model_picker_options(
+    provider: str,
+    config: dict[str, Any] | None = None,
+) -> tuple[list[str], str | None]:
+    """Return (picker options, optional notice). Custom is always last."""
+    data = picker_data_for(provider, config)
+    return data.models + ["__custom__"], data.notice
 
 
 def _draw_picker(
@@ -730,13 +683,19 @@ def _draw_picker(
     height: int,
     width: int,
     footer: str = "Enter: select  Esc: back",
+    notice: str | None = None,
 ) -> None:
     _add_line(stdscr, 0, 0, title, curses.A_BOLD, width)
     _add_line(stdscr, 1, 0, footer, curses.A_DIM, width)
-    visible = max(1, height - 4)
+    notice_lines = notice.splitlines() if notice else []
+    notice_height = len(notice_lines)
+    for offset, line in enumerate(notice_lines):
+        _add_line(stdscr, 3 + offset, 0, line, curses.A_DIM, width)
+    list_top = 3 + (notice_height + 1 if notice_height else 0)
+    visible = max(1, height - list_top - 1)
     top = max(0, min(selected, max(0, len(options) - visible)))
-    for row, option in enumerate(options[top : top + visible], start=3):
-        idx = top + row - 3
+    for row, option in enumerate(options[top : top + visible], start=list_top):
+        idx = top + row - list_top
         label = "Add custom model" if option == "__custom__" else option
         label = f"> {label}" if idx == selected else f"  {label}"
         attr = curses.A_REVERSE if idx == selected else curses.A_NORMAL
