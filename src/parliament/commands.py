@@ -39,6 +39,8 @@ class CommandResult:
     speaker_op: SpeakerOp = SpeakerOp.LEAVE
     speaker_value: str | None = None
     clear_hansard: bool = False
+    toggle_members_panel: bool = False
+    open_members_picker: bool = False
 
 
 Handler = Callable[[str, CommandContext], CommandResult]
@@ -125,18 +127,16 @@ def _speaker(args: str, ctx: CommandContext) -> CommandResult:
     )
 
 
-def _model(_args: str, ctx: CommandContext) -> CommandResult:
-    lines = ["Configured members:"]
-    for m in ctx.members:
-        marker = "*" if ctx.speaker_override == m.name else " "
-        lines.append(f"  {marker} {m.name:<16} {m.provider_name}/{m.model}")
-    if ctx.speaker_override is None:
-        lines.append("(no speaker override; top-tier member is used)")
-    return CommandResult(message="\n".join(lines))
+def _model(_args: str, _ctx: CommandContext) -> CommandResult:
+    return CommandResult(open_members_picker=True)
 
 
 def _settings(_args: str, _ctx: CommandContext) -> CommandResult:
     return CommandResult(open_screen="app_settings")
+
+
+def _expand(_args: str, _ctx: CommandContext) -> CommandResult:
+    return CommandResult(toggle_members_panel=True)
 
 
 def _history(args: str, ctx: CommandContext) -> CommandResult:
@@ -207,8 +207,19 @@ COMMANDS: list[Command] = [
     Command("clear", "Clear the question field", _clear),
     Command("reset", "Clear question, speaker, and last verdict", _reset),
     Command("speaker", "Set speaker for next debate: /speaker <name>", _speaker),
-    Command("model", "List configured members and current speaker", _model, aliases=("members",)),
+    Command(
+        "model",
+        "Open members panel: arrows to scroll, Enter to edit",
+        _model,
+        aliases=("members",),
+    ),
     Command("settings", "Open app settings", _settings),
+    Command(
+        "expand",
+        "Show/hide the full members panel",
+        _expand,
+        aliases=("collapse", "panel"),
+    ),
     Command("history", "List last N saved verdicts: /history [N]", _history),
     Command("copy", "Copy last verdict to system clipboard", _copy),
 ]

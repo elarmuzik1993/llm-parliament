@@ -255,6 +255,27 @@ def _apply_member_edit(config: dict[str, Any], member_index: int, draft: dict[st
         provider_config["base_url"] = str(_member_base_url(config, "ollama"))
 
 
+def _disable_terminal_flow_control() -> None:
+    """Stop the TTY driver from eating Ctrl-S / Ctrl-Q for XON/XOFF.
+
+    Without this, key 17 (Ctrl-Q) never reaches curses on most Linux
+    terminals because the kernel line discipline consumes it. Silently
+    no-ops on Windows or non-TTY stdin.
+    """
+    if not sys.stdin.isatty():
+        return
+    try:
+        import termios
+
+        fd = sys.stdin.fileno()
+        attrs = termios.tcgetattr(fd)
+        attrs[0] &= ~(termios.IXON | termios.IXOFF)
+        termios.tcsetattr(fd, termios.TCSANOW, attrs)
+    except Exception:
+        # Best-effort; non-Linux or restricted TTY just keep default behavior.
+        pass
+
+
 def _run(
     stdscr,
     settings: list[ModelSettings],
@@ -264,6 +285,11 @@ def _run(
 ) -> None:
     curses.curs_set(0)
     stdscr.keypad(True)
+    try:
+        curses.set_escdelay(25)
+    except AttributeError:
+        pass
+    _disable_terminal_flow_control()
 
     active_config_path = Path(config_path) if config_path else DEFAULT_CONFIG
     question = ""
@@ -280,6 +306,7 @@ def _run(
     settings_input = app_settings.save_dir
     member_editor: MemberEditorState | None = None
     palette_index = 0
+    members_expanded = False
 
     while True:
         height, width = stdscr.getmaxyx()
@@ -297,6 +324,7 @@ def _run(
                 height,
                 width,
                 palette_index,
+                members_expanded,
             )
         elif screen == "detail":
             _draw_detail(stdscr, settings[selected], question, height, width)
@@ -360,8 +388,23 @@ def _run(
         if screen == "dashboard":
             if focus != "question" and key in (ord("q"), ord("Q")):
                 return
+            if key == 27:  # Esc
+                if focus == "question" and question.startswith("/"):
+                    question = ""
+                    palette_index = 0
+                    message = ""
+                    continue
+                if focus == "members":
+                    members_expanded = False
+                    focus = "question"
+                    continue
+                return
             if key == 9:
-                focus = "members" if focus == "question" else "question"
+                if focus == "question":
+                    members_expanded = True
+                    focus = "members"
+                else:
+                    focus = "question"
             elif focus == "question":
                 palette_open = question.startswith("/") and not message
                 palette_matches = _palette_matches(question) if palette_open else []
@@ -401,6 +444,14 @@ def _run(
                             settings = build_model_settings(config, speaker_override)
                         if result.clear_hansard:
                             hansard = None
+                        if result.toggle_members_panel:
+                            members_expanded = not members_expanded
+                            if not members_expanded:
+                                focus = "question"
+                        if result.open_members_picker:
+                            members_expanded = True
+                            focus = "members"
+                            question = ""
                         message = result.message
                         if result.open_screen == "app_settings":
                             settings_input = app_settings.save_dir
@@ -443,7 +494,8 @@ def _run(
                 selected -= 1
                 focus = "members"
             elif key in (curses.KEY_ENTER, 10, 13):
-                screen = "detail"
+                member_editor = _member_draft_from_config(config, selected)
+                screen = "edit_member"
 
         elif screen == "detail":
             if key in (ord("e"), ord("E")):
@@ -457,7 +509,7 @@ def _run(
         elif screen == "edit_member" and member_editor is not None:
             if key in (curses.KEY_LEFT, 27, ord("b"), ord("B")):
                 member_editor = None
-                screen = "detail"
+                screen = "dashboard"
             elif key in (curses.KEY_UP, curses.KEY_DOWN, 9):
                 member_editor.field_index = _cycle_index(
                     member_editor.field_index,
@@ -484,7 +536,8 @@ def _run(
                         member_editor.draft["model"],
                     )
                     screen = "model_picker"
-                elif field == "base_url":
+                else:
+                    # name or base_url: Enter saves the edit.
                     try:
                         config = _save_member_edit(
                             config,
@@ -499,8 +552,6 @@ def _run(
                     except Exception as exc:
                         error_message = str(exc)
                         screen = "error"
-                else:
-                    member_editor.field_index = min(member_editor.field_index + 1, len(MEMBER_FIELDS) - 1)
             elif key in (19,):  # Ctrl+S
                 try:
                     config = _save_member_edit(
@@ -803,13 +854,14 @@ def _draw_dashboard(
     height: int,
     width: int,
     palette_index: int = 0,
+    members_expanded: bool = False,
 ) -> int:
     _add_line(stdscr, 0, 0, "LLM Parliament", curses.A_BOLD, width)
     _add_line(
         stdscr,
         1,
         0,
-        "Enter: run/command  Tab: members  /help: commands  Ctrl+U: clear  Ctrl+Q: quit",
+        "Enter: run/command  Tab: members  /help: commands  Esc/Ctrl+Q: quit",
         curses.A_DIM,
         width,
     )
@@ -836,6 +888,27 @@ def _draw_dashboard(
         overlay_height = len(message_lines)
 
     member_top = 8 if overlay_height <= 1 else 5 + overlay_height + 2
+
+    if not members_expanded:
+        compact_y = max(member_top - 1, 5 + max(1, overlay_height) + 1)
+        _add_line(
+            stdscr,
+            compact_y,
+            0,
+            _compact_members_line(settings, width),
+            curses.A_DIM,
+            width,
+        )
+        _add_line(
+            stdscr,
+            compact_y + 1,
+            0,
+            "Tab or /expand to open members panel",
+            curses.A_DIM,
+            width,
+        )
+        return top
+
     settings_x = max(44, width // 2)
     list_width = settings_x - 2 if width >= 80 else width
     visible_rows = max(1, height - member_top - 2)
@@ -867,6 +940,20 @@ def _draw_dashboard(
         _add_line(stdscr, height - 1, width - 8, "more v", curses.A_DIM, width)
 
     return top
+
+
+def _compact_members_line(settings: list[ModelSettings], width: int) -> str:
+    rich = "Members: " + " · ".join(
+        f"{s.member.name} ({s.member.provider_name}/{s.member.model})" for s in settings
+    )
+    if len(rich) < width:
+        return rich
+    medium = "Members: " + " · ".join(
+        f"{s.member.name} ({s.member.provider_name})" for s in settings
+    )
+    if len(medium) < width:
+        return medium
+    return "Members: " + ", ".join(s.member.name for s in settings)
 
 
 def _palette_matches(question: str) -> list[Command]:

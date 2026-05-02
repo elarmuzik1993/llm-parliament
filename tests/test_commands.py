@@ -109,21 +109,29 @@ def test_speaker_set_invalid(tmp_path: Path) -> None:
     assert result.clear_question is False
 
 
-def test_model_lists_members(tmp_path: Path) -> None:
-    result = dispatch("/model", _ctx(tmp_path, speaker_override="Claude"))
-    for m in _members():
-        assert m.name in result.message
-    assert "*" in result.message
+def test_model_opens_picker(tmp_path: Path) -> None:
+    result = dispatch("/model", _ctx(tmp_path))
+    assert result.open_members_picker is True
 
 
 def test_model_alias_members(tmp_path: Path) -> None:
     result = dispatch("/members", _ctx(tmp_path))
-    assert "Configured members" in result.message
+    assert result.open_members_picker is True
 
 
 def test_settings_opens_screen(tmp_path: Path) -> None:
     result = dispatch("/settings", _ctx(tmp_path))
     assert result.open_screen == "app_settings"
+
+
+def test_expand_toggles_panel(tmp_path: Path) -> None:
+    result = dispatch("/expand", _ctx(tmp_path))
+    assert result.toggle_members_panel is True
+
+
+def test_collapse_alias_toggles_panel(tmp_path: Path) -> None:
+    result = dispatch("/collapse", _ctx(tmp_path))
+    assert result.toggle_members_panel is True
 
 
 def test_history_empty_dir(tmp_path: Path) -> None:
