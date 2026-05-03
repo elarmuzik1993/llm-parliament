@@ -10,6 +10,7 @@ from parliament.tui import (
     MemberEditorState,
     build_model_settings,
     load_app_settings,
+    _mask_api_key,
     _model_picker_options,
     _save_member_edit,
     save_app_settings,
@@ -279,6 +280,16 @@ def test_member_save_disambiguates_duplicate_models(tmp_path):
 
     names = [m["name"] for m in updated["parliament"]["members"]]
     assert names == ["llama3:latest", "llama3:latest #2", "mistral"]
+
+
+def test_mask_api_key_short_keys_fully_masked():
+    assert _mask_api_key("") == ""
+    assert _mask_api_key("abcd") == "••••"
+    assert _mask_api_key("abc") == "•••"
+
+
+def test_mask_api_key_shows_last_four():
+    assert _mask_api_key("sk-ant-123456abcd") == "•" * 13 + "abcd"
 
 
 def test_member_save_updates_editor_draft_name(tmp_path):

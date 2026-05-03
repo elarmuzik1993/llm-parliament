@@ -22,6 +22,7 @@ from parliament.config import (
     build_parliament_from_config,
     load_keys,
     save_config,
+    save_key,
 )
 from parliament.core.model_tiers import get_tier, get_tier_label
 from parliament.core.parliament import Parliament
@@ -266,6 +267,9 @@ def _run(
     member_editor: MemberEditorState | None = None
     palette_index = 0
     members_expanded = False
+    api_key_provider: str | None = None
+    api_key_input: str = ""
+    api_key_return_screen: str = "dashboard"
 
     while True:
         height, width = stdscr.getmaxyx()
@@ -313,7 +317,7 @@ def _run(
                 member_editor.picker_index,
                 height,
                 width,
-                footer="Enter: select  c: custom model  Esc: back",
+                footer="Enter: select  c: custom  k: API key  Esc: back",
                 notice=member_editor.picker_notice,
             )
         elif screen == "custom_model" and member_editor is not None:
@@ -338,6 +342,16 @@ def _run(
             _draw_error(stdscr, error_message, height, width)
         elif screen == "app_settings":
             _draw_app_settings(stdscr, settings_input, height, width)
+        elif screen == "api_key_input" and api_key_provider is not None:
+            existing = os.environ.get(KEY_PROVIDERS[api_key_provider], "")
+            _draw_api_key_input(
+                stdscr,
+                api_key_provider,
+                api_key_input,
+                _mask_api_key(existing),
+                height,
+                width,
+            )
 
         stdscr.refresh()
         key = stdscr.getch()
@@ -416,6 +430,11 @@ def _run(
                         if result.open_screen == "app_settings":
                             settings_input = app_settings.save_dir
                             screen = "app_settings"
+                        if result.open_key_input:
+                            api_key_provider = result.open_key_input
+                            api_key_input = ""
+                            api_key_return_screen = "dashboard"
+                            screen = "api_key_input"
                     elif stripped:
                         message = ""
                         try:
@@ -539,11 +558,21 @@ def _run(
                 member_editor.draft["base_url"] = _member_base_url(config, chosen)
                 member_editor.draft["model"] = ""
                 member_editor.picker_kind = "model"
-                options, notice = _model_picker_options(chosen, config)
-                member_editor.picker_options = options
-                member_editor.picker_notice = notice
-                member_editor.picker_index = 0
-                screen = "model_picker"
+                env_var = KEY_PROVIDERS.get(chosen)
+                if env_var and not os.environ.get(env_var):
+                    api_key_provider = chosen
+                    api_key_input = ""
+                    api_key_return_screen = "model_picker"
+                    member_editor.picker_options = ["__custom__"]
+                    member_editor.picker_notice = None
+                    member_editor.picker_index = 0
+                    screen = "api_key_input"
+                else:
+                    options, notice = _model_picker_options(chosen, config)
+                    member_editor.picker_options = options
+                    member_editor.picker_notice = notice
+                    member_editor.picker_index = 0
+                    screen = "model_picker"
             elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
                 screen = "edit_member"
 
@@ -556,6 +585,13 @@ def _run(
             elif key in (ord("c"), ord("C")):
                 member_editor.custom_input = member_editor.draft["model"]
                 screen = "custom_model"
+            elif key in (ord("k"), ord("K")):
+                provider = member_editor.draft["provider"]
+                if provider in KEY_PROVIDERS:
+                    api_key_provider = provider
+                    api_key_input = ""
+                    api_key_return_screen = "model_picker"
+                    screen = "api_key_input"
             elif key in (curses.KEY_ENTER, 10, 13):
                 if not options:
                     continue
@@ -597,6 +633,41 @@ def _run(
                     screen = "error"
             else:
                 member_editor.custom_input = _handle_text_key(member_editor.custom_input, key)
+
+        elif screen == "api_key_input" and api_key_provider is not None:
+            if key in (curses.KEY_LEFT, 27):
+                screen = api_key_return_screen
+                api_key_input = ""
+            elif key in (curses.KEY_ENTER, 10, 13):
+                trimmed = api_key_input.strip()
+                if not trimmed:
+                    api_key_input = ""
+                    error_message = "API key cannot be empty."
+                    screen = "error"
+                else:
+                    try:
+                        save_key(api_key_provider, trimmed)
+                        os.environ[KEY_PROVIDERS[api_key_provider]] = trimmed
+                        last4 = trimmed[-4:] if len(trimmed) > 4 else "•" * len(trimmed)
+                        message = f"Saved {api_key_provider} API key (•••{last4})."
+                        if api_key_return_screen == "model_picker" and member_editor is not None:
+                            options, notice = _model_picker_options(
+                                member_editor.draft["provider"],
+                                config,
+                            )
+                            member_editor.picker_options = options
+                            member_editor.picker_notice = notice
+                            member_editor.picker_index = 0
+                        if api_key_return_screen == "dashboard":
+                            settings = build_model_settings(config, speaker_override)
+                        screen = api_key_return_screen
+                        api_key_input = ""
+                    except OSError as exc:
+                        api_key_input = ""
+                        error_message = f"Failed to save key: {exc}"
+                        screen = "error"
+            else:
+                api_key_input = _handle_text_key(api_key_input, key)
 
         elif screen in ("error", "app_settings") and key in (
             curses.KEY_LEFT,
@@ -713,6 +784,55 @@ def _draw_custom_input(
     _add_line(stdscr, 1, 0, "Enter: save  Esc: back  Ctrl+U: clear", curses.A_DIM, width)
     _add_line(stdscr, 3, 0, f" {value or 'Type model name'}", curses.A_REVERSE, width)
     _add_line(stdscr, max(0, height - 2), 0, "Custom models are saved into config as-is.", curses.A_DIM, width)
+
+
+def _mask_api_key(key: str) -> str:
+    """Show only the last 4 chars; mask the rest with bullets."""
+    if not key:
+        return ""
+    if len(key) <= 4:
+        return "•" * len(key)
+    return "•" * (len(key) - 4) + key[-4:]
+
+
+def _draw_api_key_input(
+    stdscr,
+    provider: str,
+    value: str,
+    existing_masked: str,
+    height: int,
+    width: int,
+) -> None:
+    env_var = KEY_PROVIDERS.get(provider, f"{provider.upper()}_API_KEY")
+    _add_line(stdscr, 0, 0, f"Set API Key — {provider}", curses.A_BOLD, width)
+    _add_line(
+        stdscr,
+        1,
+        0,
+        "Enter: save  Esc: back  Ctrl+U: clear",
+        curses.A_DIM,
+        width,
+    )
+    _add_line(stdscr, 3, 0, f"Stored as {env_var} in ~/.parliament/keys.env (chmod 0600)", curses.A_DIM, width)
+    if existing_masked:
+        _add_line(stdscr, 4, 0, f"Existing key: {existing_masked}", curses.A_DIM, width)
+    label_y = 6 if existing_masked else 5
+    _add_line(stdscr, label_y, 0, "New key (visible)", curses.A_BOLD, width)
+    display = value or "Paste or type the API key"
+    if len(display) > width - 5:
+        display = display[-(width - 5):]
+    style = curses.A_REVERSE if value else curses.A_REVERSE | curses.A_DIM
+    _add_line(stdscr, label_y + 1, 0, f" {display}", style, width)
+    if value:
+        _add_line(stdscr, label_y + 3, 0, f"Will be saved as: {_mask_api_key(value)}", curses.A_DIM, width)
+    _add_line(
+        stdscr,
+        max(0, height - 2),
+        0,
+        "Get a key from the provider's dashboard, then paste it here.",
+        curses.A_DIM,
+        width,
+    )
 
 
 def _draw_member_editor(

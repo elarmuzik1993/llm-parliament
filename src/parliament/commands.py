@@ -41,6 +41,7 @@ class CommandResult:
     clear_hansard: bool = False
     toggle_members_panel: bool = False
     open_members_picker: bool = False
+    open_key_input: str | None = None
 
 
 Handler = Callable[[str, CommandContext], CommandResult]
@@ -135,6 +136,32 @@ def _settings(_args: str, _ctx: CommandContext) -> CommandResult:
     return CommandResult(open_screen="app_settings")
 
 
+CLOUD_KEY_PROVIDERS = ("anthropic", "openai", "google")
+
+
+def _key(args: str, _ctx: CommandContext) -> CommandResult:
+    if not args:
+        return CommandResult(
+            message=f"Usage: /key <{'|'.join(CLOUD_KEY_PROVIDERS)}>",
+            clear_question=False,
+        )
+    # Use only the first token so we never echo a key that the user
+    # accidentally typed inline (e.g. "/key openai sk-secret").
+    parts = args.split()
+    provider = parts[0].lower()
+    if provider not in CLOUD_KEY_PROVIDERS:
+        return CommandResult(
+            message=f"Unknown provider '{provider}'. Choose: {', '.join(CLOUD_KEY_PROVIDERS)}.",
+            clear_question=False,
+        )
+    if len(parts) > 1:
+        return CommandResult(
+            open_key_input=provider,
+            message="Tip: paste the key into the input screen, not on the command line.",
+        )
+    return CommandResult(open_key_input=provider)
+
+
 def _expand(_args: str, _ctx: CommandContext) -> CommandResult:
     return CommandResult(toggle_members_panel=True)
 
@@ -214,6 +241,7 @@ COMMANDS: list[Command] = [
         aliases=("members",),
     ),
     Command("settings", "Open app settings", _settings),
+    Command("key", "Set API key for cloud provider: /key <anthropic|openai|google>", _key),
     Command(
         "expand",
         "Show/hide the full members panel",

@@ -172,6 +172,49 @@ def test_copy_without_hansard(tmp_path: Path) -> None:
     assert result.clear_question is False
 
 
+def test_key_no_args_shows_usage(tmp_path: Path) -> None:
+    result = dispatch("/key", _ctx(tmp_path))
+    assert "Usage" in result.message
+    assert result.open_key_input is None
+    assert result.clear_question is False
+
+
+def test_key_unknown_provider_rejected(tmp_path: Path) -> None:
+    result = dispatch("/key ollama", _ctx(tmp_path))
+    assert "Unknown provider" in result.message
+    assert result.open_key_input is None
+    assert result.clear_question is False
+
+
+def test_key_valid_provider_opens_input(tmp_path: Path) -> None:
+    for provider in ("anthropic", "openai", "google"):
+        result = dispatch(f"/key {provider}", _ctx(tmp_path))
+        assert result.open_key_input == provider
+        assert result.message == ""
+
+
+def test_key_provider_case_insensitive(tmp_path: Path) -> None:
+    result = dispatch("/key OPENAI", _ctx(tmp_path))
+    assert result.open_key_input == "openai"
+
+
+def test_key_inline_secret_not_echoed(tmp_path: Path) -> None:
+    """A user who accidentally types '/key openai sk-realsecret' must
+    never see that secret echoed back in the dispatcher's message."""
+    result = dispatch("/key openai sk-pretend-secret-9999", _ctx(tmp_path))
+    assert result.open_key_input == "openai"
+    assert "sk-pretend-secret-9999" not in result.message
+    assert "command line" in result.message.lower()
+
+
+def test_key_inline_secret_unknown_provider_not_echoed(tmp_path: Path) -> None:
+    """Even when the provider token is wrong, only the first token is echoed —
+    never the rest of the line, which may contain the key."""
+    result = dispatch("/key foo sk-pretend-secret-9999", _ctx(tmp_path))
+    assert "sk-pretend-secret-9999" not in result.message
+    assert "Unknown provider 'foo'" in result.message
+
+
 def test_dispatch_rejects_non_command(tmp_path: Path) -> None:
     result = dispatch("just a question", _ctx(tmp_path))
     assert "Not a command" in result.message
