@@ -68,10 +68,14 @@ async def run_first_reading(
         responses.append(r)
 
     if len(responses) < 2:
-        failed = [m.name for m, r in zip(members, results) if isinstance(r, Exception)]
+        failures = [
+            f"  - {m.name}: {type(r).__name__}: {r}"
+            for m, r in zip(members, results)
+            if isinstance(r, Exception)
+        ]
         raise RuntimeError(
-            f"Too many members failed in First Reading: {failed}. "
-            f"Need at least 2 responses to continue."
+            "Too many members failed in First Reading "
+            "(need at least 2 responses).\n" + "\n".join(failures)
         )
 
     return responses

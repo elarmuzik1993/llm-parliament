@@ -100,6 +100,14 @@ async def run_debate(
         responses.append(r)
 
     if len(responses) < 2:
-        raise RuntimeError("Too many members failed in Debate. Need at least 2.")
+        failures = [
+            f"  - {m.name}: {type(r).__name__}: {r}"
+            for m, r in zip(active_members, results)
+            if isinstance(r, Exception)
+        ]
+        raise RuntimeError(
+            "Too many members failed in Debate (need at least 2 responses).\n"
+            + "\n".join(failures)
+        )
 
     return responses
