@@ -72,6 +72,14 @@ ollama pull mistral
 ollama pull gemma2
 ```
 
+> **Note for Windows/Slow Hardware:** If local models (like `deepseek-r1`) are slow to respond, you might encounter an `APITimeoutError`. You can increase the timeout in your `config.yaml`:
+> ```yaml
+> providers:
+>   ollama:
+>     base_url: http://localhost:11434/v1
+>     timeout: 600.0  # Increase to 10 minutes
+> ```
+
 Then ask a question:
 
 ```bash
