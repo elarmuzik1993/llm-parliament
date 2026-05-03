@@ -12,7 +12,7 @@ class GoogleProvider(Provider):
         self,
         model: str = "gemini-2.0-flash",
         api_key: str | None = None,
-        timeout: float = 30.0,
+        timeout: float | None = None,
     ) -> None:
         self.model = model
         self._api_key = api_key
@@ -32,6 +32,8 @@ class GoogleProvider(Provider):
         config = {}
         if system:
             config["system_instruction"] = system
+        if self._timeout is not None:
+            config["http_options"] = {"timeout": self._timeout}
 
         response = await client.aio.models.generate_content(
             model=self.model,

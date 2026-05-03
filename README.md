@@ -72,6 +72,14 @@ ollama pull mistral
 ollama pull gemma2
 ```
 
+> **Note for Windows/Slow Hardware:** If local models (like `deepseek-r1`) are slow to respond, you might encounter an `APITimeoutError` in some environments. By default, LLM Parliament uses **no timeout** (`timeout: null`). You can explicitly set a timeout in your `config.yaml` if desired:
+> ```yaml
+> providers:
+>   ollama:
+>     base_url: http://localhost:11434/v1
+>     timeout: 600.0  # Optional: set a 10-minute limit
+> ```
+
 Then ask a question:
 
 ```bash
@@ -230,3 +238,6 @@ usage restrictions of the underlying models.
 ## License
 
 AGPLv3
+
+
+ 

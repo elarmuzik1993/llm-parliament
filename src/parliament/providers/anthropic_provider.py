@@ -12,7 +12,7 @@ class AnthropicProvider(Provider):
         self,
         model: str = "claude-sonnet-4-6",
         api_key: str | None = None,
-        timeout: float = 30.0,
+        timeout: float | None = None,
     ) -> None:
         self.model = model
         self._api_key = api_key
