@@ -56,20 +56,40 @@ limited cursor and color support. Keys are stored in
 inside the user profile, so file permissions are not set explicitly on
 Windows.
 
-The default config uses local Ollama-compatible models and does not need API
-keys. Cloud configs require provider SDKs and keys.
+## Configuration
+
+Your personal config lives at `~/.parliament/config.yaml` (or
+`%USERPROFILE%\.parliament\config.yaml` on Windows) — outside the repo, so
+your settings never end up in git.
+
+On first run, a default mock-only config is copied from the bundled
+`config.example.yaml`. The mock config works immediately with no setup so
+you can verify the install. Edit it via `parliament members`, the TUI, or
+directly in your editor to swap in real models.
+
+The repo only ships `config.example.yaml` (the template). The runtime
+`config.yaml` is gitignored.
 
 ## Local Models
 
-The default `config.yaml` uses Ollama through its OpenAI-compatible API at
-`http://localhost:11434/v1`.
-
-Install Ollama, start it, and pull the default models:
+To use Ollama (local, free), install it, start the daemon, and pull a
+model — for example:
 
 ```bash
 ollama pull llama3.1
-ollama pull mistral
-ollama pull gemma2
+```
+
+Then edit `~/.parliament/config.yaml` to add an Ollama member:
+
+```yaml
+parliament:
+  members:
+    - name: Llama
+      provider: ollama
+      model: llama3.1
+providers:
+  ollama:
+    base_url: http://localhost:11434/v1
 ```
 
 > **Note for Windows/Slow Hardware:** If local models (like `deepseek-r1`) are slow to respond, you might encounter an `APITimeoutError` in some environments. By default, LLM Parliament uses **no timeout** (`timeout: null`). You can explicitly set a timeout in your `config.yaml` if desired:
@@ -222,9 +242,7 @@ src/parliament/
   procedures/             First Reading, Debate, and Division phases
   providers/              Provider adapters for Ollama, OpenAI, Anthropic, Google
 tests/                    Unit tests
-config.yaml               Local Ollama config
-config.cloud.yaml         Cloud provider config
-config.mixed.yaml         Mixed local/cloud config
+config.example.yaml       Default config template (copied to ~/.parliament/config.yaml on first run)
 ```
 
 ## Disclaimer

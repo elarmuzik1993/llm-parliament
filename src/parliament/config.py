@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -18,7 +19,8 @@ from parliament.providers.base import Provider
 
 PARLIAMENT_DIR = Path.home() / ".parliament"
 KEYS_FILE = PARLIAMENT_DIR / "keys.env"
-DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config.yaml"
+USER_CONFIG = PARLIAMENT_DIR / "config.yaml"
+EXAMPLE_CONFIG = Path(__file__).parent.parent.parent / "config.example.yaml"
 
 
 def _resolve_env_vars(value: str) -> str:
@@ -92,11 +94,28 @@ def remove_key(provider: str) -> bool:
     return found
 
 
+def _ensure_user_config() -> Path:
+    """Create ~/.parliament/config.yaml from the bundled example on first run."""
+    if not USER_CONFIG.exists():
+        if not EXAMPLE_CONFIG.exists():
+            raise FileNotFoundError(
+                f"Example config missing: {EXAMPLE_CONFIG}. Reinstall the package."
+            )
+        PARLIAMENT_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(EXAMPLE_CONFIG, USER_CONFIG)
+        print(
+            f"Created default config at {USER_CONFIG} — "
+            f"edit it via `parliament members` or the TUI.",
+            file=sys.stderr,
+        )
+    return USER_CONFIG
+
+
 def load_config(config_path: Path | None = None) -> dict[str, Any]:
     """Load and resolve a parliament config file."""
     load_keys()  # inject keys.env into env before resolving
 
-    path = config_path or DEFAULT_CONFIG
+    path = config_path or _ensure_user_config()
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
 

@@ -1,0 +1,39 @@
+# LLM Parliament — example config.
+#
+# On first run, this file is copied to ~/.parliament/config.yaml.
+# Edit your personal config there (or via `parliament members` / the TUI).
+# This file in the repo is the template only — leaving it as mock-only
+# means new clones run out of the box with zero setup.
+#
+# To swap in real models, replace the members below. Examples:
+#
+#   - name: Llama
+#     provider: ollama
+#     model: llama3.1
+#
+#   - name: Claude
+#     provider: anthropic
+#     model: claude-haiku-4-5-20251001
+#
+#   - name: Gemini
+#     provider: google
+#     model: gemini-2.0-flash-lite
+#
+# Cloud providers need API keys. Set them via the TUI (saves to
+# ~/.parliament/keys.env, chmod 0600), or export the env var directly:
+#   ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY
+
+parliament:
+  name: House of AI
+  members:
+    - name: Mock-A
+      provider: mock
+      model: mock-v1
+    - name: Mock-B
+      provider: mock
+      model: mock-v2
+    - name: Mock-C
+      provider: mock
+      model: mock-v3
+
+providers: {}
