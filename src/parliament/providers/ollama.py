@@ -14,7 +14,7 @@ class OllamaProvider(Provider):
         self,
         model: str = "llama3.1",
         base_url: str = DEFAULT_BASE_URL,
-        timeout: float = 180.0,
+        timeout: float | None = None,
     ) -> None:
         self.model = model
         self._base_url = base_url

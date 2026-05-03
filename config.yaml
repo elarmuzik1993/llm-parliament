@@ -13,4 +13,3 @@ parliament:
 providers:
   ollama:
     base_url: http://localhost:11434/v1
-    timeout: 600.0
