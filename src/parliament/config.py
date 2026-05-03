@@ -36,7 +36,7 @@ def load_keys() -> dict[str, str]:
     """Load API keys from ~/.parliament/keys.env."""
     keys = {}
     if KEYS_FILE.exists():
-        for line in KEYS_FILE.read_text().splitlines():
+        for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
@@ -56,7 +56,7 @@ def save_key(provider: str, key: str) -> None:
     replaced = False
 
     if KEYS_FILE.exists():
-        for line in KEYS_FILE.read_text().splitlines():
+        for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
             if line.strip().startswith(env_var + "="):
                 lines.append(f"{env_var}={key}")
                 replaced = True
@@ -66,7 +66,7 @@ def save_key(provider: str, key: str) -> None:
     if not replaced:
         lines.append(f"{env_var}={key}")
 
-    KEYS_FILE.write_text("\n".join(lines) + "\n")
+    KEYS_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
     # Restrict permissions on Unix; Windows ACLs don't support chmod
     if sys.platform != "win32":
         KEYS_FILE.chmod(0o600)
@@ -81,14 +81,14 @@ def remove_key(provider: str) -> bool:
     lines = []
     found = False
 
-    for line in KEYS_FILE.read_text().splitlines():
+    for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
         if line.strip().startswith(env_var + "="):
             found = True
         else:
             lines.append(line)
 
     if found:
-        KEYS_FILE.write_text("\n".join(lines) + "\n")
+        KEYS_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return found
 
 
@@ -100,7 +100,7 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
 
-    raw = path.read_text()
+    raw = path.read_text(encoding="utf-8")
     # Resolve env vars in the raw YAML
     try:
         resolved = _resolve_env_vars(raw)

@@ -78,7 +78,7 @@ def load_app_settings() -> AppSettings:
         return AppSettings(save_dir=str(DEFAULT_SAVE_DIR))
 
     try:
-        data = json.loads(SETTINGS_FILE.read_text())
+        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return AppSettings(save_dir=str(DEFAULT_SAVE_DIR))
 
@@ -89,7 +89,10 @@ def load_app_settings() -> AppSettings:
 def save_app_settings(settings: AppSettings) -> None:
     """Persist TUI settings."""
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps({"save_dir": settings.save_dir}, indent=2) + "\n")
+    SETTINGS_FILE.write_text(
+        json.dumps({"save_dir": settings.save_dir}, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def build_model_settings(
@@ -192,7 +195,7 @@ def _normalize_member_draft(draft: dict[str, str]) -> dict[str, str]:
 
 def _load_editable_config(config_path: Path, fallback_config: dict[str, Any]) -> dict[str, Any]:
     if Path(config_path).exists():
-        raw = yaml.safe_load(Path(config_path).read_text())
+        raw = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
         if isinstance(raw, dict):
             return raw
     return fallback_config
@@ -243,11 +246,15 @@ def _run(
     speaker_override: str | None,
     mock: bool = False,
 ) -> None:
-    curses.curs_set(0)
+    try:
+        curses.curs_set(0)
+    except curses.error:
+        # Some terminals (e.g. legacy Windows cmd.exe) reject cursor toggling.
+        pass
     stdscr.keypad(True)
     try:
         curses.set_escdelay(25)
-    except AttributeError:
+    except (AttributeError, curses.error):
         pass
     _disable_terminal_flow_control()
 
@@ -1232,7 +1239,7 @@ def save_hansard(hansard: Hansard, save_dir: str) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     slug = _slugify(hansard.bill.title or hansard.bill.content)
     path = directory / f"{timestamp}-{slug}-{hansard.id[:8]}.md"
-    path.write_text(_hansard_markdown(hansard))
+    path.write_text(_hansard_markdown(hansard), encoding="utf-8")
     return path
 
 

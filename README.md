@@ -12,7 +12,7 @@ Built on multi-agent debate, a technique shown to improve AI accuracy by
 ## Quick Start
 
 ```bash
-pip install llm-parliament[cli]
+pipx install llm-parliament    # global install, like `npm i -g`
 
 # Local (free, requires Ollama)
 parliament ask "PostgreSQL or MongoDB for analytics?"
@@ -26,24 +26,35 @@ parliament ask "question" --mock
 
 ## Installation
 
-Install the CLI from PyPI:
+The recommended way is **pipx** — it installs the tool into an isolated
+environment but exposes `parliament` globally on your PATH, so you don't
+have to think about virtual environments:
 
 ```bash
-pip install "llm-parliament[cli]"
+pipx install llm-parliament
 ```
 
-Optional provider extras are available when you want cloud model support:
+Plain `pip` also works:
 
 ```bash
-pip install "llm-parliament[cloud,cli]"
+pip install llm-parliament
 ```
 
-On Windows, install with the `cli` extra so the TUI gets the required
-`windows-curses` package:
+For cloud provider SDKs (Anthropic, Google), add the `cloud` extra:
 
-```powershell
-pip install "llm-parliament[cli]"
+```bash
+pipx install "llm-parliament[cloud]"
+# or
+pip install "llm-parliament[cloud]"
 ```
+
+On Windows, the install pulls in `windows-curses` automatically so the
+TUI works out of the box. The TUI is best run inside Windows Terminal
+or PowerShell 7+. Legacy `cmd.exe` works for the basic flow but has
+limited cursor and color support. Keys are stored in
+`%USERPROFILE%\.parliament\keys.env`; NTFS ACLs default to owner-only
+inside the user profile, so file permissions are not set explicitly on
+Windows.
 
 The default config uses local Ollama-compatible models and does not need API
 keys. Cloud configs require provider SDKs and keys.
@@ -147,7 +158,9 @@ fields are focused and saves the edit when the base URL field is focused.
 
 ## Development
 
-Clone the repo and create a virtual environment:
+Clone the repo and create a virtual environment.
+
+Linux / macOS:
 
 ```bash
 git clone https://github.com/elarmuzik1993/llm-parliament.git
@@ -158,6 +171,20 @@ source .venv/bin/activate
 python -m pip install -U pip
 python -m pip install -e ".[all,dev]"
 ```
+
+Windows (PowerShell):
+
+```powershell
+git clone https://github.com/elarmuzik1993/llm-parliament.git
+cd llm-parliament
+
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install -e ".[all,dev]"
+```
+
+(In `cmd.exe`, use `.venv\Scripts\activate.bat` instead.)
 
 Run the test suite:
 
@@ -191,6 +218,14 @@ config.yaml               Local Ollama config
 config.cloud.yaml         Cloud provider config
 config.mixed.yaml         Mixed local/cloud config
 ```
+
+## Disclaimer
+
+LLM Parliament is an orchestration framework. It coordinates multiple AI models
+to provide structured debate and synthesis. Users are responsible for complying
+with the Terms of Service and Usage Policies of their respective LLM providers
+(e.g., Ollama, OpenAI, Anthropic, Google). This tool does not bypass safety filters or
+usage restrictions of the underlying models.
 
 ## License
 

@@ -24,6 +24,10 @@ classifiers = [
 
 dependencies = [
     "openai>=1.0",     # also covers Ollama via custom base_url
+    "click>=8.0",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+    "windows-curses>=2.4; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
@@ -33,14 +37,8 @@ cloud = [
     "anthropic>=0.40",
     "google-genai>=1.0",
 ]
-cli = [
-    "click>=8.0",
-    "rich>=13.0",
-    "pyyaml>=6.0",
-    "windows-curses>=2.4; platform_system == 'Windows'",
-]
 all = [
-    "llm-parliament[cloud,cli]",
+    "llm-parliament[cloud]",
 ]
 dev = [
     "pytest>=8.0",
