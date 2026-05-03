@@ -1,15 +1,16 @@
 parliament:
   name: House of AI
   members:
-  - name: Mock-A
+  - name: qwen2.5-coder:14b-optimized
     provider: ollama
-    model: gemma2
-  - name: Mistral
-    provider: ollama
-    model: mistral
-  - name: Gemma
-    provider: ollama
-    model: gemma2
+    model: qwen2.5-coder:14b-optimized
+  - name: claude-haiku-4-5-20251001
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+  - name: gemini-2.0-flash-lite
+    provider: google
+    model: gemini-2.0-flash-lite
 providers:
   ollama:
     base_url: http://localhost:11434/v1
+    timeout: 600.0
