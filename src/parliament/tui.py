@@ -17,8 +17,8 @@ import yaml
 
 from parliament.commands import COMMANDS, Command, CommandContext, SpeakerOp, dispatch
 from parliament.config import (
-    DEFAULT_CONFIG,
     PARLIAMENT_DIR,
+    USER_CONFIG,
     build_parliament_from_config,
     load_keys,
     save_config,
@@ -258,7 +258,7 @@ def _run(
         pass
     _disable_terminal_flow_control()
 
-    active_config_path = Path(config_path) if config_path else DEFAULT_CONFIG
+    active_config_path = Path(config_path) if config_path else USER_CONFIG
     question = ""
     focus = "question"
     selected = 0

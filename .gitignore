@@ -37,6 +37,9 @@ coverage.xml
 keys.env
 .parliament/
 
+# Personal config — only the example template is tracked
+/config.yaml
+
 # OS
 .DS_Store
 Thumbs.db
