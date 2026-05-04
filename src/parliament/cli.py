@@ -14,6 +14,7 @@ from rich.table import Table
 
 from parliament.config import (
     KEYS_FILE,
+    KEY_PROVIDERS,
     build_parliament_from_config,
     load_config,
     load_keys,
@@ -25,11 +26,6 @@ from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard
 
 console = Console()
-KEY_PROVIDERS = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "google": "GOOGLE_API_KEY",
-}
 
 
 def _mock_config() -> dict:

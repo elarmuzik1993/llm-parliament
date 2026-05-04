@@ -22,6 +22,20 @@ KEYS_FILE = PARLIAMENT_DIR / "keys.env"
 USER_CONFIG = PARLIAMENT_DIR / "config.yaml"
 EXAMPLE_CONFIG = Path(__file__).parent.parent.parent / "config.example.yaml"
 
+KEY_PROVIDERS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GOOGLE_API_KEY",
+}
+
+
+def api_key_status(provider: str) -> str:
+    """Return 'configured', 'missing', or 'not required' for a provider's API key."""
+    env_var = KEY_PROVIDERS.get(provider)
+    if env_var is None:
+        return "not required"
+    return "configured" if os.environ.get(env_var) else "missing"
+
 
 def _resolve_env_vars(value: str) -> str:
     """Replace ${VAR} with environment variable values."""
