@@ -99,3 +99,45 @@ def test_check_config_passes_after_first_run(tmp_path, monkeypatch):
     result = doctor._check_config()
     assert result.ok is True
     assert "config.yaml" in result.message
+
+
+def test_check_provider_returns_both_ok_when_sdk_imports_and_key_set(monkeypatch):
+    from parliament import doctor
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    sdk_result, key_result = doctor._check_provider("anthropic")
+
+    assert sdk_result.ok is True
+    assert "Anthropic SDK" in sdk_result.message
+    assert key_result.ok is True
+    assert key_result.info is False
+    assert "configured" in key_result.message
+
+
+def test_check_provider_returns_info_when_key_missing(monkeypatch):
+    from parliament import doctor
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _, key_result = doctor._check_provider("anthropic")
+
+    assert key_result.ok is True
+    assert key_result.info is True
+    assert "not set" in key_result.message
+
+
+def test_check_provider_fails_when_sdk_unimportable(monkeypatch):
+    from parliament import doctor
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "anthropic":
+            raise ImportError("anthropic not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "anthropic", raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    sdk_result, _ = doctor._check_provider("anthropic")
+
+    assert sdk_result.ok is False
+    assert "SDK" in sdk_result.message

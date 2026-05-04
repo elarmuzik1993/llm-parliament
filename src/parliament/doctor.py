@@ -59,6 +59,37 @@ def _check_config() -> CheckResult:
     )
 
 
+PROVIDER_DISPLAY = {
+    "anthropic": ("Anthropic SDK", "anthropic"),
+    "google": ("Google SDK", "google.genai"),
+    "openai": ("OpenAI SDK", "openai"),
+}
+
+
+def _check_provider(provider: str) -> tuple[CheckResult, CheckResult]:
+    """Return (sdk_result, key_result) for one cloud provider."""
+    from parliament.config import KEY_PROVIDERS, api_key_status
+
+    display_name, import_name = PROVIDER_DISPLAY[provider]
+
+    # SDK check
+    try:
+        __import__(import_name)
+        sdk_result = CheckResult(ok=True, message=display_name)
+    except ImportError as e:
+        sdk_result = CheckResult(ok=False, message=f"{display_name} not installed: {e}")
+
+    # Key check
+    env_var = KEY_PROVIDERS[provider]
+    status = api_key_status(provider)
+    if status == "configured":
+        key_result = CheckResult(ok=True, message=f"{env_var} configured")
+    else:
+        key_result = CheckResult(ok=True, info=True, message=f"{env_var} not set")
+
+    return sdk_result, key_result
+
+
 def _symbol_for(r: CheckResult) -> tuple[str, str]:
     """Map a CheckResult to (unicode-symbol, rich-color)."""
     if not r.ok:
@@ -85,7 +116,19 @@ def run_doctor(console: Console) -> int:
         console.print(f"  [{color}]{symbol}[/{color}] {r.message}")
 
     console.print("[bold]Providers[/bold]")
+    provider_checks: list[CheckResult] = []
+    for provider in ("anthropic", "google", "openai"):
+        sdk_r, key_r = _check_provider(provider)
+        provider_checks.extend([sdk_r, key_r])
+        sdk_sym, sdk_col = _symbol_for(sdk_r)
+        key_sym, key_col = _symbol_for(key_r)
+        console.print(
+            f"  [{sdk_col}]{sdk_sym}[/{sdk_col}] {sdk_r.message:<20} "
+            f"[{key_col}]{key_sym}[/{key_col}] {key_r.message}"
+        )
+
     console.print("[bold]Next steps[/bold]")
 
-    has_failure = any((not r.ok) for r in env_checks)
+    all_checks = env_checks + provider_checks
+    has_failure = any((not r.ok) for r in all_checks)
     return 1 if has_failure else 0
