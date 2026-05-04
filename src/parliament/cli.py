@@ -318,5 +318,14 @@ def keys_remove(provider: str):
         console.print(f"[yellow]{provider} key not found in {KEYS_FILE}[/yellow]")
 
 
+@main.command()
+def doctor():
+    """Run install health checks (Python version, providers, Ollama, etc.)."""
+    from parliament.doctor import run_doctor
+
+    exit_code = run_doctor(console)
+    raise SystemExit(exit_code)
+
+
 if __name__ == "__main__":
     main()
