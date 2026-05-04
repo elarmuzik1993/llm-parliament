@@ -192,3 +192,54 @@ def test_check_ollama_treats_timeout_as_unreachable(monkeypatch):
     result = doctor._check_ollama()
     assert result.ok is True
     assert result.info is True
+
+
+def test_doctor_exit_code_is_one_when_python_too_old(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("sys.version_info", (3, 10, 4, "final", 0))
+
+    from parliament import cli
+    result = CliRunner().invoke(cli.main, ["doctor"])
+
+    assert result.exit_code == 1
+    assert "not functional" in result.output.lower() or "fix" in result.output.lower()
+
+
+def test_doctor_exit_code_is_zero_when_only_optional_items_missing(monkeypatch, tmp_path):
+    """No keys, no Ollama -> still exit 0 (mock works fine)."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+    import httpx
+
+    def unreachable(url, timeout=None):
+        raise httpx.ConnectError("no ollama")
+
+    monkeypatch.setattr(httpx, "get", unreachable)
+
+    from parliament import cli
+    result = CliRunner().invoke(cli.main, ["doctor"])
+
+    assert result.exit_code == 0
+
+
+def test_doctor_next_steps_mentions_keys_and_ollama_when_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+    import httpx
+
+    def unreachable(url, timeout=None):
+        raise httpx.ConnectError("no ollama")
+
+    monkeypatch.setattr(httpx, "get", unreachable)
+
+    from parliament import cli
+    result = CliRunner().invoke(cli.main, ["doctor"])
+
+    assert "parliament keys set" in result.output
+    assert "ollama" in result.output.lower()

@@ -156,7 +156,23 @@ def run_doctor(console: Console) -> int:
     console.print(f"  [{col}]{sym}[/{col}] {ollama_result.message}")
 
     console.print("[bold]Next steps[/bold]")
+    cloud_keys_missing = any(r.info for r in provider_checks)
+    if cloud_keys_missing:
+        console.print("  - Add cloud keys:   parliament keys set <provider> <key>")
+    if ollama_result.info:
+        console.print(
+            "  - Local models?     Install Ollama from https://ollama.com, "
+            "then `ollama pull llama3.1`"
+        )
+    console.print("  - Run the TUI:      parliament")
 
     all_checks = env_checks + provider_checks + [ollama_result]
     has_failure = any((not r.ok) for r in all_checks)
-    return 1 if has_failure else 0
+    if has_failure:
+        console.print()
+        console.print(
+            "[red]Install is not functional. "
+            "Fix the items marked with the failure symbol above.[/red]"
+        )
+        return 1
+    return 0
