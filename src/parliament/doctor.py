@@ -6,6 +6,7 @@ import os
 import sys
 from dataclasses import dataclass
 
+import httpx
 from rich.console import Console
 
 
@@ -90,6 +91,29 @@ def _check_provider(provider: str) -> tuple[CheckResult, CheckResult]:
     return sdk_result, key_result
 
 
+def _check_ollama(base_url: str = "http://localhost:11434") -> CheckResult:
+    """Probe the Ollama daemon. Unreachable is informational, not a failure."""
+    try:
+        response = httpx.get(f"{base_url}/api/tags", timeout=2.0)
+        if response.status_code == 200:
+            models = response.json().get("models", [])
+            return CheckResult(
+                ok=True,
+                message=f"Ollama: reachable, {len(models)} model(s) installed",
+            )
+        return CheckResult(
+            ok=True,
+            info=True,
+            message=f"Ollama: unexpected status {response.status_code}",
+        )
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError):
+        return CheckResult(
+            ok=True,
+            info=True,
+            message=f"Ollama: not reachable at {base_url}",
+        )
+
+
 def _symbol_for(r: CheckResult) -> tuple[str, str]:
     """Map a CheckResult to (unicode-symbol, rich-color)."""
     if not r.ok:
@@ -127,8 +151,12 @@ def run_doctor(console: Console) -> int:
             f"[{key_col}]{key_sym}[/{key_col}] {key_r.message}"
         )
 
+    ollama_result = _check_ollama()
+    sym, col = _symbol_for(ollama_result)
+    console.print(f"  [{col}]{sym}[/{col}] {ollama_result.message}")
+
     console.print("[bold]Next steps[/bold]")
 
-    all_checks = env_checks + provider_checks
+    all_checks = env_checks + provider_checks + [ollama_result]
     has_failure = any((not r.ok) for r in all_checks)
     return 1 if has_failure else 0

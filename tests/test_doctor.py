@@ -141,3 +141,54 @@ def test_check_provider_fails_when_sdk_unimportable(monkeypatch):
 
     assert sdk_result.ok is False
     assert "SDK" in sdk_result.message
+
+
+def test_check_ollama_reports_reachable_with_model_count(monkeypatch):
+    from parliament import doctor
+    import httpx
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"models": [{"name": "llama3.1:latest"}, {"name": "deepseek-r1:8b"}]}
+
+    def fake_get(url, timeout=None):
+        assert "11434" in url
+        return FakeResponse()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = doctor._check_ollama()
+    assert result.ok is True
+    assert result.info is False
+    assert "2 model" in result.message  # "2 models" or "2 model(s)"
+
+
+def test_check_ollama_reports_unreachable_as_info_not_failure(monkeypatch):
+    from parliament import doctor
+    import httpx
+
+    def fake_get(url, timeout=None):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = doctor._check_ollama()
+    assert result.ok is True
+    assert result.info is True
+    assert "not reachable" in result.message
+
+
+def test_check_ollama_treats_timeout_as_unreachable(monkeypatch):
+    from parliament import doctor
+    import httpx
+
+    def fake_get(url, timeout=None):
+        raise httpx.TimeoutException("slow")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = doctor._check_ollama()
+    assert result.ok is True
+    assert result.info is True
