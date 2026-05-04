@@ -12,49 +12,105 @@ Built on multi-agent debate, a technique shown to improve AI accuracy by
 ## Quick Start
 
 ```bash
-pipx install llm-parliament    # global install, like `npm i -g`
-
-# Local (free, requires Ollama)
-parliament ask "PostgreSQL or MongoDB for analytics?"
-
-# Cloud (requires API keys)
-parliament ask "question" --config config.cloud.yaml
-
-# Dev/testing (instant, no setup)
-parliament ask "question" --mock
+pipx install llm-parliament
+parliament doctor
+parliament              # opens the TUI
 ```
+
+The mock parliament runs out of the box with no setup.
 
 ## Installation
 
 The recommended way is **pipx** — it installs the tool into an isolated
 environment but exposes `parliament` globally on your PATH, so you don't
-have to think about virtual environments:
+have to think about virtual environments.
+
+### Linux
 
 ```bash
+# Prereqs (one-time)
+sudo apt install pipx          # Debian/Ubuntu — or `pacman -S python-pipx`, `dnf install pipx`
+pipx ensurepath                # adds ~/.local/bin to PATH
+# Restart your shell.
+
+# Install
 pipx install llm-parliament
+
+# Verify
+parliament doctor
 ```
 
-Plain `pip` also works:
+### macOS
 
 ```bash
-pip install llm-parliament
+# Prereqs (one-time)
+brew install pipx
+pipx ensurepath
+# Restart your shell.
+
+# Install
+pipx install llm-parliament
+
+# Verify
+parliament doctor
 ```
 
-For cloud provider SDKs (Anthropic, Google), add the `cloud` extra:
+### Windows
+
+```powershell
+# Prereqs (one-time)
+# 1. Install Python 3.11+ from python.org — check "Add Python to PATH" during install.
+# 2. Install pipx:
+python -m pip install --user pipx
+python -m pipx ensurepath
+# 3. Close and reopen Windows Terminal (recommended) or PowerShell.
+
+# Install
+pipx install llm-parliament
+
+# Verify
+parliament doctor
+```
+
+**Notes:**
+
+- All cloud provider SDKs (Anthropic, Google, OpenAI) are bundled. No extras needed.
+- Ollama (for local models) is a separate native daemon — install from <https://ollama.com> if you want local models. The `parliament doctor` command tells you what's detected.
+- On Windows, the install pulls in `windows-curses` automatically so the TUI works out of the box. Windows Terminal is recommended over `cmd.exe` (better VT/UTF-8 support); legacy `cmd.exe` is supported.
+- Keys are stored in `~/.parliament/keys.env` (`%USERPROFILE%\.parliament\keys.env` on Windows) with restricted permissions on Unix.
+
+## Verify your install
+
+After install, run:
 
 ```bash
-pipx install "llm-parliament[cloud]"
-# or
-pip install "llm-parliament[cloud]"
+parliament doctor
 ```
 
-On Windows, the install pulls in `windows-curses` automatically so the
-TUI works out of the box. The TUI is best run inside Windows Terminal
-or PowerShell 7+. Legacy `cmd.exe` works for the basic flow but has
-limited cursor and color support. Keys are stored in
-`%USERPROFILE%\.parliament\keys.env`; NTFS ACLs default to owner-only
-inside the user profile, so file permissions are not set explicitly on
-Windows.
+You'll see something like:
+
+```text
+Environment
+  ✓ Python 3.12.5 (>=3.11 required)
+  ✓ Curses available
+  ✓ Terminal: 142x38
+  ✓ Config: ~/.parliament/config.yaml (initialized)
+
+Providers
+  ✓ Anthropic SDK         ℹ ANTHROPIC_API_KEY not set
+  ✓ Google SDK            ℹ GOOGLE_API_KEY not set
+  ✓ OpenAI SDK            ℹ OPENAI_API_KEY not set
+  ℹ Ollama: not reachable at http://localhost:11434
+
+Next steps
+  - Add cloud keys:   parliament keys set <provider> <key>
+  - Local models?     Install Ollama from https://ollama.com, then `ollama pull llama3.1`
+  - Run the TUI:      parliament
+```
+
+Exit code is `0` if the install is functional (regardless of whether you
+have keys/Ollama configured), or `1` if something is broken (e.g. Python
+too old).
 
 ## Configuration
 
@@ -70,58 +126,62 @@ directly in your editor to swap in real models.
 The repo only ships `config.example.yaml` (the template). The runtime
 `config.yaml` is gitignored.
 
-## Local Models
+## Optional: Local Models (Ollama)
 
-To use Ollama (local, free), install it, start the daemon, and pull a
-model — for example:
+Ollama runs LLMs locally — free, private, no API keys. Install it
+separately, then point a parliament member at it.
+
+1. Install Ollama from <https://ollama.com> and start the daemon.
+2. Pull a model:
+   ```bash
+   ollama pull llama3.1
+   ```
+3. Edit `~/.parliament/config.yaml` (or use the TUI) to add an Ollama
+   member:
+   ```yaml
+   parliament:
+     members:
+       - name: Llama
+         provider: ollama
+         model: llama3.1
+   providers:
+     ollama:
+       base_url: http://localhost:11434/v1
+   ```
+4. Run `parliament` to start a debate.
+
+> **Note:** All providers default to no timeout (`timeout: null`), so a
+> slow local model on modest hardware won't be cut off. If you want a
+> hard limit, set `timeout: 600.0` on the relevant `providers.<name>`
+> block.
+
+## Optional: Cloud Models
+
+To use Anthropic, Google, or OpenAI, set the corresponding API key:
 
 ```bash
-ollama pull llama3.1
+parliament keys set anthropic sk-ant-...
+parliament keys set google ...
+parliament keys set openai sk-...
 ```
 
-Then edit `~/.parliament/config.yaml` to add an Ollama member:
+Then edit `~/.parliament/config.yaml` (or use the TUI) to add cloud
+members:
 
 ```yaml
 parliament:
   members:
-    - name: Llama
-      provider: ollama
-      model: llama3.1
-providers:
-  ollama:
-    base_url: http://localhost:11434/v1
+    - name: Claude
+      provider: anthropic
+      model: claude-haiku-4-5-20251001
+    - name: Gemini
+      provider: google
+      model: gemini-2.0-flash-lite
 ```
 
-> **Note for Windows/Slow Hardware:** If local models (like `deepseek-r1`) are slow to respond, you might encounter an `APITimeoutError` in some environments. By default, LLM Parliament uses **no timeout** (`timeout: null`). You can explicitly set a timeout in your `config.yaml` if desired:
-> ```yaml
-> providers:
->   ollama:
->     base_url: http://localhost:11434/v1
->     timeout: 600.0  # Optional: set a 10-minute limit
-> ```
-
-Then ask a question:
-
-```bash
-parliament ask "Should we use PostgreSQL or MongoDB for analytics?"
-```
-
-## Cloud Models
-
-Use `config.cloud.yaml` for Anthropic, OpenAI, and Google providers:
-
-```bash
-parliament keys set anthropic sk-ant-...
-parliament keys set openai sk-...
-parliament keys set google ...
-
-parliament ask "How should we design our cache invalidation strategy?" \
-  --config config.cloud.yaml
-```
-
-Keys are stored in `~/.parliament/keys.env` with restricted file permissions on
-Unix. You can also set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and
-`GOOGLE_API_KEY` directly in your environment.
+Keys are stored in `~/.parliament/keys.env` with `chmod 0600` on Unix.
+You can also export `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and
+`GOOGLE_API_KEY` directly in your environment if you prefer.
 
 Useful key commands:
 
@@ -133,6 +193,9 @@ parliament keys remove openai
 ## CLI Usage
 
 ```bash
+# Check that the install is healthy
+parliament doctor
+
 # Use mock providers for fast local testing
 parliament ask "Is this architecture too complex?" --mock
 
@@ -143,7 +206,7 @@ parliament ask "Which queue should we use?" --verbose
 parliament ask "What are the main risks?" --speaker Claude
 
 # Show configured members
-parliament members --config config.cloud.yaml
+parliament members
 
 # Open the full TUI dashboard
 parliament
@@ -152,7 +215,7 @@ parliament
 parliament --mock
 
 # Browse the same dashboard with a specific config
-parliament tui --config config.cloud.yaml
+parliament tui --config /path/to/custom-config.yaml
 ```
 
 TUI controls:

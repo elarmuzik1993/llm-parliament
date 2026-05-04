@@ -17,8 +17,10 @@ import yaml
 
 from parliament.commands import COMMANDS, Command, CommandContext, SpeakerOp, dispatch
 from parliament.config import (
+    KEY_PROVIDERS,
     PARLIAMENT_DIR,
     USER_CONFIG,
+    api_key_status,
     build_parliament_from_config,
     load_keys,
     save_config,
@@ -29,11 +31,6 @@ from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
 from parliament.model_catalog import picker_data_for
 
-KEY_PROVIDERS = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "google": "GOOGLE_API_KEY",
-}
 SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
 DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
 SUPPORTED_PROVIDERS = ["ollama", "anthropic", "openai", "google", "mock"]
@@ -118,7 +115,7 @@ def build_model_settings(
         ModelSettings(
             member=member,
             role=_member_role(member, speaker_name),
-            api_key_status=_api_key_status(member.provider_name),
+            api_key_status=api_key_status(member.provider_name),
             base_url=str(provider_configs.get(member.provider_name, {}).get("base_url", "default")),
         )
         for member in members
@@ -149,13 +146,6 @@ def _member_role(member: Member, speaker_name: str) -> str:
     if member.name == speaker_name:
         return "Speaker / member"
     return "Member"
-
-
-def _api_key_status(provider: str) -> str:
-    env_var = KEY_PROVIDERS.get(provider)
-    if env_var is None:
-        return "not required"
-    return "configured" if os.environ.get(env_var) else "missing"
 
 
 def _member_base_url(config: dict[str, Any], provider: str) -> str:
@@ -863,7 +853,7 @@ def _draw_member_editor(
         ("Name", draft["name"] or "(set by model)"),
         ("Tier", get_tier_label(preview_member.tier)),
         ("Role", _member_role(preview_member, speaker_name)),
-        ("API key", _api_key_status(draft["provider"])),
+        ("API key", api_key_status(draft["provider"])),
     ]
 
     title_name = draft["name"] or draft["model"] or "(unnamed)"

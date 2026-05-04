@@ -14,6 +14,7 @@ from rich.table import Table
 
 from parliament.config import (
     KEYS_FILE,
+    KEY_PROVIDERS,
     build_parliament_from_config,
     load_config,
     load_keys,
@@ -25,11 +26,6 @@ from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard
 
 console = Console()
-KEY_PROVIDERS = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "google": "GOOGLE_API_KEY",
-}
 
 
 def _mock_config() -> dict:
@@ -320,6 +316,15 @@ def keys_remove(provider: str):
         console.print(f"[green]Removed {provider} key from {KEYS_FILE}[/green]")
     else:
         console.print(f"[yellow]{provider} key not found in {KEYS_FILE}[/yellow]")
+
+
+@main.command()
+def doctor():
+    """Run install health checks (Python version, providers, Ollama, etc.)."""
+    from parliament.doctor import run_doctor
+
+    exit_code = run_doctor(console)
+    raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":

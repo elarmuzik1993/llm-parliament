@@ -62,3 +62,32 @@ def test_explicit_path_does_not_trigger_first_run(tmp_path, monkeypatch):
 
     assert cfg["parliament"]["name"] == "Custom"
     assert not config.USER_CONFIG.exists()
+
+
+def test_key_providers_maps_provider_names_to_env_vars():
+    from parliament.config import KEY_PROVIDERS
+
+    assert KEY_PROVIDERS["anthropic"] == "ANTHROPIC_API_KEY"
+    assert KEY_PROVIDERS["openai"] == "OPENAI_API_KEY"
+    assert KEY_PROVIDERS["google"] == "GOOGLE_API_KEY"
+
+
+def test_api_key_status_returns_configured_when_env_set(monkeypatch):
+    from parliament.config import api_key_status
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    assert api_key_status("anthropic") == "configured"
+
+
+def test_api_key_status_returns_missing_when_env_unset(monkeypatch):
+    from parliament.config import api_key_status
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert api_key_status("anthropic") == "missing"
+
+
+def test_api_key_status_returns_not_required_for_unknown_provider():
+    from parliament.config import api_key_status
+
+    assert api_key_status("ollama") == "not required"
+    assert api_key_status("mock") == "not required"

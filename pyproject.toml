@@ -27,19 +27,13 @@ dependencies = [
     "click>=8.0",
     "rich>=13.0",
     "pyyaml>=6.0",
+    "anthropic>=0.40",
+    "google-genai>=1.0",
+    "httpx>=0.27",
     "windows-curses>=2.4; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
-anthropic = ["anthropic>=0.40"]
-google = ["google-genai>=1.0"]
-cloud = [
-    "anthropic>=0.40",
-    "google-genai>=1.0",
-]
-all = [
-    "llm-parliament[cloud]",
-]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
