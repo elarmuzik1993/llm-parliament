@@ -18,12 +18,14 @@ from parliament.config import (
     build_parliament_from_config,
     load_config,
     load_keys,
+    resolve_show_debate,
     save_key,
     remove_key,
 )
 from parliament.core.model_tiers import get_tier_label, detect_gap
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard
+from parliament.render import build_renderer
 
 console = Console()
 
@@ -41,13 +43,6 @@ def _mock_config() -> dict:
         },
         "providers": {},
     }
-
-
-def _make_progress_callback(status: dict):
-    """Return a callback that updates a shared status dict for Rich display."""
-    def on_progress(phase: str, member: str, state: str):
-        status[f"{phase}:{member}"] = state
-    return on_progress
 
 
 def _render_synthesis(hansard: Hansard) -> None:
@@ -158,9 +153,22 @@ def main(ctx: click.Context, config_path: Path | None, speaker: str | None, mock
 @click.argument("question")
 @click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
 @click.option("--speaker", default=None, help="Override Speaker selection")
-@click.option("--verbose", is_flag=True, help="Show full debate transcript")
+@click.option("--verbose", is_flag=True, help="Show full debate transcript (post-hoc)")
+@click.option(
+    "--show-debate/--no-show-debate",
+    "show_debate",
+    default=None,
+    help="Show the debate process live (default: on; override with config or PARLIAMENT_SHOW_DEBATE)",
+)
 @click.option("--mock", is_flag=True, help="Use mock providers (dev/testing)")
-def ask(question: str, config_path: Path | None, speaker: str | None, verbose: bool, mock: bool):
+def ask(
+    question: str,
+    config_path: Path | None,
+    speaker: str | None,
+    verbose: bool,
+    show_debate: bool | None,
+    mock: bool,
+):
     """Ask Parliament a question."""
     try:
         if mock:
@@ -177,13 +185,19 @@ def ask(question: str, config_path: Path | None, speaker: str | None, verbose: b
                 "Mock-B": MockProvider(model="mock-v2"),
                 "Mock-C": MockProvider(model="mock-v3"),
             }
+            config = {}
         else:
             config = load_config(config_path)
             members, providers = build_parliament_from_config(config)
 
+        # Resolve show-debate: CLI > env > config > default(True)
+        show = resolve_show_debate(cli_flag=show_debate, config=config)
+        renderer = build_renderer(show_debate=show, mode="cli", console=console)
+
         p = Parliament(
             members=members,
             providers=providers,
+            on_progress=renderer.emit,
             speaker_override=speaker,
         )
 
@@ -206,9 +220,13 @@ def ask(question: str, config_path: Path | None, speaker: str | None, verbose: b
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-        # Run
-        with console.status("[bold]First Reading...[/bold]"):
-            hansard = asyncio.run(p.ask(question))
+        # Run — renderer is a context manager; on `show=False` it's a SilentRenderer.
+        with renderer:
+            if show:
+                hansard = asyncio.run(p.ask(question))
+            else:
+                with console.status("[bold]First Reading...[/bold]"):
+                    hansard = asyncio.run(p.ask(question))
 
         if verbose:
             _render_verbose(hansard)

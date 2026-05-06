@@ -37,6 +37,26 @@ def api_key_status(provider: str) -> str:
     return "configured" if os.environ.get(env_var) else "missing"
 
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def resolve_show_debate(*, cli_flag: bool | None, config: dict[str, Any]) -> bool:
+    """Decide whether to render the debate live.
+
+    Precedence: CLI flag > PARLIAMENT_SHOW_DEBATE env var > config display.show_debate
+    > default True.
+    """
+    if cli_flag is not None:
+        return bool(cli_flag)
+    env = os.environ.get("PARLIAMENT_SHOW_DEBATE")
+    if env is not None:
+        return env.strip().lower() in _TRUTHY
+    display = config.get("display") or {}
+    if "show_debate" in display:
+        return bool(display["show_debate"])
+    return True
+
+
 def _resolve_env_vars(value: str) -> str:
     """Replace ${VAR} with environment variable values."""
     def replacer(match):

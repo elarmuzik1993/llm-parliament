@@ -37,3 +37,8 @@ parliament:
       model: mock-v3
 
 providers: {}
+
+# Live debate view — set to false to suppress and only show the final verdict.
+# Override per-call with --show-debate / --no-show-debate or PARLIAMENT_SHOW_DEBATE.
+display:
+  show_debate: true

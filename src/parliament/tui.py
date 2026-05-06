@@ -23,6 +23,7 @@ from parliament.config import (
     api_key_status,
     build_parliament_from_config,
     load_keys,
+    resolve_show_debate,
     save_config,
     save_key,
 )
@@ -30,6 +31,7 @@ from parliament.core.model_tiers import get_tier, get_tier_label
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
 from parliament.model_catalog import picker_data_for
+from parliament.render import build_renderer
 
 SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
 DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
@@ -1138,23 +1140,33 @@ def _run_debate(
     config: dict[str, Any],
     speaker_override: str | None,
 ) -> Hansard:
-    height, width = stdscr.getmaxyx()
-    stdscr.erase()
-    _add_line(stdscr, 0, 0, "Running Parliament", curses.A_BOLD, width)
-    _add_line(stdscr, 2, 0, f"Question: {question}", curses.A_NORMAL, width)
-    _add_line(stdscr, 4, 0, "First Reading -> Debate -> Division", curses.A_DIM, width)
-    _add_line(stdscr, max(0, height - 2), 0, "Please wait...", curses.A_DIM, width)
-    stdscr.refresh()
-
     members, providers = build_parliament_from_config(config)
+
+    show = resolve_show_debate(cli_flag=None, config=config)
+    renderer = build_renderer(show_debate=show, mode="tui", stdscr=stdscr)
+
+    if not show:
+        # Preserve the legacy static "Please wait..." screen when the live
+        # view is opted out.
+        height, width = stdscr.getmaxyx()
+        stdscr.erase()
+        _add_line(stdscr, 0, 0, "Running Parliament", curses.A_BOLD, width)
+        _add_line(stdscr, 2, 0, f"Question: {question}", curses.A_NORMAL, width)
+        _add_line(stdscr, 4, 0, "First Reading -> Debate -> Division", curses.A_DIM, width)
+        _add_line(stdscr, max(0, height - 2), 0, "Please wait...", curses.A_DIM, width)
+        stdscr.refresh()
+
     parliament = Parliament(
         members=members,
         providers=providers,
+        on_progress=renderer.emit,
         speaker_override=speaker_override,
     )
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    return asyncio.run(parliament.ask(question))
+
+    with renderer:
+        return asyncio.run(parliament.ask(question))
 
 
 def _draw_result(

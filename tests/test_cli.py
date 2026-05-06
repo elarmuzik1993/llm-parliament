@@ -5,6 +5,12 @@ from click.testing import CliRunner
 from parliament import cli
 
 
+# Sentinel strings the live renderer prints on each phase header.
+_LIVE_FIRST_READING_MARKER = "First Reading"
+_LIVE_DEBATE_MARKER = "Debate"
+_LIVE_DIVISION_MARKER = "Division"
+
+
 def test_bare_command_launches_tui(monkeypatch):
     calls = {}
 
@@ -93,3 +99,82 @@ def test_keys_list_includes_environment_keys(monkeypatch):
     assert "environment" in result.output
     assert "sk-ant****cdef" in result.output
     assert secret not in result.output
+
+
+# ---------- ask --show-debate / --no-show-debate ----------
+
+
+def test_ask_default_shows_live_debate(monkeypatch):
+    """Default behavior (no flag, no env, no config) renders live phase headers."""
+    monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+
+    result = CliRunner().invoke(cli.main, ["ask", "--mock", "Postgres or Mongo?"])
+
+    assert result.exit_code == 0, result.output
+    # All three phase headers should appear before the final verdict.
+    assert _LIVE_FIRST_READING_MARKER in result.output
+    assert _LIVE_DEBATE_MARKER in result.output
+    assert _LIVE_DIVISION_MARKER in result.output
+    # Verdict still prints at the end.
+    assert "VERDICT" in result.output
+    # Mock provider's content should appear in the live panels.
+    assert "Mock" in result.output
+
+
+def test_ask_no_show_debate_suppresses_live_view(monkeypatch):
+    """--no-show-debate hides intermediate panels; only the verdict prints."""
+    monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--no-show-debate", "Test?"]
+    )
+
+    assert result.exit_code == 0, result.output
+    # Live phase headers should NOT appear.
+    # The "Parliament Session" and "VERDICT" rules still print, but the
+    # specific live phase markers are absent.
+    assert _LIVE_FIRST_READING_MARKER not in result.output
+    assert _LIVE_DEBATE_MARKER not in result.output
+    # Note: "Division" is also absent because the live renderer is silent.
+    assert "VERDICT" in result.output
+
+
+def test_ask_env_var_disables_live_view(monkeypatch):
+    """PARLIAMENT_SHOW_DEBATE=0 in the env suppresses the live view when no flag is set."""
+    monkeypatch.setenv("PARLIAMENT_SHOW_DEBATE", "0")
+
+    result = CliRunner().invoke(cli.main, ["ask", "--mock", "Test?"])
+
+    assert result.exit_code == 0, result.output
+    assert _LIVE_FIRST_READING_MARKER not in result.output
+    assert "VERDICT" in result.output
+
+
+def test_ask_cli_flag_overrides_env(monkeypatch):
+    """--show-debate beats PARLIAMENT_SHOW_DEBATE=0."""
+    monkeypatch.setenv("PARLIAMENT_SHOW_DEBATE", "0")
+
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--show-debate", "Test?"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert _LIVE_FIRST_READING_MARKER in result.output
+
+
+def test_ask_verbose_coexists_with_show_debate(monkeypatch):
+    """--verbose still prints the post-hoc dump; --show-debate adds the live view too."""
+    monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--verbose", "Test?"]
+    )
+
+    assert result.exit_code == 0, result.output
+    # Both the live view and the verbose post-hoc rules render.
+    assert _LIVE_FIRST_READING_MARKER in result.output
+    # The post-hoc verbose dump also draws "FIRST READING" rules — confirm we
+    # got at least two First Reading occurrences (one live, one verbose).
+    assert result.output.count("FIRST READING") + result.output.count(
+        "First Reading"
+    ) >= 2

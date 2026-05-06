@@ -91,3 +91,45 @@ def test_api_key_status_returns_not_required_for_unknown_provider():
 
     assert api_key_status("ollama") == "not required"
     assert api_key_status("mock") == "not required"
+
+
+def test_example_config_carries_display_show_debate(fresh_home):
+    """The bundled example config must surface display.show_debate so users discover the toggle."""
+    config, _ = fresh_home
+
+    cfg = config.load_config()
+
+    assert "display" in cfg, (
+        "config.example.yaml should include a `display` section to advertise --show-debate"
+    )
+    assert cfg["display"]["show_debate"] is True
+
+
+def test_user_supplied_show_debate_false_round_trips(tmp_path, monkeypatch):
+    """A user who writes show_debate: false in their YAML must see it preserved on load."""
+    monkeypatch.setattr(__import__("pathlib").Path, "home", lambda: tmp_path)
+    import parliament.config as config
+    import importlib
+    importlib.reload(config)
+
+    custom = tmp_path / "custom.yaml"
+    custom.write_text(
+        "parliament:\n"
+        "  name: Test\n"
+        "  members:\n"
+        "    - name: A\n"
+        "      provider: mock\n"
+        "      model: mock-v1\n"
+        "    - name: B\n"
+        "      provider: mock\n"
+        "      model: mock-v2\n"
+        "providers: {}\n"
+        "display:\n"
+        "  show_debate: false\n",
+        encoding="utf-8",
+    )
+
+    cfg = config.load_config(custom)
+
+    assert cfg["display"]["show_debate"] is False
+    assert config.resolve_show_debate(cli_flag=None, config=cfg) is False

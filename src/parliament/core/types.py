@@ -56,6 +56,23 @@ class Synthesis:
 
 
 @dataclass
+class ProgressEvent:
+    """An event emitted by a procedure as work happens, for live renderers.
+
+    Carries the typed payload (Response / Synthesis / error) so a renderer
+    can show actual content as it lands, not just status flags.
+    """
+
+    phase: str  # "first_reading" | "debate" | "division"
+    member_name: str
+    kind: str  # "started" | "completed" | "failed"
+    response: "Response | None" = None  # set on FR/Debate "completed"
+    synthesis: "Synthesis | None" = None  # set on Division "completed"
+    error: str | None = None  # set on "failed"
+    duration_ms: int | None = None
+
+
+@dataclass
 class Hansard:
     """Complete record of a parliamentary session."""
 

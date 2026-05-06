@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Callable
 
-from parliament.core.types import Bill, Hansard, Member
+from parliament.core.types import Bill, Hansard, Member, ProgressEvent
 from parliament.core.model_tiers import detect_gap, resolve_member_tier
 from parliament.providers.base import Provider
 from parliament.procedures.first_reading import run_first_reading
@@ -13,11 +13,11 @@ from parliament.procedures.debate import run_debate
 from parliament.procedures.division import run_division
 
 
-# (phase, member_name, status)
-ProgressCallback = Callable[[str, str, str], None]
+# Renderers receive a single ProgressEvent (phase, member, kind, payload).
+ProgressCallback = Callable[[ProgressEvent], None]
 
 
-def _noop_progress(phase: str, member: str, status: str) -> None:
+def _noop_progress(event: ProgressEvent) -> None:
     pass
 
 

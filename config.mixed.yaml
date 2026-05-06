@@ -22,3 +22,7 @@ providers:
     api_key: ${ANTHROPIC_API_KEY}
   ollama:
     base_url: http://localhost:11434/v1
+
+# Live debate view — set to false to suppress and only show the final verdict.
+display:
+  show_debate: true

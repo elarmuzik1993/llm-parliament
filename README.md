@@ -199,8 +199,11 @@ parliament doctor
 # Use mock providers for fast local testing
 parliament ask "Is this architecture too complex?" --mock
 
-# Show the full transcript before the verdict
+# Show the full transcript before the verdict (post-hoc dump)
 parliament ask "Which queue should we use?" --verbose
+
+# Hide the live debate panels and only print the final verdict
+parliament ask "Quick check?" --no-show-debate
 
 # Choose the Speaker for the final synthesis
 parliament ask "What are the main risks?" --speaker Claude
@@ -217,6 +220,27 @@ parliament --mock
 # Browse the same dashboard with a specific config
 parliament tui --config /path/to/custom-config.yaml
 ```
+
+### Live debate view
+
+By default, `parliament ask` and the curses TUI render the debate live: a
+panel pops in for each member as their analysis lands, and stage headers mark
+the transitions through First Reading → Debate → Division. This makes it
+obvious *which* model is currently working and *what* they said.
+
+The view is toggleable via three precedence-ordered sources:
+
+| Precedence | Source | Example |
+| --- | --- | --- |
+| 1 (highest) | CLI flag | `parliament ask "..." --no-show-debate` |
+| 2 | Environment variable | `PARLIAMENT_SHOW_DEBATE=0 parliament ask "..."` |
+| 3 | YAML config | `display:\n  show_debate: false` |
+| 4 (default) | Built-in | live view is **on** |
+
+`--show-debate` and `--verbose` are independent. Use `--verbose` to *also*
+print the full post-hoc transcript after the verdict (handy for piping into
+`less` or saving), while `--show-debate` controls whether the live panels
+appear during the run.
 
 TUI controls:
 
