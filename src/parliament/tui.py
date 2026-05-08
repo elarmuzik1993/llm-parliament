@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -54,6 +55,88 @@ class AppSettings:
     """User-configurable TUI settings."""
 
     save_dir: str
+
+
+@dataclass
+class SettingsScreenState:
+    """In-screen state for the Settings dialog (focus + per-field draft values).
+
+    save_dir lives in settings.json (TUI-only); show_debate lives in config.yaml
+    under display.show_debate (also read by the CLI and the live renderer).
+    """
+
+    save_dir: str
+    show_debate: bool
+    focus: str = "save_dir"  # "save_dir" | "show_debate"
+
+
+_SETTINGS_FOCUS_ORDER = ("save_dir", "show_debate")
+
+
+def _next_focus(focus: str) -> str:
+    idx = _SETTINGS_FOCUS_ORDER.index(focus)
+    return _SETTINGS_FOCUS_ORDER[(idx + 1) % len(_SETTINGS_FOCUS_ORDER)]
+
+
+def _prev_focus(focus: str) -> str:
+    idx = _SETTINGS_FOCUS_ORDER.index(focus)
+    return _SETTINGS_FOCUS_ORDER[(idx - 1) % len(_SETTINGS_FOCUS_ORDER)]
+
+
+def _init_settings_state(save_dir: str, config: dict[str, Any]) -> SettingsScreenState:
+    """Build the initial Settings-screen state from persisted sources."""
+    show_debate = bool(config.get("display", {}).get("show_debate", True))
+    return SettingsScreenState(
+        save_dir=save_dir,
+        show_debate=show_debate,
+        focus="save_dir",
+    )
+
+
+def _handle_settings_key(
+    state: SettingsScreenState, key: int
+) -> tuple[SettingsScreenState, str]:
+    """Handle a key press on the Settings screen.
+
+    Returns ``(state, action)``. ``action`` is one of:
+      - ``"continue"``: keep editing, redraw with new state
+      - ``"save"``:     persist and return to dashboard
+    Cancel is handled in the outer dispatcher (Backspace/Esc/b → dashboard).
+    """
+    if key in (curses.KEY_ENTER, 10, 13):
+        return state, "save"
+    if key in (9, curses.KEY_DOWN):  # Tab / Down
+        return dataclasses.replace(state, focus=_next_focus(state.focus)), "continue"
+    if key == curses.KEY_UP:
+        return dataclasses.replace(state, focus=_prev_focus(state.focus)), "continue"
+    if state.focus == "show_debate":
+        if key == ord(" "):
+            return dataclasses.replace(state, show_debate=not state.show_debate), "continue"
+        # Any other key on the toggle is a no-op (don't fall through to text input).
+        return state, "continue"
+    # focus == "save_dir": delegate to text-input handler
+    return dataclasses.replace(state, save_dir=_handle_text_key(state.save_dir, key)), "continue"
+
+
+def _save_show_debate(
+    runtime_config: dict[str, Any],
+    config_path: Path,
+    show_debate: bool,
+    persist: bool = True,
+) -> dict[str, Any]:
+    """Update ``display.show_debate`` in the runtime config.
+
+    When ``persist`` is True (real run, not ``--mock``), also writes the YAML
+    config on disk via :func:`save_config`, preserving any unrelated keys by
+    re-reading the current file via :func:`_load_editable_config`.
+    """
+    value = bool(show_debate)
+    if persist:
+        editable_config = _load_editable_config(config_path, runtime_config)
+        editable_config.setdefault("display", {})["show_debate"] = value
+        save_config(editable_config, config_path)
+    runtime_config.setdefault("display", {})["show_debate"] = value
+    return runtime_config
 
 
 @dataclass
@@ -262,7 +345,7 @@ def _run(
     error_message = ""
     result_message = ""
     app_settings = load_app_settings()
-    settings_input = app_settings.save_dir
+    settings_state = _init_settings_state(app_settings.save_dir, config)
     member_editor: MemberEditorState | None = None
     palette_index = 0
     members_expanded = False
@@ -340,7 +423,7 @@ def _run(
         elif screen == "error":
             _draw_error(stdscr, error_message, height, width)
         elif screen == "app_settings":
-            _draw_app_settings(stdscr, settings_input, height, width)
+            _draw_app_settings(stdscr, settings_state, height, width)
         elif screen == "api_key_input" and api_key_provider is not None:
             existing = os.environ.get(KEY_PROVIDERS[api_key_provider], "")
             _draw_api_key_input(
@@ -427,7 +510,7 @@ def _run(
                             question = ""
                         message = result.message
                         if result.open_screen == "app_settings":
-                            settings_input = app_settings.save_dir
+                            settings_state = _init_settings_state(app_settings.save_dir, config)
                             screen = "app_settings"
                         if result.open_key_input:
                             api_key_provider = result.open_key_input
@@ -463,7 +546,7 @@ def _run(
                         palette_index = 0
                     message = ""
             elif key in (ord("s"), ord("S")):
-                settings_input = app_settings.save_dir
+                settings_state = _init_settings_state(app_settings.save_dir, config)
                 screen = "app_settings"
             elif key in (curses.KEY_DOWN, ord("j")) and selected < len(settings) - 1:
                 selected += 1
@@ -694,13 +777,24 @@ def _run(
                 screen = "dashboard"
 
         elif screen == "app_settings":
-            if key in (curses.KEY_ENTER, 10, 13):
-                app_settings = AppSettings(save_dir=settings_input.strip() or str(DEFAULT_SAVE_DIR))
+            settings_state, action = _handle_settings_key(settings_state, key)
+            if action == "save":
+                app_settings = AppSettings(
+                    save_dir=settings_state.save_dir.strip() or str(DEFAULT_SAVE_DIR)
+                )
                 save_app_settings(app_settings)
-                message = f"Save directory set to {app_settings.save_dir}"
+                config = _save_show_debate(
+                    config,
+                    active_config_path,
+                    settings_state.show_debate,
+                    persist=not mock,
+                )
+                live_label = "live view ON" if settings_state.show_debate else "live view OFF"
+                if mock:
+                    message = f"Settings updated for this session ({live_label}; mock mode — not saved)."
+                else:
+                    message = f"Settings saved ({live_label}, save dir: {app_settings.save_dir})."
                 screen = "dashboard"
-            else:
-                settings_input = _handle_text_key(settings_input, key)
 
 
 def _handle_question_key(question: str, key: int) -> tuple[str, str]:
@@ -1215,14 +1309,46 @@ def _draw_error(stdscr, error_message: str, height: int, width: int) -> None:
     _add_line(stdscr, max(0, height - 2), 0, "The one-shot CLI is still available with --mock.", curses.A_DIM, width)
 
 
-def _draw_app_settings(stdscr, save_dir: str, height: int, width: int) -> None:
+def _draw_app_settings(
+    stdscr,
+    state: "SettingsScreenState",
+    height: int,
+    width: int,
+) -> None:
+    """Render the Settings screen with both fields and focus highlight."""
     _add_line(stdscr, 0, 0, "Settings", curses.A_BOLD, width)
-    _add_line(stdscr, 1, 0, "Enter: save  Ctrl+U: clear  b/Esc/backspace: cancel", curses.A_DIM, width)
+    _add_line(
+        stdscr,
+        1,
+        0,
+        "Enter: save  Tab: switch  Space: toggle  b/Esc/backspace: cancel",
+        curses.A_DIM,
+        width,
+    )
+
+    # --- Field 1: Hansard save directory ---
     _add_line(stdscr, 3, 0, "Hansard save directory", curses.A_BOLD, width)
-    value = save_dir or str(DEFAULT_SAVE_DIR)
+    value = state.save_dir or str(DEFAULT_SAVE_DIR)
     if len(value) > width - 5:
         value = value[-(width - 5):]
-    _add_line(stdscr, 4, 0, f" {value}", curses.A_REVERSE, width)
+    save_dir_attr = curses.A_REVERSE if state.focus == "save_dir" else curses.A_NORMAL
+    _add_line(stdscr, 4, 0, f" {value}", save_dir_attr, width)
+
+    # --- Field 2: Live debate view toggle ---
+    _add_line(stdscr, 6, 0, "Live debate view", curses.A_BOLD, width)
+    box = "[x]" if state.show_debate else "[ ]"
+    label = "Show debate as it happens"
+    toggle_attr = curses.A_REVERSE if state.focus == "show_debate" else curses.A_NORMAL
+    _add_line(stdscr, 7, 0, f" {box} {label}", toggle_attr, width)
+    _add_line(
+        stdscr,
+        8,
+        0,
+        "     Also: --show-debate / --no-show-debate or PARLIAMENT_SHOW_DEBATE",
+        curses.A_DIM,
+        width,
+    )
+
     _add_line(
         stdscr,
         max(0, height - 2),
