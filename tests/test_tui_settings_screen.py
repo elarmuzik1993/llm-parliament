@@ -12,11 +12,11 @@ from parliament.tui import (
     SettingsScreenState,
     _draw_app_settings,
     _handle_settings_key,
-    _save_show_debate,
+    _save_settings,
 )
 
 
-# ---------- _save_show_debate persistence ----------
+# ---------- helpers ----------
 
 
 def _write_yaml(path: Path, data: dict) -> None:
@@ -27,7 +27,24 @@ def _read_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def test_save_show_debate_writes_to_yaml_when_persist(tmp_path):
+def _state(save_dir="x", show_debate=True, hansard_level=None, focus="save_dir") -> SettingsScreenState:
+    from parliament.render.hansard import HansardLevel
+    if hansard_level is None:
+        hansard_level = HansardLevel.VERDICT
+    return SettingsScreenState(
+        save_dir=save_dir,
+        show_debate=show_debate,
+        hansard_level=hansard_level,
+        focus=focus,
+    )
+
+
+# ---------- _save_settings persistence ----------
+
+
+def test_save_settings_writes_to_yaml_when_persist(tmp_path):
+    from parliament.render.hansard import HansardLevel
+
     cfg_path = tmp_path / "config.yaml"
     runtime = {
         "parliament": {"name": "X", "members": []},
@@ -35,15 +52,23 @@ def test_save_show_debate_writes_to_yaml_when_persist(tmp_path):
     }
     _write_yaml(cfg_path, runtime)
 
-    _save_show_debate(runtime, cfg_path, show_debate=False, persist=True)
+    _save_settings(
+        runtime,
+        cfg_path,
+        show_debate=False,
+        hansard_level=HansardLevel.VERDICT,
+        persist=True,
+    )
 
     on_disk = _read_yaml(cfg_path)
     assert on_disk["display"]["show_debate"] is False
-    # runtime config also updated
+    assert on_disk["hansard"]["level"] == "verdict"
     assert runtime["display"]["show_debate"] is False
 
 
-def test_save_show_debate_preserves_other_keys(tmp_path):
+def test_save_settings_preserves_other_keys(tmp_path):
+    from parliament.render.hansard import HansardLevel
+
     cfg_path = tmp_path / "config.yaml"
     runtime = {
         "parliament": {
@@ -54,45 +79,89 @@ def test_save_show_debate_preserves_other_keys(tmp_path):
     }
     _write_yaml(cfg_path, runtime)
 
-    _save_show_debate(runtime, cfg_path, show_debate=True, persist=True)
+    _save_settings(
+        runtime,
+        cfg_path,
+        show_debate=True,
+        hansard_level=HansardLevel.FULL,
+        persist=True,
+    )
 
     on_disk = _read_yaml(cfg_path)
     assert on_disk["parliament"]["name"] == "House of AI"
     assert on_disk["parliament"]["members"][0]["name"] == "A"
     assert on_disk["providers"]["ollama"]["base_url"] == "http://localhost:11434/v1"
     assert on_disk["display"]["show_debate"] is True
+    assert on_disk["hansard"]["level"] == "full"
 
 
-def test_save_show_debate_mock_mode_does_not_write_disk(tmp_path):
+def test_save_settings_mock_mode_does_not_write_disk(tmp_path):
     cfg_path = tmp_path / "config.yaml"
     runtime = {"parliament": {"name": "Mock", "members": []}, "providers": {}}
-    # File does NOT exist on disk — mock mode shouldn't create one
-    _save_show_debate(runtime, cfg_path, show_debate=False, persist=False)
 
-    assert not cfg_path.exists(), "mock mode must not write to disk"
-    # but runtime is updated for the current session
+    from parliament.render.hansard import HansardLevel
+
+    _save_settings(
+        runtime,
+        cfg_path,
+        show_debate=False,
+        hansard_level=HansardLevel.MINIMAL,
+        persist=False,
+    )
+
+    assert not cfg_path.exists()
     assert runtime["display"]["show_debate"] is False
+    assert runtime["hansard"]["level"] == "minimal"
 
 
-def test_save_show_debate_overwrites_existing_value(tmp_path):
+def test_save_settings_overwrites_existing_values(tmp_path):
+    from parliament.render.hansard import HansardLevel
+
     cfg_path = tmp_path / "config.yaml"
     runtime = {
         "parliament": {"name": "X", "members": []},
         "providers": {},
         "display": {"show_debate": True},
+        "hansard": {"level": "minimal"},
     }
     _write_yaml(cfg_path, runtime)
 
-    _save_show_debate(runtime, cfg_path, show_debate=False, persist=True)
+    _save_settings(
+        runtime,
+        cfg_path,
+        show_debate=False,
+        hansard_level=HansardLevel.ARCHIVE,
+        persist=True,
+    )
 
-    assert _read_yaml(cfg_path)["display"]["show_debate"] is False
+    on_disk = _read_yaml(cfg_path)
+    assert on_disk["display"]["show_debate"] is False
+    assert on_disk["hansard"]["level"] == "archive"
+
+
+def test_save_settings_writes_both_show_debate_and_hansard_level(tmp_path):
+    cfg_path = tmp_path / "config.yaml"
+    runtime = {"parliament": {"name": "X", "members": []}, "providers": {}}
+    _write_yaml(cfg_path, runtime)
+
+    from parliament.render.hansard import HansardLevel
+
+    _save_settings(
+        runtime,
+        cfg_path,
+        show_debate=False,
+        hansard_level=HansardLevel.ARCHIVE,
+        persist=True,
+    )
+
+    on_disk = _read_yaml(cfg_path)
+    assert on_disk["display"]["show_debate"] is False
+    assert on_disk["hansard"]["level"] == "archive"
+    assert runtime["display"]["show_debate"] is False
+    assert runtime["hansard"]["level"] == "archive"
 
 
 # ---------- _handle_settings_key — focus + toggle + save ----------
-
-
-def _state(save_dir="x", show_debate=True, focus="save_dir") -> SettingsScreenState:
-    return SettingsScreenState(save_dir=save_dir, show_debate=show_debate, focus=focus)
 
 
 def test_enter_returns_save_action():
@@ -102,29 +171,61 @@ def test_enter_returns_save_action():
     assert new == s
 
 
-def test_tab_cycles_focus_save_dir_to_show_debate():
-    s = _state(focus="save_dir")
-    new, action = _handle_settings_key(s, 9)  # Tab
-    assert action == "continue"
-    assert new.focus == "show_debate"
-
-
-def test_tab_cycles_focus_show_debate_to_save_dir():
-    s = _state(focus="show_debate")
-    new, _ = _handle_settings_key(s, 9)
-    assert new.focus == "save_dir"
+def test_tab_cycles_through_three_fields():
+    s1 = _state(focus="save_dir")
+    s2, _ = _handle_settings_key(s1, 9)
+    assert s2.focus == "hansard_level"
+    s3, _ = _handle_settings_key(s2, 9)
+    assert s3.focus == "show_debate"
+    s4, _ = _handle_settings_key(s3, 9)
+    assert s4.focus == "save_dir"
 
 
 def test_down_arrow_cycles_focus():
     s = _state(focus="save_dir")
     new, _ = _handle_settings_key(s, curses.KEY_DOWN)
-    assert new.focus == "show_debate"
+    assert new.focus == "hansard_level"
 
 
 def test_up_arrow_cycles_focus_backwards():
     s = _state(focus="show_debate")
     new, _ = _handle_settings_key(s, curses.KEY_UP)
-    assert new.focus == "save_dir"
+    assert new.focus == "hansard_level"
+
+
+def test_right_arrow_cycles_hansard_level_forward():
+    from parliament.render.hansard import HansardLevel
+    s = _state(focus="hansard_level")  # default level=VERDICT
+    s, _ = _handle_settings_key(s, curses.KEY_RIGHT)
+    assert s.hansard_level is HansardLevel.ARCHIVE
+    s, _ = _handle_settings_key(s, curses.KEY_RIGHT)
+    assert s.hansard_level is HansardLevel.FULL
+    s, _ = _handle_settings_key(s, curses.KEY_RIGHT)
+    assert s.hansard_level is HansardLevel.MINIMAL  # wraps
+
+
+def test_left_arrow_cycles_hansard_level_backward():
+    from parliament.render.hansard import HansardLevel
+    s = _state(focus="hansard_level")
+    s, _ = _handle_settings_key(s, curses.KEY_LEFT)
+    assert s.hansard_level is HansardLevel.MINIMAL  # wraps from VERDICT
+
+
+def test_space_on_hansard_field_cycles_forward():
+    """Space behaves the same as right arrow when the level field is focused."""
+    from parliament.render.hansard import HansardLevel
+    s = _state(focus="hansard_level")
+    s, _ = _handle_settings_key(s, ord(" "))
+    assert s.hansard_level is HansardLevel.ARCHIVE
+
+
+def test_arrows_on_save_dir_field_dont_cycle_level():
+    """Left/Right arrows on save_dir should be a no-op (text fields don't cycle)."""
+    from parliament.render.hansard import HansardLevel
+    s = _state(focus="save_dir")  # default level=VERDICT
+    s, _ = _handle_settings_key(s, curses.KEY_RIGHT)
+    assert s.hansard_level is HansardLevel.VERDICT  # unchanged
+    assert s.focus == "save_dir"
 
 
 def test_space_toggles_show_debate_when_focused_on_toggle():
@@ -214,21 +315,23 @@ def test_settings_screen_renders_toggle_state_off():
 
 
 def test_settings_screen_focus_highlights_save_dir_row():
-    """When focus=save_dir, the save_dir value row (y=4) is reversed; toggle row (y=7) is not."""
+    """When focus=save_dir, the save_dir value row (y=4) is reversed; other field rows are not."""
     scr = _FakeStdscr()
     _draw_app_settings(scr, _state(save_dir="/tmp/h", focus="save_dir"), 24, 80)
     by_y = {y: attr for y, _, _, attr in scr.lines}
     assert by_y[4] & curses.A_REVERSE
-    assert not (by_y[7] & curses.A_REVERSE)
+    assert not (by_y[7] & curses.A_REVERSE)   # hansard_level row
+    assert not (by_y[11] & curses.A_REVERSE)  # show_debate row
 
 
 def test_settings_screen_focus_highlights_toggle_row():
-    """When focus=show_debate, the toggle row (y=7) is reversed; save_dir row (y=4) is not."""
+    """When focus=show_debate, the toggle row (y=11) is reversed; others not."""
     scr = _FakeStdscr()
     _draw_app_settings(scr, _state(save_dir="/tmp/h", focus="show_debate"), 24, 80)
     by_y = {y: attr for y, _, _, attr in scr.lines}
-    assert by_y[7] & curses.A_REVERSE
+    assert by_y[11] & curses.A_REVERSE
     assert not (by_y[4] & curses.A_REVERSE)
+    assert not (by_y[7] & curses.A_REVERSE)
 
 
 def test_settings_screen_help_line_mentions_toggle_keys():
@@ -240,7 +343,69 @@ def test_settings_screen_help_line_mentions_toggle_keys():
     assert "space" in body or "toggle" in body
 
 
+def test_settings_screen_renders_hansard_level_cycle(make_hansard=None):
+    """Settings screen draws the level cycle widget with current bracketed."""
+    from parliament.render.hansard import HansardLevel
+    scr = _FakeStdscr()
+    state = _state(hansard_level=HansardLevel.VERDICT, focus="hansard_level")
+    _draw_app_settings(scr, state, 24, 80)
+    body = scr.text()
+    # All four levels appear inline; current is bracketed.
+    assert "minimal" in body
+    assert "[verdict]" in body
+    assert "archive" in body
+    assert "full" in body
+
+
+def test_settings_screen_focus_highlights_hansard_level_row():
+    from parliament.render.hansard import HansardLevel
+    scr = _FakeStdscr()
+    _draw_app_settings(
+        scr,
+        _state(hansard_level=HansardLevel.VERDICT, focus="hansard_level"),
+        24,
+        80,
+    )
+    by_y = {y: attr for y, _, _, attr in scr.lines}
+    # The level value row is reversed when focused; save_dir row is not.
+    # (Find the y position by looking for the bracketed level token.)
+    level_row_y = next(
+        y for y, _, t, _ in scr.lines if "[verdict]" in t
+    )
+    assert by_y[level_row_y] & curses.A_REVERSE
+
+
+def test_settings_screen_renders_each_level_bracketed_in_turn():
+    from parliament.render.hansard import HansardLevel
+    for lvl in (HansardLevel.MINIMAL, HansardLevel.VERDICT, HansardLevel.ARCHIVE, HansardLevel.FULL):
+        scr = _FakeStdscr()
+        _draw_app_settings(scr, _state(hansard_level=lvl), 24, 80)
+        body = scr.text()
+        assert f"[{lvl.value}]" in body
+        # Other three levels appear without brackets
+        for other in (HansardLevel.MINIMAL, HansardLevel.VERDICT, HansardLevel.ARCHIVE, HansardLevel.FULL):
+            if other is lvl:
+                continue
+            assert f"[{other.value}]" not in body
+            assert other.value in body  # but the bare name still appears
+
+
 # ---------- Integration: settings round-trip via TUI helper ----------
+
+
+def test_settings_state_includes_hansard_level():
+    from parliament.render.hansard import HansardLevel
+    state = tui_mod._init_settings_state(save_dir="/tmp/x", config={})
+    assert state.hansard_level is HansardLevel.VERDICT  # default
+
+
+def test_settings_state_loads_hansard_level_from_config():
+    from parliament.render.hansard import HansardLevel
+    state = tui_mod._init_settings_state(
+        save_dir="/tmp/x",
+        config={"hansard": {"level": "archive"}},
+    )
+    assert state.hansard_level is HansardLevel.ARCHIVE
 
 
 def test_settings_state_initializes_from_config_show_debate_true():

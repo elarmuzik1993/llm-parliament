@@ -77,36 +77,48 @@ def test_app_settings_round_trip(monkeypatch, tmp_path):
     assert json.loads(settings_file.read_text()) == {"save_dir": str(tmp_path / "hansards")}
 
 
-def test_save_hansard_writes_markdown(monkeypatch, tmp_path):
-    hansard = Hansard(
-        bill=Bill(content="Should we use PostgreSQL?"),
-        members=[
-            Member(name="A", provider_name="mock", model="mock-v1", tier=3),
-            Member(name="B", provider_name="mock", model="mock-v2", tier=3),
-        ],
-        first_reading=[Response(member_name="A", content="yes", phase="first_reading")],
-        debate=[Response(member_name="B", content="agree", phase="debate")],
-        synthesis=Synthesis(
-            speaker_name="A",
-            consensus="Use PostgreSQL.",
-            recommendation="Proceed.",
-        ),
-    )
+def test_save_hansard_writes_verdict_level_by_default(make_hansard, tmp_path):
+    """Without an explicit level, save_hansard defaults to VERDICT (compact)."""
+    from parliament.render.hansard import HansardLevel
 
-    path = save_hansard(hansard, str(tmp_path / "responses"))
+    hansard = make_hansard()
+    path = save_hansard(hansard, str(tmp_path), level=HansardLevel.VERDICT)
 
-    assert path.parent == tmp_path / "responses"
-    assert path.suffix == ".md"
-    assert path.exists()
-    content = path.read_text()
-    assert "type: parliament-hansard" in content
-    assert "# Should we use PostgreSQL?" in content
-    assert "## Question" in content
-    assert "Should we use PostgreSQL?" in content
-    assert "### Recommendation" in content
-    assert "Proceed." in content
-    assert "## First Reading" in content
-    assert "## Debate" in content
+    text = path.read_text(encoding="utf-8")
+    assert "# Should we use Postgres or MongoDB?" in text
+    # All four callouts present at verdict level
+    assert "> [!info] Consensus" in text
+    assert "> [!warning] Split" in text
+    assert "> [!danger] Risks" in text
+    assert "> [!success] Recommendation" in text
+    # No frontmatter, no transcripts
+    assert not text.startswith("---")
+    assert "## First Reading" not in text
+
+
+def test_save_hansard_writes_full_level_with_transcripts(make_hansard, tmp_path):
+    from parliament.render.hansard import HansardLevel
+
+    hansard = make_hansard()
+    path = save_hansard(hansard, str(tmp_path), level=HansardLevel.FULL)
+
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n")  # frontmatter
+    assert "## First Reading" in text
+    assert "## Debate" in text
+    assert "## Session" in text
+
+
+def test_save_hansard_filename_includes_slug_and_id_prefix(make_hansard, tmp_path):
+    from parliament.render.hansard import HansardLevel
+
+    hansard = make_hansard()
+    path = save_hansard(hansard, str(tmp_path), level=HansardLevel.VERDICT)
+
+    name = path.name
+    # Format: YYYYMMDD-HHMMSS-slug-shortid.md
+    assert name.endswith(".md")
+    assert hansard.id[:8] in name
 
 
 def test_member_edit_updates_active_config(tmp_path):

@@ -24,10 +24,12 @@ from parliament.config import (
     api_key_status,
     build_parliament_from_config,
     load_keys,
+    resolve_hansard_level,
     resolve_show_debate,
     save_config,
     save_key,
 )
+from parliament.render.hansard import HansardLevel
 from parliament.core.model_tiers import get_tier, get_tier_label
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
@@ -61,16 +63,24 @@ class AppSettings:
 class SettingsScreenState:
     """In-screen state for the Settings dialog (focus + per-field draft values).
 
-    save_dir lives in settings.json (TUI-only); show_debate lives in config.yaml
-    under display.show_debate (also read by the CLI and the live renderer).
+    save_dir lives in settings.json (TUI-only); show_debate and
+    hansard.level live in config.yaml.
     """
 
     save_dir: str
     show_debate: bool
-    focus: str = "save_dir"  # "save_dir" | "show_debate"
+    hansard_level: "HansardLevel"
+    focus: str = "save_dir"  # "save_dir" | "hansard_level" | "show_debate"
 
 
-_SETTINGS_FOCUS_ORDER = ("save_dir", "show_debate")
+_SETTINGS_FOCUS_ORDER = ("save_dir", "hansard_level", "show_debate")
+
+_HANSARD_LEVEL_CYCLE = (
+    HansardLevel.MINIMAL,
+    HansardLevel.VERDICT,
+    HansardLevel.ARCHIVE,
+    HansardLevel.FULL,
+)
 
 
 def _next_focus(focus: str) -> str:
@@ -86,11 +96,20 @@ def _prev_focus(focus: str) -> str:
 def _init_settings_state(save_dir: str, config: dict[str, Any]) -> SettingsScreenState:
     """Build the initial Settings-screen state from persisted sources."""
     show_debate = bool(config.get("display", {}).get("show_debate", True))
+    raw_level = (config.get("hansard") or {}).get("level")
+    hansard_level = HansardLevel.parse(raw_level)
     return SettingsScreenState(
         save_dir=save_dir,
         show_debate=show_debate,
+        hansard_level=hansard_level,
         focus="save_dir",
     )
+
+
+def _cycle_hansard_level(current: HansardLevel, direction: int) -> HansardLevel:
+    """Advance through the level cycle by `direction` (±1) with wrap-around."""
+    idx = _HANSARD_LEVEL_CYCLE.index(current)
+    return _HANSARD_LEVEL_CYCLE[(idx + direction) % len(_HANSARD_LEVEL_CYCLE)]
 
 
 def _handle_settings_key(
@@ -101,7 +120,7 @@ def _handle_settings_key(
     Returns ``(state, action)``. ``action`` is one of:
       - ``"continue"``: keep editing, redraw with new state
       - ``"save"``:     persist and return to dashboard
-    Cancel is handled in the outer dispatcher (Backspace/Esc/b → dashboard).
+    Cancel (Backspace/Esc/b) is handled in the outer dispatcher.
     """
     if key in (curses.KEY_ENTER, 10, 13):
         return state, "save"
@@ -109,33 +128,47 @@ def _handle_settings_key(
         return dataclasses.replace(state, focus=_next_focus(state.focus)), "continue"
     if key == curses.KEY_UP:
         return dataclasses.replace(state, focus=_prev_focus(state.focus)), "continue"
+    if state.focus == "hansard_level":
+        if key in (curses.KEY_RIGHT, ord(" ")):
+            new_level = _cycle_hansard_level(state.hansard_level, +1)
+            return dataclasses.replace(state, hansard_level=new_level), "continue"
+        if key == curses.KEY_LEFT:
+            new_level = _cycle_hansard_level(state.hansard_level, -1)
+            return dataclasses.replace(state, hansard_level=new_level), "continue"
+        return state, "continue"  # other keys are no-ops on the level field
     if state.focus == "show_debate":
         if key == ord(" "):
             return dataclasses.replace(state, show_debate=not state.show_debate), "continue"
-        # Any other key on the toggle is a no-op (don't fall through to text input).
         return state, "continue"
     # focus == "save_dir": delegate to text-input handler
     return dataclasses.replace(state, save_dir=_handle_text_key(state.save_dir, key)), "continue"
 
 
-def _save_show_debate(
+def _save_settings(
     runtime_config: dict[str, Any],
     config_path: Path,
+    *,
     show_debate: bool,
+    hansard_level: "HansardLevel",
     persist: bool = True,
 ) -> dict[str, Any]:
-    """Update ``display.show_debate`` in the runtime config.
+    """Persist Settings-screen state to YAML config (skipped in mock mode).
 
-    When ``persist`` is True (real run, not ``--mock``), also writes the YAML
-    config on disk via :func:`save_config`, preserving any unrelated keys by
-    re-reading the current file via :func:`_load_editable_config`.
+    Writes both ``display.show_debate`` and ``hansard.level`` in one
+    round-trip via ``_load_editable_config`` + ``save_config`` so that
+    unrelated YAML keys (e.g. members, providers) are preserved.
     """
-    value = bool(show_debate)
+    show_value = bool(show_debate)
+    level_value = hansard_level.value
+
     if persist:
         editable_config = _load_editable_config(config_path, runtime_config)
-        editable_config.setdefault("display", {})["show_debate"] = value
+        editable_config.setdefault("display", {})["show_debate"] = show_value
+        editable_config.setdefault("hansard", {})["level"] = level_value
         save_config(editable_config, config_path)
-    runtime_config.setdefault("display", {})["show_debate"] = value
+
+    runtime_config.setdefault("display", {})["show_debate"] = show_value
+    runtime_config.setdefault("hansard", {})["level"] = level_value
     return runtime_config
 
 
@@ -346,6 +379,7 @@ def _run(
     result_message = ""
     app_settings = load_app_settings()
     settings_state = _init_settings_state(app_settings.save_dir, config)
+    resolved_level = resolve_hansard_level(cli_flag=None, config=config)
     member_editor: MemberEditorState | None = None
     palette_index = 0
     members_expanded = False
@@ -529,7 +563,7 @@ def _run(
                             question = ""
                             result_top = 0
                             try:
-                                saved_path = save_hansard(hansard, app_settings.save_dir)
+                                saved_path = save_hansard(hansard, app_settings.save_dir, level=resolved_level)
                                 result_message = f"Auto-saved to {saved_path}"
                             except OSError as exc:
                                 result_message = f"Auto-save failed: {exc}"
@@ -769,7 +803,7 @@ def _run(
                 # Auto-save already ran; only retry when it failed.
                 if not result_message.startswith("Auto-saved"):
                     try:
-                        saved_path = save_hansard(hansard, app_settings.save_dir)
+                        saved_path = save_hansard(hansard, app_settings.save_dir, level=resolved_level)
                         result_message = f"Saved to {saved_path}"
                     except OSError as exc:
                         result_message = f"Save failed: {exc}"
@@ -783,17 +817,19 @@ def _run(
                     save_dir=settings_state.save_dir.strip() or str(DEFAULT_SAVE_DIR)
                 )
                 save_app_settings(app_settings)
-                config = _save_show_debate(
+                config = _save_settings(
                     config,
                     active_config_path,
-                    settings_state.show_debate,
+                    show_debate=settings_state.show_debate,
+                    hansard_level=settings_state.hansard_level,
                     persist=not mock,
                 )
                 live_label = "live view ON" if settings_state.show_debate else "live view OFF"
+                level_label = settings_state.hansard_level.value
                 if mock:
-                    message = f"Settings updated for this session ({live_label}; mock mode — not saved)."
+                    message = f"Settings updated for this session ({live_label} · level: {level_label}; mock mode — not saved)."
                 else:
-                    message = f"Settings saved ({live_label}, save dir: {app_settings.save_dir})."
+                    message = f"Settings saved ({live_label} · level: {level_label}, save dir: {app_settings.save_dir})."
                 screen = "dashboard"
 
 
@@ -1315,13 +1351,13 @@ def _draw_app_settings(
     height: int,
     width: int,
 ) -> None:
-    """Render the Settings screen with both fields and focus highlight."""
+    """Render the Settings screen with three fields and focus highlight."""
     _add_line(stdscr, 0, 0, "Settings", curses.A_BOLD, width)
     _add_line(
         stdscr,
         1,
         0,
-        "Enter: save  Tab: switch  Space: toggle  b/Esc/backspace: cancel",
+        "Enter: save  Tab: switch  Space: toggle  ←/→: cycle  b/Esc/backspace: cancel",
         curses.A_DIM,
         width,
     )
@@ -1334,15 +1370,32 @@ def _draw_app_settings(
     save_dir_attr = curses.A_REVERSE if state.focus == "save_dir" else curses.A_NORMAL
     _add_line(stdscr, 4, 0, f" {value}", save_dir_attr, width)
 
-    # --- Field 2: Live debate view toggle ---
-    _add_line(stdscr, 6, 0, "Live debate view", curses.A_BOLD, width)
-    box = "[x]" if state.show_debate else "[ ]"
-    label = "Show debate as it happens"
-    toggle_attr = curses.A_REVERSE if state.focus == "show_debate" else curses.A_NORMAL
-    _add_line(stdscr, 7, 0, f" {box} {label}", toggle_attr, width)
+    # --- Field 2: Hansard detail level ---
+    _add_line(stdscr, 6, 0, "Hansard detail level", curses.A_BOLD, width)
+    cycle_text = " · ".join(
+        f"[{lvl.value}]" if lvl is state.hansard_level else lvl.value
+        for lvl in _HANSARD_LEVEL_CYCLE
+    )
+    level_attr = curses.A_REVERSE if state.focus == "hansard_level" else curses.A_NORMAL
+    _add_line(stdscr, 7, 0, f" {cycle_text}", level_attr, width)
     _add_line(
         stdscr,
         8,
+        0,
+        "     minimal: rec only · verdict: + 4-part synthesis · archive: + frontmatter+footer · full: + transcripts",
+        curses.A_DIM,
+        width,
+    )
+
+    # --- Field 3: Live debate view toggle ---
+    _add_line(stdscr, 10, 0, "Live debate view", curses.A_BOLD, width)
+    box = "[x]" if state.show_debate else "[ ]"
+    label = "Show debate as it happens"
+    toggle_attr = curses.A_REVERSE if state.focus == "show_debate" else curses.A_NORMAL
+    _add_line(stdscr, 11, 0, f" {box} {label}", toggle_attr, width)
+    _add_line(
+        stdscr,
+        12,
         0,
         "     Also: --show-debate / --no-show-debate or PARLIAMENT_SHOW_DEBATE",
         curses.A_DIM,
@@ -1359,74 +1412,25 @@ def _draw_app_settings(
     )
 
 
-def save_hansard(hansard: Hansard, save_dir: str) -> Path:
-    """Save a Hansard Markdown file into the configured local directory."""
+def save_hansard(
+    hansard: Hansard,
+    save_dir: str,
+    *,
+    level: "HansardLevel | None" = None,
+) -> Path:
+    """Save a Hansard Markdown file at the given level (defaults to VERDICT)."""
+    from parliament.render.hansard import HansardLevel as _HL, render_markdown
+
+    resolved_level = level if level is not None else _HL.VERDICT
+
     directory = Path(save_dir).expanduser()
     directory.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     slug = _slugify(hansard.bill.title or hansard.bill.content)
     path = directory / f"{timestamp}-{slug}-{hansard.id[:8]}.md"
-    path.write_text(_hansard_markdown(hansard), encoding="utf-8")
+    path.write_text(render_markdown(hansard, resolved_level), encoding="utf-8")
     return path
-
-
-def _hansard_markdown(hansard: Hansard) -> str:
-    synthesis = hansard.synthesis
-    duration = hansard.duration_ms / 1000
-    calls = len(hansard.members) * 2 + 1
-    members = ", ".join(f"{m.name} ({m.provider_name}/{m.model})" for m in hansard.members)
-
-    lines = [
-        "---",
-        f"id: {hansard.id}",
-        f"created_at: {hansard.created_at}",
-        "type: parliament-hansard",
-        "---",
-        "",
-        f"# {hansard.bill.title}",
-        "",
-        "## Question",
-        "",
-        hansard.bill.content,
-        "",
-        "## Verdict",
-        "",
-    ]
-
-    for heading, value in (
-        ("Consensus", synthesis.consensus),
-        ("Split", synthesis.split),
-        ("Risks", synthesis.risks),
-        ("Recommendation", synthesis.recommendation),
-    ):
-        if value:
-            lines.extend([f"### {heading}", "", value, ""])
-
-    lines.extend([
-        "## First Reading",
-        "",
-    ])
-    for response in hansard.first_reading:
-        lines.extend([f"### {response.member_name}", "", response.content, ""])
-
-    lines.extend([
-        "## Debate",
-        "",
-    ])
-    for response in hansard.debate:
-        lines.extend([f"### {response.member_name}", "", response.content, ""])
-
-    lines.extend([
-        "## Session",
-        "",
-        f"- Speaker: {synthesis.speaker_name}",
-        f"- Members: {members}",
-        f"- Calls: {calls}",
-        f"- Duration: {duration:.1f}s",
-        "",
-    ])
-    return "\n".join(lines)
 
 
 def _slugify(value: str) -> str:
