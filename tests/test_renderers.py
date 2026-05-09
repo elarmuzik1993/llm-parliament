@@ -1,4 +1,4 @@
-"""Renderer protocol — context-manager lifecycle and silent fallback."""
+"""Renderer protocol — context-manager lifecycle and live status behavior."""
 
 from __future__ import annotations
 
@@ -43,9 +43,10 @@ def test_silent_renderer_emit_produces_nothing():
 # ---------- build_renderer factory ----------
 
 
-def test_build_renderer_returns_silent_when_off():
+def test_build_renderer_returns_rich_status_when_off():
     r = build_renderer(show_debate=False, mode="cli", console=Console())
-    assert isinstance(r, SilentRenderer)
+    assert isinstance(r, RichLiveRenderer)
+    assert r._show_responses is False
 
 
 def test_build_renderer_returns_rich_for_cli_when_on():

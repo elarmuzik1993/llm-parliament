@@ -14,6 +14,7 @@ class FakeStdscr:
         self._h = height
         self._w = width
         self.lines: list[tuple[int, int, str]] = []
+        self.attr_lines: list[tuple[int, int, str, int]] = []
         self.refresh_count = 0
         self.erase_count = 0
 
@@ -23,15 +24,18 @@ class FakeStdscr:
     def erase(self) -> None:
         self.erase_count += 1
         self.lines = []  # erase resets the captured screen
+        self.attr_lines = []
 
     def refresh(self) -> None:
         self.refresh_count += 1
 
     def addnstr(self, y: int, x: int, text: str, n: int, attr: int = 0) -> None:
         self.lines.append((y, x, text[:n]))
+        self.attr_lines.append((y, x, text[:n], attr))
 
     def addstr(self, y: int, x: int, text: str, attr: int = 0) -> None:
         self.lines.append((y, x, text))
+        self.attr_lines.append((y, x, text, attr))
 
     def all_text(self) -> str:
         return "\n".join(t for _, _, t in self.lines)
@@ -64,6 +68,52 @@ def test_curses_renderer_shows_phase_label_and_member_on_started():
     text = s.all_text()
     assert "First Reading" in text
     assert "Alpha" in text
+    assert "thinking" in text
+    assert "0.0s" in text
+
+
+def test_curses_renderer_started_row_uses_spinner_and_elapsed(monkeypatch):
+    import parliament.render.tui_live as mod
+
+    fake_now = [1000.0]
+    monkeypatch.setattr(mod.time, "monotonic", lambda: fake_now[0])
+
+    s = FakeStdscr()
+    r = CursesLiveRenderer(stdscr=s)
+    with r:
+        r.emit(ProgressEvent(phase="first_reading", member_name="Alpha", kind="started"))
+        fake_now[0] = 1005.2
+        r._redraw()
+
+    text = s.all_text()
+    assert "thinking" in text
+    assert "5.2s" in text
+    assert any(frame in text for frame in mod._SPINNER_FRAMES)
+
+
+def test_curses_renderer_can_suppress_response_content():
+    s = FakeStdscr()
+    r = CursesLiveRenderer(stdscr=s, show_responses=False)
+    response = Response(
+        member_name="Alpha",
+        content="The hidden live panel content.",
+        phase="first_reading",
+        duration_ms=500,
+    )
+    with r:
+        r.emit(ProgressEvent(phase="first_reading", member_name="Alpha", kind="started"))
+        r.emit(
+            ProgressEvent(
+                phase="first_reading",
+                member_name="Alpha",
+                kind="completed",
+                response=response,
+                duration_ms=500,
+            )
+        )
+    text = s.all_text()
+    assert "Alpha" in text
+    assert "The hidden live panel content." not in text
 
 
 def test_curses_renderer_shows_response_content_on_completed():

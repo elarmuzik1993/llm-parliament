@@ -160,6 +160,32 @@ def test_completed_event_still_prints_response_panel(recording_console):
     assert "case for Postgres" in output
 
 
+def test_completed_event_can_hide_response_panel(recording_console):
+    """No-show-debate mode keeps status events but omits intermediate response panels."""
+    console, _ = recording_console
+    r = RichLiveRenderer(console=console, show_responses=False)
+    response = Response(
+        member_name="Alpha",
+        content="This intermediate answer should stay hidden.",
+        phase="first_reading",
+        duration_ms=2300,
+    )
+    with r:
+        r.emit(ProgressEvent(phase="first_reading", member_name="Alpha", kind="started"))
+        r.emit(
+            ProgressEvent(
+                phase="first_reading",
+                member_name="Alpha",
+                kind="completed",
+                response=response,
+                duration_ms=2300,
+            )
+        )
+    output = recording_console[1].getvalue()
+    assert "First Reading" in output
+    assert "This intermediate answer should stay hidden." not in output
+
+
 # ---------- TTY-aware lifecycle ----------
 
 

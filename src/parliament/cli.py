@@ -180,11 +180,11 @@ def ask(
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         with renderer:
-            if show:
+            try:
                 hansard = asyncio.run(p.ask(question))
-            else:
-                with console.status("[bold]First Reading...[/bold]"):
-                    hansard = asyncio.run(p.ask(question))
+            except KeyboardInterrupt:
+                console.print("[yellow]Debate cancelled.[/yellow]")
+                raise SystemExit(130)
 
         render_terminal(hansard, level, console)
 

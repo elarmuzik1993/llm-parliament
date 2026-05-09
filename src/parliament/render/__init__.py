@@ -3,7 +3,7 @@
 The DebateRenderer protocol decouples Parliament.ask from any specific UI.
 Concrete implementations:
 
-  - SilentRenderer:    no-op, used when --no-show-debate.
+  - SilentRenderer:    no-op fallback for callers that explicitly need one.
   - RichLiveRenderer:  Rich-based, used by the `parliament ask` CLI command.
   - CursesLiveRenderer: curses-based, used by the interactive TUI.
 
@@ -56,15 +56,17 @@ def build_renderer(
     """Pick the right renderer for the active interface.
 
     mode: "cli" (Rich) | "tui" (curses).
+
+    ``show_debate`` controls whether completed response panels are shown.
+    The live progress status itself stays on for CLI/TUI runs so users always
+    see spinner and elapsed-time feedback while providers are blocking.
     """
-    if not show_debate:
-        return SilentRenderer()
     if mode == "cli":
         from parliament.render.cli_live import RichLiveRenderer
-        return RichLiveRenderer(console=console)
+        return RichLiveRenderer(console=console, show_responses=show_debate)
     if mode == "tui":
         from parliament.render.tui_live import CursesLiveRenderer
-        return CursesLiveRenderer(stdscr=stdscr)
+        return CursesLiveRenderer(stdscr=stdscr, show_responses=show_debate)
     raise ValueError(f"Unknown renderer mode: {mode!r} (expected 'cli' or 'tui')")
 
 

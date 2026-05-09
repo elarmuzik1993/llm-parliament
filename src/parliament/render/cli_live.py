@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from threading import Event, RLock, Thread
 from typing import Any
 
 from rich.console import Console, Group, RenderableType
@@ -55,12 +56,16 @@ class RichLiveRenderer(DebateRenderer):
     progress signal during blocking LLM calls.
     """
 
-    def __init__(self, console: Console | None = None) -> None:
+    def __init__(self, console: Console | None = None, show_responses: bool = True) -> None:
         self._console = console or Console()
+        self._show_responses = show_responses
         self._announced_stages: set[str] = set()
         self._member_color: dict[str, str] = {}
         self._pending: dict[str, _PendingMember] = {}
         self._live: Live | None = None
+        self._lock = RLock()
+        self._stop_refresh = Event()
+        self._refresh_thread: Thread | None = None
 
     # ---- DebateRenderer lifecycle ----
 
@@ -68,6 +73,7 @@ class RichLiveRenderer(DebateRenderer):
         # Only engage Rich Live on a real TTY. On pipes / test buffers / dumb
         # terminals, Live's animation either does nothing or corrupts output.
         if self._console.is_terminal:
+            self._stop_refresh.clear()
             self._live = Live(
                 self._render_pending(),
                 console=self._console,
@@ -76,9 +82,19 @@ class RichLiveRenderer(DebateRenderer):
                 auto_refresh=True,
             )
             self._live.__enter__()
+            self._refresh_thread = Thread(
+                target=self._refresh_loop,
+                name="parliament-rich-live-refresh",
+                daemon=True,
+            )
+            self._refresh_thread.start()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self._stop_refresh.set()
+        if self._refresh_thread is not None:
+            self._refresh_thread.join(timeout=0.5)
+            self._refresh_thread = None
         if self._live is not None:
             try:
                 self._live.__exit__(exc_type, exc_val, exc_tb)
@@ -94,17 +110,19 @@ class RichLiveRenderer(DebateRenderer):
             color = self._color_for(event.member_name)
 
             if event.kind == "started":
-                self._pending[event.member_name] = _PendingMember(
-                    name=event.member_name,
-                    color=color,
-                    phase=event.phase,
-                    start_ts=time.monotonic(),
-                )
+                with self._lock:
+                    self._pending[event.member_name] = _PendingMember(
+                        name=event.member_name,
+                        color=color,
+                        phase=event.phase,
+                        start_ts=time.monotonic(),
+                    )
                 self._refresh_live()
                 return
 
             if event.kind == "completed":
-                self._pending.pop(event.member_name, None)
+                with self._lock:
+                    self._pending.pop(event.member_name, None)
                 duration = (
                     f" [dim]({event.duration_ms / 1000:.1f}s)[/dim]"
                     if event.duration_ms is not None
@@ -125,12 +143,14 @@ class RichLiveRenderer(DebateRenderer):
                     self._refresh_live()
                     return
 
-                self._console.print(panel)
+                if self._show_responses:
+                    self._console.print(panel)
                 self._refresh_live()
                 return
 
             if event.kind == "failed":
-                self._pending.pop(event.member_name, None)
+                with self._lock:
+                    self._pending.pop(event.member_name, None)
                 error = event.error or "unknown error"
                 self._console.print(
                     Panel(
@@ -164,20 +184,29 @@ class RichLiveRenderer(DebateRenderer):
         if self._live is not None:
             self._live.update(self._render_pending())
 
+    def _refresh_loop(self) -> None:
+        while not self._stop_refresh.wait(0.1):
+            try:
+                self._refresh_live()
+            except Exception:  # pragma: no cover - background status must be best-effort
+                return
+
     def _render_pending(self) -> RenderableType:
         """Build the renderable shown inside the Live region.
 
         Returns an empty Text when no members are pending so the live region
         collapses to zero height between phases.
         """
-        if not self._pending:
+        with self._lock:
+            pending = list(self._pending.values())
+        if not pending:
             return Text("")
         now = time.monotonic()
         table = Table.grid(padding=(0, 1))
         table.add_column(justify="left")
         table.add_column(justify="left")
         table.add_column(justify="right", style="dim")
-        for member in self._pending.values():
+        for member in pending:
             elapsed = max(0.0, now - member.start_ts)
             spinner = Spinner("dots", style=member.color)
             name_text = Text(member.name, style=member.color)

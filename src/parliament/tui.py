@@ -12,6 +12,7 @@ import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from threading import Event, Thread
 from typing import Any
 
 import yaml
@@ -41,6 +42,19 @@ DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
 SUPPORTED_PROVIDERS = ["ollama", "anthropic", "openai", "google", "mock"]
 MEMBER_FIELDS = ["provider", "model", "base_url"]
 
+_TUI_COLOR_PAIR = {
+    "title": 21,
+    "consensus": 22,
+    "split": 23,
+    "risks": 24,
+    "recommendation": 25,
+    "meta": 26,
+    "success": 27,
+    "error": 28,
+}
+
+_TUI_COLORS_READY = False
+
 
 @dataclass(frozen=True)
 class ModelSettings:
@@ -57,6 +71,10 @@ class AppSettings:
     """User-configurable TUI settings."""
 
     save_dir: str
+
+
+class DebateCancelled(Exception):
+    """Raised when the user cancels an in-flight debate from the TUI."""
 
 
 @dataclass
@@ -346,6 +364,41 @@ def _disable_terminal_flow_control() -> None:
         pass
 
 
+def _init_tui_colors() -> None:
+    """Initialise shared curses colors for non-live TUI screens."""
+    global _TUI_COLORS_READY
+    try:
+        if not curses.has_colors():
+            _TUI_COLORS_READY = False
+            return
+        curses.start_color()
+        try:
+            curses.use_default_colors()
+            background = -1
+        except curses.error:
+            background = curses.COLOR_BLACK
+        curses.init_pair(_TUI_COLOR_PAIR["title"], curses.COLOR_CYAN, background)
+        curses.init_pair(_TUI_COLOR_PAIR["consensus"], curses.COLOR_BLUE, background)
+        curses.init_pair(_TUI_COLOR_PAIR["split"], curses.COLOR_YELLOW, background)
+        curses.init_pair(_TUI_COLOR_PAIR["risks"], curses.COLOR_RED, background)
+        curses.init_pair(_TUI_COLOR_PAIR["recommendation"], curses.COLOR_GREEN, background)
+        curses.init_pair(_TUI_COLOR_PAIR["meta"], curses.COLOR_BLUE, background)
+        curses.init_pair(_TUI_COLOR_PAIR["success"], curses.COLOR_GREEN, background)
+        curses.init_pair(_TUI_COLOR_PAIR["error"], curses.COLOR_RED, background)
+        _TUI_COLORS_READY = True
+    except (AttributeError, curses.error):
+        _TUI_COLORS_READY = False
+
+
+def _tui_attr(role: str, fallback: int = curses.A_NORMAL) -> int:
+    if not _TUI_COLORS_READY:
+        return fallback
+    try:
+        return fallback | curses.color_pair(_TUI_COLOR_PAIR[role])
+    except (KeyError, curses.error):
+        return fallback
+
+
 def _run(
     stdscr,
     settings: list[ModelSettings],
@@ -359,6 +412,7 @@ def _run(
     except curses.error:
         # Some terminals (e.g. legacy Windows cmd.exe) reject cursor toggling.
         pass
+    _init_tui_colors()
     stdscr.keypad(True)
     try:
         curses.set_escdelay(25)
@@ -568,6 +622,10 @@ def _run(
                             except OSError as exc:
                                 result_message = f"Auto-save failed: {exc}"
                             screen = "result"
+                        except DebateCancelled:
+                            message = "Debate cancelled."
+                            result_message = ""
+                            screen = "dashboard"
                         except Exception as exc:
                             error_message = str(exc)
                             screen = "error"
@@ -1275,17 +1333,6 @@ def _run_debate(
     show = resolve_show_debate(cli_flag=None, config=config)
     renderer = build_renderer(show_debate=show, mode="tui", stdscr=stdscr)
 
-    if not show:
-        # Preserve the legacy static "Please wait..." screen when the live
-        # view is opted out.
-        height, width = stdscr.getmaxyx()
-        stdscr.erase()
-        _add_line(stdscr, 0, 0, "Running Parliament", curses.A_BOLD, width)
-        _add_line(stdscr, 2, 0, f"Question: {question}", curses.A_NORMAL, width)
-        _add_line(stdscr, 4, 0, "First Reading -> Debate -> Division", curses.A_DIM, width)
-        _add_line(stdscr, max(0, height - 2), 0, "Please wait...", curses.A_DIM, width)
-        stdscr.refresh()
-
     parliament = Parliament(
         members=members,
         providers=providers,
@@ -1296,7 +1343,82 @@ def _run_debate(
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     with renderer:
-        return asyncio.run(parliament.ask(question))
+        return _run_cancellable_debate(stdscr, parliament.ask(question))
+
+
+def _run_cancellable_debate(stdscr, awaitable) -> Hansard:
+    """Run a debate coroutine while polling curses for cancel keys.
+
+    Curses input stays on the main thread. The asyncio debate runs on a worker
+    thread so blocking provider/client behavior cannot starve getch polling.
+    """
+    done = Event()
+    cancel_requested = Event()
+    result: dict[str, Any] = {}
+
+    def run_worker() -> None:
+        loop = asyncio.new_event_loop()
+        task = None
+        try:
+            if sys.platform == "win32":
+                asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+            asyncio.set_event_loop(loop)
+            task = loop.create_task(awaitable)
+            while not task.done():
+                if cancel_requested.is_set():
+                    task.cancel()
+                loop.run_until_complete(asyncio.sleep(0.05))
+            try:
+                result["hansard"] = loop.run_until_complete(task)
+            except asyncio.CancelledError:
+                result["cancelled"] = True
+            except BaseException as exc:
+                result["error"] = exc
+        finally:
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    loop.run_until_complete(task)
+                except asyncio.CancelledError:
+                    result["cancelled"] = True
+            asyncio.set_event_loop(None)
+            loop.close()
+            done.set()
+
+    worker = Thread(target=run_worker, name="parliament-debate-worker", daemon=True)
+    worker.start()
+    _set_nodelay(stdscr, True)
+    try:
+        while not done.wait(0.05):
+            if _read_cancel_key(stdscr):
+                cancel_requested.set()
+                done.wait(2.0)
+                raise DebateCancelled()
+    finally:
+        _set_nodelay(stdscr, False)
+
+    if result.get("cancelled"):
+        raise DebateCancelled()
+    if "error" in result:
+        raise result["error"]
+    return result["hansard"]
+
+
+def _set_nodelay(stdscr, enabled: bool) -> None:
+    try:
+        stdscr.nodelay(enabled)
+    except AttributeError:
+        return
+    except curses.error:
+        return
+
+
+def _read_cancel_key(stdscr) -> bool:
+    try:
+        key = stdscr.getch()
+    except (AttributeError, curses.error):
+        return False
+    return key in (3, 27, ord("q"), ord("Q"))
 
 
 def _draw_result(
@@ -1315,34 +1437,48 @@ def _draw_result(
     max_top = max(0, len(lines) - visible)
     top = min(top, max_top)
 
-    _add_line(stdscr, 0, 0, "Verdict", curses.A_BOLD, width)
+    _add_line(stdscr, 0, 0, "Verdict", _tui_attr("title", curses.A_BOLD), width)
 
     for offset, line in enumerate(lines[top : top + visible]):
-        attr = curses.A_BOLD if line.isupper() else curses.A_NORMAL
+        attr = _result_line_attr(line)
         _add_line(stdscr, body_top + offset, 0, line, attr, width)
 
     if message:
-        _add_line(stdscr, max(0, height - 2), 0, message, curses.A_BOLD, width)
+        _add_line(stdscr, max(0, height - 2), 0, message, _tui_attr("success", curses.A_BOLD), width)
 
     controls = "Up/down: scroll  b/Esc/backspace: dashboard  q: quit"
     if save_dir and len(controls) + len(save_dir) + 7 < width:
         controls = f"{controls}  Dir: {save_dir}"
-    _add_line(stdscr, max(0, height - 1), 0, controls, curses.A_DIM, width)
+    _add_line(stdscr, max(0, height - 1), 0, controls, _tui_attr("meta", curses.A_DIM), width)
 
     if top > 0:
-        _add_line(stdscr, 0, max(0, width - 8), "more ^", curses.A_DIM, width)
+        _add_line(stdscr, 0, max(0, width - 8), "more ^", _tui_attr("meta", curses.A_DIM), width)
     if top < max_top:
-        _add_line(stdscr, max(0, height - 2), max(0, width - 8), "more v", curses.A_DIM, width)
+        _add_line(stdscr, max(0, height - 2), max(0, width - 8), "more v", _tui_attr("meta", curses.A_DIM), width)
     return top
 
 
+def _result_line_attr(line: str) -> int:
+    if line == "CONSENSUS":
+        return _tui_attr("consensus", curses.A_BOLD)
+    if line == "SPLIT":
+        return _tui_attr("split", curses.A_BOLD)
+    if line == "RISKS":
+        return _tui_attr("risks", curses.A_BOLD)
+    if line == "RECOMMENDATION":
+        return _tui_attr("recommendation", curses.A_BOLD)
+    if line.startswith(("Session:", "Calls:", "Speaker:", "Hansard:")) or set(line) == {"-"}:
+        return _tui_attr("meta", curses.A_DIM)
+    return curses.A_NORMAL
+
+
 def _draw_error(stdscr, error_message: str, height: int, width: int) -> None:
-    _add_line(stdscr, 0, 0, "Parliament Error", curses.A_BOLD, width)
-    _add_line(stdscr, 1, 0, "b/Esc/backspace: dashboard  q: quit", curses.A_DIM, width)
-    _add_line(stdscr, 3, 0, error_message or "Unknown error", curses.A_NORMAL, width)
+    _add_line(stdscr, 0, 0, "Parliament Error", _tui_attr("error", curses.A_BOLD), width)
+    _add_line(stdscr, 1, 0, "b/Esc/backspace: dashboard  q: quit", _tui_attr("meta", curses.A_DIM), width)
+    _add_line(stdscr, 3, 0, error_message or "Unknown error", _tui_attr("error"), width)
     if "Connection" in error_message or "connect" in error_message.lower():
-        _add_line(stdscr, 5, 0, "Try `parliament --mock` for a no-service test run.", curses.A_DIM, width)
-    _add_line(stdscr, max(0, height - 2), 0, "The one-shot CLI is still available with --mock.", curses.A_DIM, width)
+        _add_line(stdscr, 5, 0, "Try `parliament --mock` for a no-service test run.", _tui_attr("meta", curses.A_DIM), width)
+    _add_line(stdscr, max(0, height - 2), 0, "The one-shot CLI is still available with --mock.", _tui_attr("meta", curses.A_DIM), width)
 
 
 def _draw_app_settings(

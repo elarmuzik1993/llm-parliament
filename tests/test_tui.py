@@ -1,9 +1,11 @@
 """TUI state-building and persistence tests."""
 
+import curses
 import json
 
 import yaml
 
+from parliament import tui as tui_mod
 from parliament.tui import (
     AppSettings,
     MemberEditorState,
@@ -11,6 +13,7 @@ from parliament.tui import (
     load_app_settings,
     _mask_api_key,
     _model_picker_options,
+    _draw_result,
     _save_member_edit,
     save_app_settings,
     save_hansard,
@@ -118,6 +121,39 @@ def test_save_hansard_filename_includes_slug_and_id_prefix(make_hansard, tmp_pat
     # Format: YYYYMMDD-HHMMSS-slug-shortid.md
     assert name.endswith(".md")
     assert hansard.id[:8] in name
+
+
+class _FakeStdscr:
+    def __init__(self, height=24, width=100):
+        self._h = height
+        self._w = width
+        self.lines: list[tuple[int, int, str, int]] = []
+
+    def getmaxyx(self):
+        return (self._h, self._w)
+
+    def addnstr(self, y, x, text, n, attr=0):
+        self.lines.append((y, x, text[:n], attr))
+
+    def addstr(self, y, x, text, attr=0):
+        self.lines.append((y, x, text, attr))
+
+    def attr_for(self, text: str) -> int:
+        return next(attr for _, _, value, attr in self.lines if value == text)
+
+
+def test_result_screen_uses_colored_verdict_sections(make_hansard, monkeypatch):
+    monkeypatch.setattr(tui_mod, "_TUI_COLORS_READY", True)
+    monkeypatch.setattr(tui_mod.curses, "color_pair", lambda pair: pair << 8)
+
+    scr = _FakeStdscr()
+    _draw_result(scr, make_hansard(), top=0, height=24, width=100, message="", save_dir=None)
+
+    assert scr.attr_for("Verdict") & curses.A_BOLD
+    assert scr.attr_for("CONSENSUS") != scr.attr_for("SPLIT")
+    assert scr.attr_for("SPLIT") != scr.attr_for("RISKS")
+    assert scr.attr_for("RISKS") != scr.attr_for("RECOMMENDATION")
+    assert scr.attr_for("RECOMMENDATION") & curses.A_BOLD
 
 
 def test_member_edit_updates_active_config(tmp_path):

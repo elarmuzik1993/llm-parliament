@@ -1,17 +1,22 @@
-"""TUI live-debate wiring — show_debate config flows into the renderer choice."""
+"""TUI live-debate wiring — show_debate controls response visibility only."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
 
 from parliament import tui as tui_mod
 from parliament.core.types import Hansard, Bill, Synthesis
-from parliament.render import CursesLiveRenderer, SilentRenderer
+from parliament.render import CursesLiveRenderer
 
 
 class _FakeStdscr:
+    def __init__(self, keys: list[int] | None = None) -> None:
+        self.keys = list(keys or [])
+        self.nodelay_values: list[bool] = []
+
     def getmaxyx(self) -> tuple[int, int]:
         return (24, 80)
 
@@ -26,6 +31,14 @@ class _FakeStdscr:
 
     def addstr(self, *args, **kwargs) -> None:  # noqa: D401, ARG002
         pass
+
+    def nodelay(self, value: bool) -> None:
+        self.nodelay_values.append(value)
+
+    def getch(self) -> int:
+        if self.keys:
+            return self.keys.pop(0)
+        return -1
 
 
 @pytest.fixture
@@ -93,7 +106,7 @@ def test_run_debate_uses_curses_renderer_when_show_debate_on(monkeypatch, fake_r
     assert fake_run["on_progress"] == renderer.emit
 
 
-def test_run_debate_uses_silent_renderer_when_show_debate_off(monkeypatch, fake_run):
+def test_run_debate_keeps_curses_status_when_show_debate_off(monkeypatch, fake_run):
     monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
 
     captured_renderers: list[Any] = []
@@ -113,10 +126,12 @@ def test_run_debate_uses_silent_renderer_when_show_debate_off(monkeypatch, fake_
 
     show_debate, mode, renderer = captured_renderers[-1]
     assert show_debate is False
-    assert isinstance(renderer, SilentRenderer)
+    assert mode == "tui"
+    assert isinstance(renderer, CursesLiveRenderer)
+    assert renderer._show_responses is False
 
 
-def test_run_debate_env_var_disables_live_view(monkeypatch, fake_run):
+def test_run_debate_env_var_hides_responses_but_keeps_status(monkeypatch, fake_run):
     monkeypatch.setenv("PARLIAMENT_SHOW_DEBATE", "0")
 
     captured_renderers: list[Any] = []
@@ -134,4 +149,25 @@ def test_run_debate_env_var_disables_live_view(monkeypatch, fake_run):
 
     show_debate, _, renderer = captured_renderers[-1]
     assert show_debate is False
-    assert isinstance(renderer, SilentRenderer)
+    assert isinstance(renderer, CursesLiveRenderer)
+    assert renderer._show_responses is False
+
+
+def test_cancellable_debate_raises_when_user_presses_q():
+    cancelled = False
+
+    async def slow_debate():
+        nonlocal cancelled
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+
+    stdscr = _FakeStdscr(keys=[ord("q")])
+
+    with pytest.raises(tui_mod.DebateCancelled):
+        tui_mod._run_cancellable_debate(stdscr, slow_debate())
+
+    assert cancelled is True
+    assert stdscr.nodelay_values == [True, False]

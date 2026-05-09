@@ -121,8 +121,8 @@ def test_ask_default_shows_live_debate(monkeypatch):
     assert "Mock" in result.output
 
 
-def test_ask_no_show_debate_suppresses_live_view(monkeypatch):
-    """--no-show-debate hides intermediate panels; only the verdict prints."""
+def test_ask_no_show_debate_keeps_live_status(monkeypatch):
+    """--no-show-debate hides response panels but keeps live phase/status feedback."""
     monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
 
     result = CliRunner().invoke(
@@ -130,22 +130,19 @@ def test_ask_no_show_debate_suppresses_live_view(monkeypatch):
     )
 
     assert result.exit_code == 0, result.output
-    # Live phase headers should NOT appear.
-    # The "Parliament Session" and post-run verdict panel still print.
-    assert _LIVE_FIRST_READING_MARKER not in result.output
-    assert _LIVE_DEBATE_MARKER not in result.output
-    # Note: "Division" is also absent because the live renderer is silent.
+    assert _LIVE_FIRST_READING_MARKER in result.output
+    assert _LIVE_DEBATE_MARKER in result.output
     assert "Parliament Verdict" in result.output
 
 
-def test_ask_env_var_disables_live_view(monkeypatch):
-    """PARLIAMENT_SHOW_DEBATE=0 in the env suppresses the live view when no flag is set."""
+def test_ask_env_var_hides_response_panels_but_keeps_status(monkeypatch):
+    """PARLIAMENT_SHOW_DEBATE=0 hides responses but keeps live status when no flag is set."""
     monkeypatch.setenv("PARLIAMENT_SHOW_DEBATE", "0")
 
     result = CliRunner().invoke(cli.main, ["ask", "--mock", "Test?"])
 
     assert result.exit_code == 0, result.output
-    assert _LIVE_FIRST_READING_MARKER not in result.output
+    assert _LIVE_FIRST_READING_MARKER in result.output
     assert "Parliament Verdict" in result.output
 
 
