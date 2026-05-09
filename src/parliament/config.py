@@ -57,6 +57,27 @@ def resolve_show_debate(*, cli_flag: bool | None, config: dict[str, Any]) -> boo
     return True
 
 
+def resolve_hansard_level(*, cli_flag: str | None, config: dict[str, Any]):
+    """Decide the Hansard detail level for this run.
+
+    Precedence: CLI flag > PARLIAMENT_HANSARD_LEVEL env var > config
+    `hansard.level` > default `verdict`. Unknown values normalise to
+    `verdict` via `HansardLevel.parse`.
+    """
+    # Local import to avoid circular dependency: parliament.render.hansard
+    # imports from parliament.core.types (which is fine), but we keep
+    # config.py free of render package imports at module-load time.
+    from parliament.render.hansard import HansardLevel
+
+    if cli_flag is not None:
+        return HansardLevel.parse(cli_flag)
+    env = os.environ.get("PARLIAMENT_HANSARD_LEVEL")
+    if env is not None:
+        return HansardLevel.parse(env)
+    raw = (config.get("hansard") or {}).get("level")
+    return HansardLevel.parse(raw)
+
+
 def _resolve_env_vars(value: str) -> str:
     """Replace ${VAR} with environment variable values."""
     def replacer(match):
