@@ -25,7 +25,6 @@ from parliament.config import (
 )
 from parliament.core.model_tiers import get_tier_label, detect_gap
 from parliament.core.parliament import Parliament
-from parliament.core.types import Hansard
 from parliament.render import build_renderer
 from parliament.render.hansard import HansardLevel, render_terminal
 
