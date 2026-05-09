@@ -105,6 +105,13 @@ def test_example_config_carries_display_show_debate(fresh_home):
     assert cfg["display"]["show_debate"] is True
 
 
+def test_example_config_carries_hansard_level(fresh_home):
+    """The bundled example must surface hansard.level so users discover the toggle."""
+    config, _ = fresh_home
+    cfg = config.load_config()
+    assert cfg.get("hansard", {}).get("level") == "verdict"
+
+
 def test_user_supplied_show_debate_false_round_trips(tmp_path, monkeypatch):
     """A user who writes show_debate: false in their YAML must see it preserved on load."""
     monkeypatch.setattr(__import__("pathlib").Path, "home", lambda: tmp_path)
