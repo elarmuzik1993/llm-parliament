@@ -156,6 +156,77 @@ def test_result_screen_uses_colored_verdict_sections(make_hansard, monkeypatch):
     assert scr.attr_for("RECOMMENDATION") & curses.A_BOLD
 
 
+# ---------- TUI result screen respects hansard level ----------
+
+
+def test_result_screen_minimal_level_shows_only_recommendation(make_hansard):
+    """At hansard.level=minimal, the TUI result screen must hide Consensus / Split / Risks."""
+    from parliament.render.hansard import HansardLevel
+    from parliament.tui import _result_lines
+
+    lines = _result_lines(make_hansard(), HansardLevel.MINIMAL)
+    body = "\n".join(lines)
+
+    assert "RECOMMENDATION" in body
+    assert "CONSENSUS" not in body
+    assert "SPLIT" not in body
+    assert "RISKS" not in body
+
+
+def test_result_screen_verdict_level_shows_all_four_sections(make_hansard):
+    from parliament.render.hansard import HansardLevel
+    from parliament.tui import _result_lines
+
+    body = "\n".join(_result_lines(make_hansard(), HansardLevel.VERDICT))
+
+    assert "CONSENSUS" in body
+    assert "SPLIT" in body
+    assert "RISKS" in body
+    assert "RECOMMENDATION" in body
+
+
+def test_result_screen_minimal_level_hides_session_footer(make_hansard):
+    """The Session/Calls/Speaker/Hansard footer is metadata; gated by archive+ levels."""
+    from parliament.render.hansard import HansardLevel
+    from parliament.tui import _result_lines
+
+    body = "\n".join(_result_lines(make_hansard(), HansardLevel.MINIMAL))
+    assert "Session:" not in body
+    assert "Calls:" not in body
+
+
+def test_result_screen_archive_level_shows_session_footer(make_hansard):
+    from parliament.render.hansard import HansardLevel
+    from parliament.tui import _result_lines
+
+    body = "\n".join(_result_lines(make_hansard(), HansardLevel.ARCHIVE))
+    assert "Session:" in body
+    assert "Calls:" in body
+    assert "Speaker:" in body
+
+
+def test_draw_result_threads_level_through(make_hansard, monkeypatch):
+    monkeypatch.setattr(tui_mod, "_TUI_COLORS_READY", True)
+    monkeypatch.setattr(tui_mod.curses, "color_pair", lambda pair: pair << 8)
+
+    from parliament.render.hansard import HansardLevel
+
+    scr = _FakeStdscr()
+    _draw_result(
+        scr,
+        make_hansard(),
+        top=0,
+        height=24,
+        width=100,
+        message="",
+        save_dir=None,
+        level=HansardLevel.MINIMAL,
+    )
+    body = "\n".join(line for _, _, line, _ in scr.lines)
+    assert "RECOMMENDATION" in body
+    assert "CONSENSUS" not in body
+
+
 def test_member_edit_updates_active_config(tmp_path):
     config = {
         "parliament": {

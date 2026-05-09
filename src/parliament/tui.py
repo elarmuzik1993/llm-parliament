@@ -433,7 +433,6 @@ def _run(
     result_message = ""
     app_settings = load_app_settings()
     settings_state = _init_settings_state(app_settings.save_dir, config)
-    resolved_level = resolve_hansard_level(cli_flag=None, config=config)
     member_editor: MemberEditorState | None = None
     palette_index = 0
     members_expanded = False
@@ -507,6 +506,7 @@ def _run(
                 app_settings.save_dir,
                 height,
                 width,
+                level=resolve_hansard_level(cli_flag=None, config=config),
             )
         elif screen == "error":
             _draw_error(stdscr, error_message, height, width)
@@ -617,7 +617,11 @@ def _run(
                             question = ""
                             result_top = 0
                             try:
-                                saved_path = save_hansard(hansard, app_settings.save_dir, level=resolved_level)
+                                saved_path = save_hansard(
+                                    hansard,
+                                    app_settings.save_dir,
+                                    level=resolve_hansard_level(cli_flag=None, config=config),
+                                )
                                 result_message = f"Auto-saved to {saved_path}"
                             except OSError as exc:
                                 result_message = f"Auto-save failed: {exc}"
@@ -861,7 +865,11 @@ def _run(
                 # Auto-save already ran; only retry when it failed.
                 if not result_message.startswith("Auto-saved"):
                     try:
-                        saved_path = save_hansard(hansard, app_settings.save_dir, level=resolved_level)
+                        saved_path = save_hansard(
+                            hansard,
+                            app_settings.save_dir,
+                            level=resolve_hansard_level(cli_flag=None, config=config),
+                        )
                         result_message = f"Saved to {saved_path}"
                     except OSError as exc:
                         result_message = f"Save failed: {exc}"
@@ -1429,8 +1437,9 @@ def _draw_result(
     save_dir: str,
     height: int,
     width: int,
+    level: "HansardLevel | None" = None,
 ) -> int:
-    lines = _result_lines(hansard)
+    lines = _result_lines(hansard, level)
     body_top = 2
     body_bottom = max(body_top, height - 3)
     visible = max(1, body_bottom - body_top + 1)
@@ -1574,7 +1583,19 @@ def _slugify(value: str) -> str:
     return slug[:48] or "parliament-response"
 
 
-def _result_lines(hansard: Hansard) -> list[str]:
+def _result_lines(hansard: Hansard, level: "HansardLevel | None" = None) -> list[str]:
+    """Render the TUI result screen text, gated by Hansard detail level.
+
+    Same level semantics as `parliament.render.hansard.render_terminal`:
+      - minimal: question + recommendation only
+      - verdict: + consensus / split / risks
+      - archive: + session footer (Speaker/Calls/Duration)
+      - full:    + first reading and debate transcripts (rendered as
+                 ### {member} blocks, scrollable in the result screen)
+    """
+    from parliament.render.hansard import HansardLevel as _HL, includes
+    resolved = level if level is not None else _HL.VERDICT
+
     synthesis = hansard.synthesis
     duration = hansard.duration_ms / 1000
     calls = len(hansard.members) * 2 + 1
@@ -1583,22 +1604,42 @@ def _result_lines(hansard: Hansard) -> list[str]:
         "",
     ]
 
-    for heading, value in (
-        ("CONSENSUS", synthesis.consensus),
-        ("SPLIT", synthesis.split),
-        ("RISKS", synthesis.risks),
-        ("RECOMMENDATION", synthesis.recommendation),
+    for section_key, heading, value in (
+        ("consensus",      "CONSENSUS",      synthesis.consensus),
+        ("split",          "SPLIT",          synthesis.split),
+        ("risks",          "RISKS",          synthesis.risks),
+        ("recommendation", "RECOMMENDATION", synthesis.recommendation),
     ):
-        if value:
-            lines.extend([heading, *value.splitlines(), ""])
+        if not includes(resolved, section_key):
+            continue
+        # Recommendation is always rendered (with placeholder if empty);
+        # other sections are omitted when empty.
+        if section_key == "recommendation":
+            display = (value or "").strip() or "(no recommendation parsed)"
+        else:
+            if not value or not value.strip():
+                continue
+            display = value
+        lines.extend([heading, *display.splitlines(), ""])
 
-    lines.extend([
-        "-" * 40,
-        f"Session: {duration:.1f}s",
-        f"Calls: {calls}",
-        f"Speaker: {synthesis.speaker_name}",
-        f"Hansard: {hansard.id}",
-    ])
+    if includes(resolved, "first_reading"):
+        lines.extend(["FIRST READING", ""])
+        for r in hansard.first_reading:
+            lines.extend([f"### {r.member_name}", "", *r.content.splitlines(), ""])
+
+    if includes(resolved, "debate"):
+        lines.extend(["DEBATE", ""])
+        for r in hansard.debate:
+            lines.extend([f"### {r.member_name} (critique)", "", *r.content.splitlines(), ""])
+
+    if includes(resolved, "footer"):
+        lines.extend([
+            "-" * 40,
+            f"Session: {duration:.1f}s",
+            f"Calls: {calls}",
+            f"Speaker: {synthesis.speaker_name}",
+            f"Hansard: {hansard.id}",
+        ])
     return lines
 
 
