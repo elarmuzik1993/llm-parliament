@@ -115,8 +115,8 @@ def test_ask_default_shows_live_debate(monkeypatch):
     assert _LIVE_FIRST_READING_MARKER in result.output
     assert _LIVE_DEBATE_MARKER in result.output
     assert _LIVE_DIVISION_MARKER in result.output
-    # Verdict still prints at the end.
-    assert "VERDICT" in result.output
+    # Post-run verdict panel prints at the end.
+    assert "Parliament Verdict" in result.output
     # Mock provider's content should appear in the live panels.
     assert "Mock" in result.output
 
@@ -131,12 +131,11 @@ def test_ask_no_show_debate_suppresses_live_view(monkeypatch):
 
     assert result.exit_code == 0, result.output
     # Live phase headers should NOT appear.
-    # The "Parliament Session" and "VERDICT" rules still print, but the
-    # specific live phase markers are absent.
+    # The "Parliament Session" and post-run verdict panel still print.
     assert _LIVE_FIRST_READING_MARKER not in result.output
     assert _LIVE_DEBATE_MARKER not in result.output
     # Note: "Division" is also absent because the live renderer is silent.
-    assert "VERDICT" in result.output
+    assert "Parliament Verdict" in result.output
 
 
 def test_ask_env_var_disables_live_view(monkeypatch):
@@ -147,7 +146,7 @@ def test_ask_env_var_disables_live_view(monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert _LIVE_FIRST_READING_MARKER not in result.output
-    assert "VERDICT" in result.output
+    assert "Parliament Verdict" in result.output
 
 
 def test_ask_cli_flag_overrides_env(monkeypatch):
@@ -163,18 +162,86 @@ def test_ask_cli_flag_overrides_env(monkeypatch):
 
 
 def test_ask_verbose_coexists_with_show_debate(monkeypatch):
-    """--verbose still prints the post-hoc dump; --show-debate adds the live view too."""
+    """--verbose aliases to --hansard=full; live view + full post-run output."""
     monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
 
     result = CliRunner().invoke(
         cli.main, ["ask", "--mock", "--verbose", "Test?"]
     )
 
     assert result.exit_code == 0, result.output
-    # Both the live view and the verbose post-hoc rules render.
-    assert _LIVE_FIRST_READING_MARKER in result.output
-    # The post-hoc verbose dump also draws "FIRST READING" rules — confirm we
-    # got at least two First Reading occurrences (one live, one verbose).
-    assert result.output.count("FIRST READING") + result.output.count(
-        "First Reading"
-    ) >= 2
+    # Live view renders "First Reading"; full-level post-run also emits "📖 First Reading"
+    assert result.output.count("First Reading") >= 2
+
+
+# ── New hansard-level tests ──────────────────────────────────────────────────
+
+_VERDICT_RECOMMENDATION_MARKER = "✓ Recommendation"
+_FULL_TRANSCRIPT_MARKER = "📖 First Reading"
+
+
+def test_ask_default_uses_verdict_level(monkeypatch):
+    """Default behavior: post-run terminal shows verdict block, no transcripts."""
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+
+    result = CliRunner().invoke(cli.main, ["ask", "--mock", "--no-show-debate", "Test?"])
+
+    assert result.exit_code == 0, result.output
+    # All four verdict panels appear; no transcripts.
+    assert "ℹ Consensus" in result.output
+    assert "⚖ Split" in result.output
+    assert "! Risks" in result.output
+    assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert _FULL_TRANSCRIPT_MARKER not in result.output
+
+
+def test_ask_minimal_level_omits_other_verdict_sections(monkeypatch):
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--no-show-debate", "--hansard", "minimal", "Test?"]
+    )
+    assert result.exit_code == 0, result.output
+    assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert "ℹ Consensus" not in result.output
+    assert "⚖ Split" not in result.output
+
+
+def test_ask_full_level_shows_transcripts(monkeypatch):
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--no-show-debate", "--hansard", "full", "Test?"]
+    )
+    assert result.exit_code == 0, result.output
+    assert _FULL_TRANSCRIPT_MARKER in result.output
+    assert "🗣 Debate" in result.output
+
+
+def test_verbose_flag_aliases_to_full(monkeypatch):
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--no-show-debate", "--verbose", "Test?"]
+    )
+    assert result.exit_code == 0, result.output
+    assert _FULL_TRANSCRIPT_MARKER in result.output
+
+
+def test_explicit_hansard_flag_wins_over_verbose(monkeypatch):
+    """When both --verbose and --hansard are passed, --hansard wins (more specific)."""
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    result = CliRunner().invoke(
+        cli.main,
+        ["ask", "--mock", "--no-show-debate", "--verbose", "--hansard", "verdict", "Test?"],
+    )
+    assert result.exit_code == 0, result.output
+    assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert _FULL_TRANSCRIPT_MARKER not in result.output
+
+
+def test_env_var_sets_level(monkeypatch):
+    monkeypatch.setenv("PARLIAMENT_HANSARD_LEVEL", "minimal")
+    result = CliRunner().invoke(cli.main, ["ask", "--mock", "--no-show-debate", "Test?"])
+    assert result.exit_code == 0, result.output
+    assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert "ℹ Consensus" not in result.output
