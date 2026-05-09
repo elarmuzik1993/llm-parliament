@@ -237,10 +237,37 @@ The view is toggleable via three precedence-ordered sources:
 | 3 | YAML config | `display:\n  show_debate: false` |
 | 4 (default) | Built-in | live view is **on** |
 
-`--show-debate` and `--verbose` are independent. Use `--verbose` to *also*
-print the full post-hoc transcript after the verdict (handy for piping into
-`less` or saving), while `--show-debate` controls whether the live panels
-appear during the run.
+`--show-debate` controls whether the live panels appear during the run.
+
+### Hansard detail levels
+
+By default, both the post-run terminal output and the saved `.md` file
+contain the four-part Speaker synthesis (Consensus, Split, Risks,
+Recommendation) — no LLM transcripts. Older runs that included the full
+debate text by default are now opt-in via `--hansard=full`.
+
+Four levels:
+
+| Level | Includes | Roughly |
+|---|---|---|
+| `minimal` | Recommendation only | one paragraph — "just tell me what to do" |
+| `verdict` | Full four-part synthesis | **default** — concise but complete |
+| `archive` | + YAML frontmatter + session footer | searchable in Obsidian, no walls of text |
+| `full` | + First Reading + Debate transcripts | today's full record (≈ what `--verbose` used to print) |
+
+Set the level via three precedence-ordered sources:
+
+| Precedence | Source | Example |
+| --- | --- | --- |
+| 1 (highest) | CLI flag | `parliament ask "..." --hansard archive` |
+| 2 | Environment variable | `PARLIAMENT_HANSARD_LEVEL=full parliament ask "..."` |
+| 3 | YAML config | `hansard:\n  level: archive` |
+| 4 (default) | Built-in | `verdict` |
+
+`--verbose` continues to work; it's an alias for `--hansard=full`.
+The level applies to the saved `.md` file **and** the post-run terminal
+output. The live in-flight debate view is independent — toggle it
+separately with `--show-debate` / `--no-show-debate`.
 
 TUI controls:
 
