@@ -242,3 +242,54 @@ def test_env_var_sets_level(monkeypatch):
     assert result.exit_code == 0, result.output
     assert _VERDICT_RECOMMENDATION_MARKER in result.output
     assert "ℹ Consensus" not in result.output
+
+
+# ---------- parliament update CLI subcommand ----------
+
+
+def test_update_cli_success_exits_zero(monkeypatch):
+    """`parliament update` happy path: editable install + git pull succeeds → exit 0."""
+    import parliament.commands as cmd_mod
+
+    monkeypatch.setattr(
+        cmd_mod, "_detect_install", lambda: ("editable", __import__("pathlib").Path("/tmp/fake-repo")),
+    )
+    import subprocess as sp
+
+    def fake_run(cmd, **kwargs):
+        return sp.CompletedProcess(args=cmd, returncode=0, stdout="Already up to date.\n", stderr="")
+
+    monkeypatch.setattr("parliament.commands.subprocess.run", fake_run)
+
+    result = CliRunner().invoke(cli.main, ["update"])
+    assert result.exit_code == 0, result.output
+    assert "Updated" in result.output or "Restart" in result.output
+
+
+def test_update_cli_non_editable_install_exits_one(monkeypatch):
+    """Pipx/pip installs aren't supported yet → exit 1 with explanation."""
+    import parliament.commands as cmd_mod
+
+    monkeypatch.setattr(cmd_mod, "_detect_install", lambda: ("non-editable", None))
+
+    result = CliRunner().invoke(cli.main, ["update"])
+    assert result.exit_code == 1
+    assert "editable" in result.output.lower() or "pipx" in result.output.lower()
+
+
+def test_update_cli_pull_failure_exits_one(monkeypatch):
+    import parliament.commands as cmd_mod
+    from pathlib import Path
+
+    monkeypatch.setattr(cmd_mod, "_detect_install", lambda: ("editable", Path("/tmp/fake")))
+
+    import subprocess as sp
+
+    def fake_run(cmd, **kwargs):
+        return sp.CompletedProcess(args=cmd, returncode=1, stdout="", stderr="fatal: conflict\n")
+
+    monkeypatch.setattr("parliament.commands.subprocess.run", fake_run)
+
+    result = CliRunner().invoke(cli.main, ["update"])
+    assert result.exit_code == 1
+    assert "fail" in result.output.lower() or "conflict" in result.output.lower()

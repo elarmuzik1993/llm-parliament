@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 from typing import Callable
+from urllib.parse import unquote, urlparse
 
 from parliament.core.types import Hansard, Member
 
@@ -191,13 +193,145 @@ def _copy(_args: str, ctx: CommandContext) -> CommandResult:
             message="No verdict to copy yet. Run a debate first.",
             clear_question=False,
         )
-    from parliament.tui import _hansard_markdown
+    # Copy the FULL Hansard (with transcripts) — the user explicitly invoked
+    # /copy so they want the comprehensive record, not whatever level their
+    # default is.
+    from parliament.render.hansard import HansardLevel, render_markdown
 
-    md = _hansard_markdown(ctx.hansard)
+    md = render_markdown(ctx.hansard, HansardLevel.FULL)
     if _copy_to_clipboard(md):
         return CommandResult(message="Verdict copied to clipboard.")
     return CommandResult(
         message="Clipboard tool not found (install xclip/xsel/wl-copy, or use macOS/Windows).",
+    )
+
+
+# ---------------- /update ----------------
+
+
+def _dist_for_self():
+    """Look up the installed distribution metadata for `llm-parliament`.
+
+    Wrapped so tests can monkeypatch it. Returns None when the package
+    isn't found at all (extremely unusual since we *are* it).
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, distribution
+    except ImportError:  # pragma: no cover - Python <3.8
+        return None
+    try:
+        return distribution("llm-parliament")
+    except PackageNotFoundError:
+        return None
+
+
+def _detect_install() -> tuple[str, Path | None]:
+    """Decide whether this install can be updated, and how.
+
+    Returns ``(kind, path)`` where:
+      - ``("editable", Path)``: editable install backed by a local git
+        working tree at *path*. Updateable via `git pull` in that tree.
+      - ``("non-editable", None)``: pipx/pip install from PyPI or a
+        wheel — not updateable by this command (yet).
+      - ``("unknown", None)``: package metadata couldn't be located or
+        didn't include direct_url info.
+
+    Detection reads `direct_url.json` from the dist-info per PEP 610.
+    """
+    dist = _dist_for_self()
+    if dist is None:
+        return "unknown", None
+
+    raw = dist.read_text("direct_url.json") if hasattr(dist, "read_text") else None
+    if not raw:
+        return "unknown", None
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return "unknown", None
+
+    dir_info = data.get("dir_info") or {}
+    if not dir_info.get("editable"):
+        return "non-editable", None
+
+    url = data.get("url") or ""
+    parsed = urlparse(url)
+    if parsed.scheme != "file":
+        return "non-editable", None
+
+    # file:// URLs encode the path; strip and normalize to a Path.
+    raw_path = unquote(parsed.path or "")
+    if not raw_path:
+        return "unknown", None
+
+    return "editable", Path(raw_path)
+
+
+def _update(_args: str, _ctx: CommandContext) -> CommandResult:
+    """Pull the latest code from the editable install's git tree.
+
+    On success: returns ``quit=True`` so the TUI shuts down cleanly and
+    the user re-launches `parliament` to load the new bytecode (Python
+    can't hot-reload its own running modules).
+    """
+    kind, path = _detect_install()
+
+    if kind == "non-editable":
+        return CommandResult(
+            message=(
+                "/update only supports editable git installs right now. "
+                "For pipx/pip installs, run `pipx upgrade llm-parliament` "
+                "or `pip install --upgrade llm-parliament` from your shell."
+            ),
+            clear_question=False,
+        )
+    if kind != "editable" or path is None:
+        return CommandResult(
+            message=(
+                "Could not determine how this parliament was installed "
+                "(no direct_url metadata). Update from your shell instead."
+            ),
+            clear_question=False,
+        )
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(path), "pull", "--ff-only"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except FileNotFoundError:
+        return CommandResult(
+            message=(
+                "`git` not found on PATH. Install git, or run `pipx install "
+                "--force --editable <path>` to refresh manually."
+            ),
+            clear_question=False,
+        )
+    except subprocess.TimeoutExpired:
+        return CommandResult(
+            message="git pull timed out after 60s. Check your network and try again.",
+            clear_question=False,
+        )
+
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "git pull failed").strip()
+        # Cap noisy stderr to one screenful so the TUI message bar stays sane.
+        if len(err) > 400:
+            err = err[:400] + "…"
+        return CommandResult(
+            message=f"Update failed: {err}",
+            clear_question=False,
+        )
+
+    summary = (proc.stdout or "").strip().splitlines()
+    headline = summary[0] if summary else "Pulled latest."
+    return CommandResult(
+        message=f"Updated. Restart parliament to load new code. ({headline})",
+        quit=True,
     )
 
 
@@ -250,4 +384,10 @@ COMMANDS: list[Command] = [
     ),
     Command("history", "List last N saved verdicts: /history [N]", _history),
     Command("copy", "Copy last verdict to system clipboard", _copy),
+    Command(
+        "update",
+        "Pull latest code (editable git installs); exits so it loads on relaunch",
+        _update,
+        aliases=("upgrade",),
+    ),
 ]

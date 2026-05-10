@@ -300,5 +300,24 @@ def doctor():
     raise SystemExit(exit_code)
 
 
+@main.command()
+def update():
+    """Pull the latest code from the editable git tree backing this install."""
+    from parliament.commands import CommandContext, _update
+
+    # CLI invocation has no live members/hansard state; pass a stub context.
+    ctx = CommandContext(members=[], speaker_override=None, hansard=None, save_dir="")
+    result = _update("", ctx)
+
+    if result.message:
+        # Print a green check on success (quit=True signals success), red on failure.
+        if result.quit:
+            console.print(f"[green]✓[/green] {result.message}")
+            raise SystemExit(0)
+        console.print(f"[red]✗[/red] {result.message}")
+        raise SystemExit(1)
+    raise SystemExit(0)
+
+
 if __name__ == "__main__":
     main()

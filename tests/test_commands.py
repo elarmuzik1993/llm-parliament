@@ -290,3 +290,242 @@ def test_handler_exception_does_not_crash(tmp_path: Path, monkeypatch: pytest.Mo
         assert "kaboom" in result.message
     finally:
         cmd_mod.COMMANDS[:] = original
+
+
+# ---------------- /update slash command ----------------
+
+
+def test_update_command_registered() -> None:
+    """/update appears in the registry with /upgrade as alias."""
+    from parliament.commands import _resolve
+
+    cmd = _resolve("update")
+    assert cmd is not None
+    assert cmd.name == "update"
+    assert "upgrade" in cmd.aliases
+
+
+def test_update_help_includes_summary(tmp_path: Path) -> None:
+    """`/help` should list /update so users discover it."""
+    result = dispatch("/help", _ctx(tmp_path))
+    assert "/update" in result.message
+
+
+# ---------------- _detect_install detection helper ----------------
+
+
+def test_detect_install_editable_returns_path(tmp_path: Path, monkeypatch) -> None:
+    """direct_url.json with editable=true and a file:// URL → editable + path."""
+    from parliament import commands as cmd_mod
+
+    fake_dist_info = tmp_path / "fake_dist-0.1.dist-info"
+    fake_dist_info.mkdir()
+    src_path = tmp_path / "src" / "parliament_pkg"
+    src_path.mkdir(parents=True)
+    direct_url = fake_dist_info / "direct_url.json"
+    direct_url.write_text(
+        '{"url": "file://' + str(tmp_path) + '", "dir_info": {"editable": true}}',
+        encoding="utf-8",
+    )
+
+    class _FakeDist:
+        def read_text(self, name: str) -> str | None:
+            if name == "direct_url.json":
+                return direct_url.read_text(encoding="utf-8")
+            return None
+
+    monkeypatch.setattr(cmd_mod, "_dist_for_self", lambda: _FakeDist())
+
+    kind, path = cmd_mod._detect_install()
+    assert kind == "editable"
+    assert path == tmp_path
+
+
+def test_detect_install_non_editable_returns_kind_only(monkeypatch) -> None:
+    """A non-editable direct_url (pipx/pip from PyPI) must NOT report editable."""
+    from parliament import commands as cmd_mod
+
+    class _FakeDist:
+        def read_text(self, name: str) -> str | None:
+            if name == "direct_url.json":
+                return '{"url": "https://pypi.org/...", "archive_info": {}}'
+            return None
+
+    monkeypatch.setattr(cmd_mod, "_dist_for_self", lambda: _FakeDist())
+    kind, path = cmd_mod._detect_install()
+    assert kind != "editable"
+    assert path is None
+
+
+def test_detect_install_no_direct_url_file(monkeypatch) -> None:
+    """Plain pip installs have no direct_url.json — must degrade gracefully."""
+    from parliament import commands as cmd_mod
+
+    class _FakeDist:
+        def read_text(self, name: str) -> str | None:
+            return None  # no direct_url.json
+
+    monkeypatch.setattr(cmd_mod, "_dist_for_self", lambda: _FakeDist())
+    kind, path = cmd_mod._detect_install()
+    assert kind == "unknown"
+    assert path is None
+
+
+def test_detect_install_distribution_not_found(monkeypatch) -> None:
+    """When the package metadata can't be located at all, we report 'unknown'."""
+    from parliament import commands as cmd_mod
+
+    monkeypatch.setattr(cmd_mod, "_dist_for_self", lambda: None)
+    kind, path = cmd_mod._detect_install()
+    assert kind == "unknown"
+    assert path is None
+
+
+# ---------------- _update handler behavior ----------------
+
+
+def _patch_install(monkeypatch, kind: str, path: Path | None) -> None:
+    from parliament import commands as cmd_mod
+
+    monkeypatch.setattr(cmd_mod, "_detect_install", lambda: (kind, path))
+
+
+def _patch_subprocess(monkeypatch, returncode: int = 0, stdout: str = "", stderr: str = "",
+                      exception: Exception | None = None) -> list[list[str]]:
+    """Replace subprocess.run with a recorder. Returns the call log."""
+    import subprocess as sp
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        if exception is not None:
+            raise exception
+        return sp.CompletedProcess(args=cmd, returncode=returncode, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr("parliament.commands.subprocess.run", fake_run)
+    return calls
+
+
+def test_update_editable_success_quits(tmp_path: Path, monkeypatch) -> None:
+    """Successful git pull → quit=True so the user re-launches."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _patch_install(monkeypatch, "editable", repo)
+    calls = _patch_subprocess(monkeypatch, returncode=0, stdout="Already up to date.\n")
+
+    result = dispatch("/update", _ctx(tmp_path))
+
+    assert result.quit is True
+    assert "Updated" in result.message or "Restart" in result.message
+    # We should have invoked git pull --ff-only inside the repo
+    assert any("git" in c[0] and "pull" in c for c in calls)
+    assert any("--ff-only" in c for c in calls)
+
+
+def test_update_editable_pull_failure_reports_error(tmp_path: Path, monkeypatch) -> None:
+    """Non-zero git exit code → quit=False, error message echoed."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _patch_install(monkeypatch, "editable", repo)
+    _patch_subprocess(
+        monkeypatch,
+        returncode=1,
+        stderr="fatal: Not possible to fast-forward, aborting.\n",
+    )
+
+    result = dispatch("/update", _ctx(tmp_path))
+
+    assert result.quit is False
+    assert "fast-forward" in result.message or "failed" in result.message.lower()
+
+
+def test_update_non_editable_install_explains(tmp_path: Path, monkeypatch) -> None:
+    """Pipx/pip installs are not handled by /update yet — must say so cleanly."""
+    _patch_install(monkeypatch, "non-editable", None)
+    # Subprocess should never even be called in this branch.
+    calls = _patch_subprocess(monkeypatch)
+
+    result = dispatch("/update", _ctx(tmp_path))
+
+    assert result.quit is False
+    assert "editable" in result.message.lower() or "git" in result.message.lower()
+    assert calls == []  # didn't try git
+
+
+def test_update_unknown_install_explains(tmp_path: Path, monkeypatch) -> None:
+    _patch_install(monkeypatch, "unknown", None)
+    _patch_subprocess(monkeypatch)
+
+    result = dispatch("/update", _ctx(tmp_path))
+    assert result.quit is False
+    assert result.message  # non-empty — user gets an explanation
+
+
+def test_update_git_not_on_path(tmp_path: Path, monkeypatch) -> None:
+    """If `git` isn't installed, surface a helpful message instead of crashing."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _patch_install(monkeypatch, "editable", repo)
+    _patch_subprocess(monkeypatch, exception=FileNotFoundError("[Errno 2] No such file: 'git'"))
+
+    result = dispatch("/update", _ctx(tmp_path))
+    assert result.quit is False
+    assert "git" in result.message.lower()
+
+
+def test_update_subprocess_timeout(tmp_path: Path, monkeypatch) -> None:
+    import subprocess as sp
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _patch_install(monkeypatch, "editable", repo)
+    _patch_subprocess(monkeypatch, exception=sp.TimeoutExpired(cmd="git", timeout=60))
+
+    result = dispatch("/update", _ctx(tmp_path))
+    assert result.quit is False
+    assert "tim" in result.message.lower()  # timeout / timed out
+
+
+def test_update_alias_upgrade(tmp_path: Path, monkeypatch) -> None:
+    """/upgrade should resolve to the same handler."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _patch_install(monkeypatch, "editable", repo)
+    _patch_subprocess(monkeypatch, returncode=0)
+
+    result = dispatch("/upgrade", _ctx(tmp_path))
+    assert result.quit is True
+
+
+# ---------------- /copy stale-import regression ----------------
+
+
+def test_copy_uses_render_markdown_not_legacy_helper(tmp_path: Path, monkeypatch) -> None:
+    """Regression: /copy used to import the deleted _hansard_markdown."""
+    from parliament.core.types import Bill, Hansard, Member, Response, Synthesis
+
+    hansard = Hansard(
+        bill=Bill(content="Q?"),
+        members=[Member(name="A", provider_name="mock", model="m", tier=3),
+                 Member(name="B", provider_name="mock", model="m", tier=3)],
+        first_reading=[Response(member_name="A", content="x", phase="first_reading")],
+        debate=[Response(member_name="A", content="y", phase="debate")],
+        synthesis=Synthesis(speaker_name="A", recommendation="ship it"),
+        duration_ms=100,
+    )
+    captured: dict = {}
+
+    def fake_clipboard(text: str) -> bool:
+        captured["text"] = text
+        return True
+
+    import parliament.commands as cmd_mod
+    monkeypatch.setattr(cmd_mod, "_copy_to_clipboard", fake_clipboard)
+
+    ctx = _ctx(tmp_path, hansard=hansard)
+    result = dispatch("/copy", ctx)
+
+    assert "copied" in result.message.lower()
+    # Sanity: the Hansard markdown body must include the recommendation
+    assert "ship it" in captured["text"]
