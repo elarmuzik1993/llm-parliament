@@ -27,7 +27,7 @@ def _read_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _state(save_dir="x", show_debate=True, hansard_level=None, focus="save_dir") -> SettingsScreenState:
+def _state(save_dir="x", show_debate=True, hansard_level=None, focus="save_dir", editing=False) -> SettingsScreenState:
     from parliament.render.hansard import HansardLevel
     if hansard_level is None:
         hansard_level = HansardLevel.VERDICT
@@ -36,6 +36,7 @@ def _state(save_dir="x", show_debate=True, hansard_level=None, focus="save_dir")
         show_debate=show_debate,
         hansard_level=hansard_level,
         focus=focus,
+        editing=editing,
     )
 
 
@@ -165,10 +166,26 @@ def test_save_settings_writes_both_show_debate_and_hansard_level(tmp_path):
 
 
 def test_enter_returns_save_action():
-    s = _state()
+    # Enter saves when focused on a non-text field (hansard_level / show_debate).
+    # On save_dir it enters edit mode instead (see test_enter_starts_edit_mode).
+    s = _state(focus="hansard_level")
     new, action = _handle_settings_key(s, curses.KEY_ENTER)
     assert action == "save"
     assert new == s
+
+
+def test_enter_starts_edit_mode_on_save_dir():
+    s = _state(focus="save_dir")
+    new, action = _handle_settings_key(s, curses.KEY_ENTER)
+    assert action == "continue"
+    assert new.editing is True
+
+
+def test_enter_while_editing_exits_edit_mode():
+    s = _state(focus="save_dir", editing=True)
+    new, action = _handle_settings_key(s, curses.KEY_ENTER)
+    assert action == "continue"
+    assert new.editing is False
 
 
 def test_tab_cycles_through_three_fields():
@@ -240,14 +257,14 @@ def test_space_toggles_show_debate_when_focused_on_toggle():
 
 def test_space_inserts_into_save_dir_when_focused_on_text_field():
     """Space in the text field must remain a literal space, not toggle the bool."""
-    s = _state(save_dir="my dir", show_debate=True, focus="save_dir")
+    s = _state(save_dir="my dir", show_debate=True, focus="save_dir", editing=True)
     new, _ = _handle_settings_key(s, ord(" "))
     assert new.save_dir == "my dir "
     assert new.show_debate is True  # unchanged
 
 
 def test_text_input_only_affects_save_dir_field():
-    s = _state(save_dir="abc", show_debate=True, focus="save_dir")
+    s = _state(save_dir="abc", show_debate=True, focus="save_dir", editing=True)
     new, _ = _handle_settings_key(s, ord("d"))
     assert new.save_dir == "abcd"
 
@@ -260,7 +277,7 @@ def test_text_input_ignored_on_show_debate_field():
 
 
 def test_backspace_deletes_in_save_dir_field():
-    s = _state(save_dir="abc", focus="save_dir")
+    s = _state(save_dir="abc", focus="save_dir", editing=True)
     new, _ = _handle_settings_key(s, curses.KEY_BACKSPACE)
     assert new.save_dir == "ab"
 

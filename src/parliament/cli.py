@@ -28,7 +28,11 @@ from parliament.core.parliament import Parliament
 from parliament.render import build_renderer
 from parliament.render.hansard import HansardLevel, render_terminal
 
-console = Console(force_terminal=sys.stdout.isatty() or None, legacy_windows=False)
+console = (
+    Console(force_terminal=True, legacy_windows=False)
+    if sys.stdout.isatty()
+    else Console()
+)
 
 
 def _mock_config() -> dict:

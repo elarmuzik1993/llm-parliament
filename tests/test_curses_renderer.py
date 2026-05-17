@@ -52,11 +52,12 @@ def test_build_renderer_returns_curses_for_tui():
 
 
 def test_curses_renderer_refreshes_screen_on_emit():
-    """Each emit must trigger a refresh so the user sees updates."""
+    """redraw() must trigger a refresh so the user sees updates."""
     s = FakeStdscr()
     r = CursesLiveRenderer(stdscr=s)
     with r:
         r.emit(ProgressEvent(phase="first_reading", member_name="Alpha", kind="started"))
+        r.redraw()
     assert s.refresh_count >= 1
 
 
@@ -65,6 +66,7 @@ def test_curses_renderer_shows_phase_label_and_member_on_started():
     r = CursesLiveRenderer(stdscr=s)
     with r:
         r.emit(ProgressEvent(phase="first_reading", member_name="Alpha", kind="started"))
+        r.redraw()
     text = s.all_text()
     assert "First Reading" in text
     assert "Alpha" in text
@@ -111,8 +113,9 @@ def test_curses_renderer_can_suppress_response_content():
                 duration_ms=500,
             )
         )
+        r.redraw()
     text = s.all_text()
-    assert "Alpha" in text
+    # Minimal screen shows phase name but not response content or member names.
     assert "The hidden live panel content." not in text
 
 
@@ -136,6 +139,7 @@ def test_curses_renderer_shows_response_content_on_completed():
                 duration_ms=500,
             )
         )
+        r.redraw()
     text = s.all_text()
     assert "case for Postgres" in text
 
@@ -159,6 +163,7 @@ def test_curses_renderer_advances_through_all_phases():
                           synthesis=synth, duration_ms=10),
         ]:
             r.emit(ev)
+        r.redraw()
     # The final visible state should be the Division phase with the synthesis.
     text = s.all_text()
     assert "Division" in text
@@ -179,6 +184,7 @@ def test_curses_renderer_marks_failed_member():
                 duration_ms=5,
             )
         )
+        r.redraw()
     text = s.all_text().lower()
     # Some indication of failure must appear (not silently dropped).
     assert "fail" in text or "error" in text or "synthetic failure" in text

@@ -65,7 +65,7 @@ def test_keys_list_empty_shows_keys_file(monkeypatch, tmp_path):
 
     assert result.exit_code == 0
     assert "No API keys configured" in result.output
-    assert str(tmp_path / "keys.env") in result.output
+    assert str(tmp_path / "keys.env") in result.output.replace("\n", "")
     assert "{KEYS_FILE}" not in result.output
 
 

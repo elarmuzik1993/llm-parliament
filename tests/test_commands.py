@@ -324,7 +324,7 @@ def test_detect_install_editable_returns_path(tmp_path: Path, monkeypatch) -> No
     src_path.mkdir(parents=True)
     direct_url = fake_dist_info / "direct_url.json"
     direct_url.write_text(
-        '{"url": "file://' + str(tmp_path) + '", "dir_info": {"editable": true}}',
+        '{"url": "' + tmp_path.as_uri() + '", "dir_info": {"editable": true}}',
         encoding="utf-8",
     )
 
