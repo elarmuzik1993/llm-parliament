@@ -49,8 +49,9 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
         "recommendation": "",
     }
 
-    # Try to extract sections
-    pattern = r"(?:^|\n)\s*(CONSENSUS|SPLIT|RISKS|RECOMMENDATION)\s*:?\s*\n?"
+    # Try to extract sections — match plain headers (CONSENSUS:), markdown
+    # h1-h6 (### CONSENSUS), and bold (**CONSENSUS**) variants.
+    pattern = r"(?:^|\n)\s*#{0,6}\s*\*{0,2}(CONSENSUS|SPLIT|RISKS|RECOMMENDATION)\*{0,2}\s*:?\s*\n?"
     parts = re.split(pattern, raw, flags=re.IGNORECASE)
 
     # parts alternates: [preamble, HEADER, content, HEADER, content, ...]
