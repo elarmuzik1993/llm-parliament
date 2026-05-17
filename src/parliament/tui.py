@@ -625,6 +625,7 @@ def _run(
                                 result_message = f"Auto-saved to {saved_path}"
                             except OSError as exc:
                                 result_message = f"Auto-save failed: {exc}"
+                            _init_tui_colors()  # re-init after live renderer's start_color() reset pairs
                             screen = "result"
                         except DebateCancelled:
                             message = "Debate cancelled."
