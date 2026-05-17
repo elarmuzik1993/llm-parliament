@@ -1373,14 +1373,15 @@ def _run_debate(
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     with renderer:
-        return _run_cancellable_debate(stdscr, parliament.ask(question))
+        return _run_cancellable_debate(stdscr, parliament.ask(question), renderer)
 
 
-def _run_cancellable_debate(stdscr, awaitable) -> Hansard:
+def _run_cancellable_debate(stdscr, awaitable, renderer: Any = None) -> Hansard:
     """Run a debate coroutine while polling curses for cancel keys.
 
-    Curses input stays on the main thread. The asyncio debate runs on a worker
-    thread so blocking provider/client behavior cannot starve getch polling.
+    Curses input AND all drawing stay on the main thread. The renderer's
+    redraw() is called here each polling tick so no separate refresh thread
+    touches the curses window — PDCurses is not thread-safe.
     """
     done = Event()
     cancel_requested = Event()
@@ -1420,6 +1421,8 @@ def _run_cancellable_debate(stdscr, awaitable) -> Hansard:
     _set_nodelay(stdscr, True)
     try:
         while not done.wait(0.05):
+            if renderer is not None:
+                renderer.redraw()
             if _read_cancel_key(stdscr):
                 cancel_requested.set()
                 done.wait(2.0)
@@ -1461,7 +1464,7 @@ def _draw_result(
     width: int,
     level: "HansardLevel | None" = None,
 ) -> int:
-    lines = _result_lines(hansard, level)
+    lines = _result_lines(hansard, level, width)
     body_top = 2
     body_bottom = max(body_top, height - 3)
     visible = max(1, body_bottom - body_top + 1)
@@ -1506,9 +1509,13 @@ def _result_line_attr(line: str) -> int:
 def _draw_error(stdscr, error_message: str, height: int, width: int) -> None:
     _add_line(stdscr, 0, 0, "Parliament Error", _tui_attr("error", curses.A_BOLD), width)
     _add_line(stdscr, 1, 0, "b/Esc/backspace: dashboard  q: quit", _tui_attr("meta", curses.A_DIM), width)
-    _add_line(stdscr, 3, 0, error_message or "Unknown error", _tui_attr("error"), width)
+    msg_lines = _wrap_text(error_message or "Unknown error", width)
+    max_msg_rows = max(1, height - 6)
+    for offset, line in enumerate(msg_lines[:max_msg_rows]):
+        _add_line(stdscr, 3 + offset, 0, line, _tui_attr("error"), width)
+    hint_row = min(3 + len(msg_lines[:max_msg_rows]) + 1, height - 3)
     if "Connection" in error_message or "connect" in error_message.lower():
-        _add_line(stdscr, 5, 0, "Try `parliament --mock` for a no-service test run.", _tui_attr("meta", curses.A_DIM), width)
+        _add_line(stdscr, hint_row, 0, "Try `parliament --mock` for a no-service test run.", _tui_attr("meta", curses.A_DIM), width)
     _add_line(stdscr, max(0, height - 2), 0, "The one-shot CLI is still available with --mock.", _tui_attr("meta", curses.A_DIM), width)
 
 
@@ -1614,7 +1621,7 @@ def _slugify(value: str) -> str:
     return slug[:48] or "parliament-response"
 
 
-def _result_lines(hansard: Hansard, level: "HansardLevel | None" = None) -> list[str]:
+def _result_lines(hansard: Hansard, level: "HansardLevel | None" = None, width: int = 80) -> list[str]:
     """Render the TUI result screen text, gated by Hansard detail level.
 
     Same level semantics as `parliament.render.hansard.render_terminal`:
@@ -1630,10 +1637,8 @@ def _result_lines(hansard: Hansard, level: "HansardLevel | None" = None) -> list
     synthesis = hansard.synthesis
     duration = hansard.duration_ms / 1000
     calls = len(hansard.members) * 2 + 1
-    lines = [
-        f"Question: {hansard.bill.content}",
-        "",
-    ]
+    q = f"Question: {hansard.bill.content}"
+    lines = [*_wrap_text(q, width), ""]
 
     for section_key, heading, value in (
         ("consensus",      "CONSENSUS",      synthesis.consensus),
@@ -1651,17 +1656,17 @@ def _result_lines(hansard: Hansard, level: "HansardLevel | None" = None) -> list
             if not value or not value.strip():
                 continue
             display = value
-        lines.extend([heading, *display.splitlines(), ""])
+        lines.extend([heading, *_wrap_text(display, width), ""])
 
     if includes(resolved, "first_reading"):
         lines.extend(["FIRST READING", ""])
         for r in hansard.first_reading:
-            lines.extend([f"### {r.member_name}", "", *r.content.splitlines(), ""])
+            lines.extend([f"### {r.member_name}", "", *_wrap_text(r.content, width), ""])
 
     if includes(resolved, "debate"):
         lines.extend(["DEBATE", ""])
         for r in hansard.debate:
-            lines.extend([f"### {r.member_name} (critique)", "", *r.content.splitlines(), ""])
+            lines.extend([f"### {r.member_name} (critique)", "", *_wrap_text(r.content, width), ""])
 
     if includes(resolved, "footer"):
         lines.extend([
@@ -1685,6 +1690,21 @@ def _settings_rows(setting: ModelSettings) -> list[tuple[str, str]]:
         ("API key", setting.api_key_status),
         ("Base URL", setting.base_url),
     ]
+
+
+def _wrap_text(text: str, width: int) -> list[str]:
+    """Word-wrap text to fit within width columns, preserving blank lines."""
+    import textwrap
+    limit = max(1, width - 1)
+    result: list[str] = []
+    for line in text.splitlines():
+        if not line.strip():
+            result.append("")
+        elif len(line) <= limit:
+            result.append(line)
+        else:
+            result.extend(textwrap.wrap(line, width=limit, break_long_words=True))
+    return result or [""]
 
 
 def _add_line(stdscr, y: int, x: int, text: str, attr: int, width: int) -> None:

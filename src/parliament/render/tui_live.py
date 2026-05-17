@@ -11,7 +11,7 @@ from __future__ import annotations
 import curses
 import time
 from dataclasses import dataclass, field
-from threading import Event, RLock, Thread
+from threading import RLock
 from typing import Any
 
 from parliament.core.types import ProgressEvent, Synthesis
@@ -57,7 +57,12 @@ class _PhaseState:
 
 
 class CursesLiveRenderer(DebateRenderer):
-    """Live debate view that draws into an existing curses window."""
+    """Live debate view that draws into an existing curses window.
+
+    All curses drawing happens on the main thread via redraw(), which is
+    called from the _run_cancellable_debate polling loop. The worker thread
+    only mutates state via emit(); it never touches the curses window.
+    """
 
     def __init__(self, stdscr: Any, show_responses: bool = True) -> None:
         self._stdscr = stdscr
@@ -65,36 +70,29 @@ class CursesLiveRenderer(DebateRenderer):
         self._current_phase: str | None = None
         self._phases: dict[str, _PhaseState] = {}
         self._lock = RLock()
-        self._stop_refresh = Event()
-        self._refresh_thread: Thread | None = None
         self._colors_ready = False
 
     # ---- DebateRenderer ----
 
     def __enter__(self) -> "CursesLiveRenderer":
         self._init_colors()
-        self._stop_refresh.clear()
-        self._refresh_thread = Thread(
-            target=self._refresh_loop,
-            name="parliament-curses-live-refresh",
-            daemon=True,
-        )
-        self._refresh_thread.start()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self._stop_refresh.set()
-        if self._refresh_thread is not None:
-            self._refresh_thread.join(timeout=0.5)
-            self._refresh_thread = None
         return None
 
     def emit(self, event: ProgressEvent) -> None:
         try:
             with self._lock:
                 self._update_state(event)
-            self._redraw()
         except Exception:  # pragma: no cover - never break the debate
+            return
+
+    def redraw(self) -> None:
+        """Refresh the screen. Must be called from the main (curses) thread."""
+        try:
+            self._redraw()
+        except Exception:  # pragma: no cover
             return
 
     # ---- internals ----
@@ -140,6 +138,20 @@ class CursesLiveRenderer(DebateRenderer):
         s = self._stdscr
         height, width = s.getmaxyx()
         s.erase()
+
+        cancel_hint = "Press q, Esc, or Ctrl+C to cancel"
+
+        if not self._show_responses:
+            # Minimal waiting screen — live debate view is OFF
+            self._safe_addstr(0, 0, "Parliament — running debate", self._attr("title", curses.A_BOLD), width)
+            with self._lock:
+                phase = self._current_phase or "first_reading"
+            label = _PHASE_LABELS.get(phase, phase.title())
+            self._safe_addstr(2, 0, f"Phase: {label}…", self._attr("phase", curses.A_DIM), width)
+            self._safe_addstr(max(0, height - 1), 0, cancel_hint, self._attr("dim", curses.A_DIM), width)
+            s.refresh()
+            return
+
         with self._lock:
             phase = self._current_phase or "first_reading"
             ps = self._phases.get(phase)
@@ -183,32 +195,28 @@ class CursesLiveRenderer(DebateRenderer):
                     break
 
         # Last completed content (response or synthesis)
-        if self._show_responses and last_content:
+        if last_content:
             content_top = max(row + 1, height - 10)
             content_top = min(content_top, height - 2)
             self._safe_addstr(content_top, 0, "── Last response ──", self._attr("dim", curses.A_DIM), width)
-            content_lines = last_content.splitlines() or [last_content]
+            import textwrap
+            wrapped: list[str] = []
+            for ln in last_content.splitlines():
+                if not ln.strip():
+                    wrapped.append("")
+                elif len(ln) < width - 1:
+                    wrapped.append(ln)
+                else:
+                    wrapped.extend(textwrap.wrap(ln, width=width - 1, break_long_words=True))
             visible = max(1, height - content_top - 2)
-            for offset, line in enumerate(content_lines[:visible]):
+            for offset, line in enumerate(wrapped[:visible]):
                 self._safe_addstr(content_top + 1 + offset, 0, line, curses.A_NORMAL, width)
 
         # Footer hint
-        self._safe_addstr(
-            max(0, height - 1),
-            0,
-            "Working… press q, Esc, or Ctrl+C to cancel",
-            self._attr("dim", curses.A_DIM),
-            width,
-        )
+        self._safe_addstr(max(0, height - 1), 0, f"Working… {cancel_hint}", self._attr("dim", curses.A_DIM), width)
 
         s.refresh()
 
-    def _refresh_loop(self) -> None:
-        while not self._stop_refresh.wait(0.125):
-            try:
-                self._redraw()
-            except Exception:  # pragma: no cover - background status must be best-effort
-                return
 
     def _attr(self, role: str, fallback: int) -> int:
         if not self._colors_ready:
