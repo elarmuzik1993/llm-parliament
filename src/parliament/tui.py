@@ -89,6 +89,7 @@ class SettingsScreenState:
     show_debate: bool
     hansard_level: "HansardLevel"
     focus: str = "save_dir"  # "save_dir" | "hansard_level" | "show_debate"
+    editing: bool = False    # True while save_dir field is in text-edit mode
 
 
 _SETTINGS_FOCUS_ORDER = ("save_dir", "hansard_level", "show_debate")
@@ -140,7 +141,28 @@ def _handle_settings_key(
       - ``"save"``:     persist and return to dashboard
     Cancel (Backspace/Esc/b) is handled in the outer dispatcher.
     """
+    # --- save_dir edit mode: text input is active ---
+    if state.editing:
+        if key in (curses.KEY_ENTER, 10, 13):  # confirm edit, stay in settings
+            return dataclasses.replace(state, editing=False), "continue"
+        if key == 27:  # Esc — leave edit mode without going to dashboard
+            return dataclasses.replace(state, editing=False), "continue"
+        if key in (9, curses.KEY_DOWN):  # Tab/Down — confirm and advance focus
+            return dataclasses.replace(
+                state, editing=False, focus=_next_focus(state.focus)
+            ), "continue"
+        if key == curses.KEY_UP:  # Up — confirm and retreat focus
+            return dataclasses.replace(
+                state, editing=False, focus=_prev_focus(state.focus)
+            ), "continue"
+        return dataclasses.replace(
+            state, save_dir=_handle_text_key(state.save_dir, key)
+        ), "continue"
+
+    # --- normal (non-editing) navigation ---
     if key in (curses.KEY_ENTER, 10, 13):
+        if state.focus == "save_dir":
+            return dataclasses.replace(state, editing=True), "continue"
         return state, "save"
     if key in (9, curses.KEY_DOWN):  # Tab / Down
         return dataclasses.replace(state, focus=_next_focus(state.focus)), "continue"
@@ -153,13 +175,13 @@ def _handle_settings_key(
         if key == curses.KEY_LEFT:
             new_level = _cycle_hansard_level(state.hansard_level, -1)
             return dataclasses.replace(state, hansard_level=new_level), "continue"
-        return state, "continue"  # other keys are no-ops on the level field
+        return state, "continue"
     if state.focus == "show_debate":
         if key == ord(" "):
             return dataclasses.replace(state, show_debate=not state.show_debate), "continue"
         return state, "continue"
-    # focus == "save_dir": delegate to text-input handler
-    return dataclasses.replace(state, save_dir=_handle_text_key(state.save_dir, key)), "continue"
+    # save_dir focused but not editing — ignore typing
+    return state, "continue"
 
 
 def _save_settings(
@@ -849,7 +871,6 @@ def _run(
                 api_key_input = _handle_text_key(api_key_input, key)
 
         elif screen in ("error", "app_settings") and key in (
-            curses.KEY_LEFT,
             curses.KEY_BACKSPACE,
             27,
             ord("b"),
@@ -1499,22 +1520,31 @@ def _draw_app_settings(
 ) -> None:
     """Render the Settings screen with three fields and focus highlight."""
     _add_line(stdscr, 0, 0, "Settings", curses.A_BOLD, width)
-    _add_line(
-        stdscr,
-        1,
-        0,
-        "Enter: save  Tab: switch  Space: toggle  ←/→: cycle  b/Esc/backspace: cancel",
-        curses.A_DIM,
-        width,
-    )
+    if state.editing:
+        hint = "Enter/Tab: confirm  Esc: cancel edit  Type to change path"
+    else:
+        hint = "Enter: edit/save  Tab: next  Space: toggle  ←/→: cycle  b/Esc: cancel"
+    _add_line(stdscr, 1, 0, hint, curses.A_DIM, width)
 
     # --- Field 1: Hansard save directory ---
     _add_line(stdscr, 3, 0, "Hansard save directory", curses.A_BOLD, width)
     value = state.save_dir or str(DEFAULT_SAVE_DIR)
-    if len(value) > width - 5:
-        value = value[-(width - 5):]
-    save_dir_attr = curses.A_REVERSE if state.focus == "save_dir" else curses.A_NORMAL
-    _add_line(stdscr, 4, 0, f" {value}", save_dir_attr, width)
+    if state.editing:
+        display = f" {value}_"
+        if len(display) > width - 1:
+            display = f" {value[-(width - 3):]}_"
+        save_dir_attr = curses.A_REVERSE
+    elif state.focus == "save_dir":
+        display = f" {value}  [Enter to edit]"
+        if len(display) > width - 1:
+            display = f" {value[-(width - 5):]}"
+        save_dir_attr = curses.A_REVERSE
+    else:
+        display = f" {value}"
+        if len(display) > width - 1:
+            display = f" {value[-(width - 5):]}"
+        save_dir_attr = curses.A_NORMAL
+    _add_line(stdscr, 4, 0, display, save_dir_attr, width)
 
     # --- Field 2: Hansard detail level ---
     _add_line(stdscr, 6, 0, "Hansard detail level", curses.A_BOLD, width)
