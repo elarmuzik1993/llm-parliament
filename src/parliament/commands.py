@@ -10,6 +10,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 from parliament.core.types import Hansard, Member
 
@@ -206,6 +207,24 @@ def _copy(_args: str, ctx: CommandContext) -> CommandResult:
     )
 
 
+# ---------------- /doctor ----------------
+
+
+def _doctor(_args: str, _ctx: CommandContext) -> CommandResult:
+    """Run the health check and display results in the TUI message area."""
+    import io
+
+    from rich.console import Console
+
+    from parliament.doctor import run_doctor
+
+    buf = io.StringIO()
+    console = Console(file=buf, no_color=True, highlight=False, width=80)
+    run_doctor(console)
+    output = buf.getvalue().strip()
+    return CommandResult(message=output, clear_question=False)
+
+
 # ---------------- /update ----------------
 
 
@@ -260,8 +279,9 @@ def _detect_install() -> tuple[str, Path | None]:
     if parsed.scheme != "file":
         return "non-editable", None
 
-    # file:// URLs encode the path; strip and normalize to a Path.
-    raw_path = unquote(parsed.path or "")
+    # file:// URLs encode the path; url2pathname handles the Windows
+    # /C:/path → C:\path conversion that urlparse leaves with a leading slash.
+    raw_path = url2pathname(unquote(parsed.path or ""))
     if not raw_path:
         return "unknown", None
 
@@ -375,6 +395,7 @@ COMMANDS: list[Command] = [
         aliases=("members",),
     ),
     Command("settings", "Open app settings", _settings),
+    Command("doctor", "Run environment and provider health check", _doctor),
     Command("key", "Set API key for cloud provider: /key <anthropic|openai|google>", _key),
     Command(
         "expand",
