@@ -1,5 +1,9 @@
 # LLM Parliament
 
+[![PyPI version](https://img.shields.io/pypi/v/llm-parliament.svg)](https://pypi.org/project/llm-parliament/)
+[![Python](https://img.shields.io/pypi/pyversions/llm-parliament.svg)](https://pypi.org/project/llm-parliament/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+
 Multi-agent debate for better AI decisions. Research-backed, local-first.
 
 Three AI models debate your question through a parliamentary process:
@@ -8,6 +12,8 @@ consensus, split views, risks, and a recommendation.
 
 Built on multi-agent debate, a technique shown to improve AI accuracy by
 7-15% in research (Liang et al. 2023, Chen et al. 2023).
+
+See [CHANGELOG.md](CHANGELOG.md) for the release history.
 
 ## Quick Start
 
@@ -350,13 +356,25 @@ parliament ask "What should we test first?" --mock
 
 ```text
 src/parliament/
-  cli.py                  Click CLI and Rich output
-  config.py               YAML config loading and key management
-  core/                   Public orchestration and domain types
+  cli.py                  Click CLI (parliament ask / doctor / keys / members / tui / update)
+  commands.py             Slash commands (/help, /update, /doctor, /history, /copy, …)
+  config.py               YAML config loading, key management, resolve_* precedence helpers
+  doctor.py               Health-check logic (Python, curses, terminal, providers, Ollama)
+  model_catalog.py        Provider model presets + tier data for pickers
+  tui.py                  Curses TUI — all screens, key handling, main loop
+  core/                   Parliament orchestrator, dataclasses, ProgressEvent
   procedures/             First Reading, Debate, and Division phases
-  providers/              Provider adapters for Ollama, OpenAI, Anthropic, Google
-tests/                    Unit tests
+  providers/              Adapters for Ollama, OpenAI, Anthropic, Google, plus Mock
+  render/                 HansardLevel + terminal/markdown renderers + live CLI/TUI views
+tests/                    Pytest suite (pytest-asyncio)
+scripts/
+  diagnose-render.py      Render diagnostic — colors + spinner debugging
 config.example.yaml       Default config template (copied to ~/.parliament/config.yaml on first run)
+config.cloud.yaml         Cloud-only example (Anthropic + Google + OpenAI)
+config.mixed.yaml         Mixed example (Ollama + cloud)
+AGENTS.md                 Contributor source-of-truth (architecture, conventions)
+CHANGELOG.md              Release history (Keep-a-Changelog)
+RELEASING.md              PyPI release procedure
 ```
 
 ## Disclaimer
