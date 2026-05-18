@@ -599,6 +599,8 @@ def _run(
                         )
                         result = dispatch(stripped, ctx)
                         if result.quit:
+                            if result.message:
+                                _show_quit_notice(stdscr, result.message)
                             return
                         if result.clear_question:
                             question = ""
@@ -1194,6 +1196,34 @@ def _save_member_edit(
     _autoname_members(runtime_config["parliament"]["members"])
     editor.draft["name"] = runtime_config["parliament"]["members"][editor.member_index]["name"]
     return runtime_config
+
+
+def _show_quit_notice(stdscr, message: str) -> None:
+    """Display a centered notification and wait for a keypress before exit."""
+    try:
+        curses.curs_set(0)
+    except curses.error:
+        pass
+    stdscr.nodelay(False)
+    stdscr.erase()
+    height, width = stdscr.getmaxyx()
+
+    lines = message.splitlines() or [message]
+    lines.append("")
+    lines.append("Press any key to exit…")
+
+    start_row = max(0, (height - len(lines)) // 2)
+    for i, line in enumerate(lines):
+        attr = curses.A_BOLD if i == 0 else curses.A_NORMAL
+        if line == "Press any key to exit…":
+            attr = curses.A_DIM
+        col = max(0, (width - len(line)) // 2)
+        _add_line(stdscr, start_row + i, col, line, attr, width)
+    stdscr.refresh()
+    try:
+        stdscr.getch()
+    except curses.error:
+        pass
 
 
 def _draw_dashboard(
