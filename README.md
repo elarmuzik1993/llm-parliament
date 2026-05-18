@@ -15,6 +15,22 @@ Built on multi-agent debate, a technique shown to improve AI accuracy by
 
 See [CHANGELOG.md](CHANGELOG.md) for the release history.
 
+---
+
+> 👋 **This is my GitHub and developer debut!**
+> `llm-parliament` is the first project I've shipped publicly. I built it to learn,
+> and I'd genuinely love your help making it better.
+>
+> Feedback, bug reports, feature ideas, code review, and pull requests are **very
+> welcome** — no contribution is too small. If something feels confusing, doesn't
+> install, breaks on your terminal, or could be more polished, please
+> [open an issue](https://github.com/elarmuzik1993/llm-parliament/issues/new) or
+> say hi in [Discussions](https://github.com/elarmuzik1993/llm-parliament/discussions).
+>
+> Stars also help me see what's resonating. Thanks for taking a look. 🙏
+
+---
+
 ## Quick Start
 
 ```bash
