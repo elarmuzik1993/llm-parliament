@@ -3,8 +3,8 @@
 
 Run this directly in a real terminal (no pipes, no redirects):
 
-    cd /home/boris/Projects/llm-parliament
-    source .venv/bin/activate
+    cd <repo-root>
+    source .venv/bin/activate           # or: .venv\Scripts\Activate.ps1 on Windows
     python scripts/diagnose-render.py
 
 It reports what Rich detects, then renders one sample of each colored
