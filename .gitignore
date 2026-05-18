@@ -19,6 +19,8 @@ env/
 # IDE
 .vscode/
 .idea/
+.cursor/
+*.code-workspace
 *.swp
 *.swo
 *~
