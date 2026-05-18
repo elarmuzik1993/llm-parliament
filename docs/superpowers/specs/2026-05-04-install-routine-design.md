@@ -227,7 +227,7 @@ No other manifest changes. Classifiers, license, urls, build-system stay as-is.
    ```ini
    [pypi]
    username = __token__
-   password = pypi-AgEIcHlwaS5vcmc...
+   password = pypi-<your-pypi-token-here>
    ```
 4. Verify name `llm-parliament` is available on PyPI (visit <https://pypi.org/project/llm-parliament/> — should 404).
 5. `pipx install build` and `pipx install twine`.

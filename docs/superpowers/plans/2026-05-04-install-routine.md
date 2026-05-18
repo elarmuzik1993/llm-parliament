@@ -1412,12 +1412,12 @@ This document describes how to publish a new version of `llm-parliament` to PyPI
    ```ini
    [pypi]
    username = __token__
-   password = pypi-AgEIcHlwaS5vcmc...   # the full token, including the `pypi-` prefix
+   password = pypi-<your-pypi-token-here>            # the full token, including the `pypi-` prefix
 
    [testpypi]
    repository = https://test.pypi.org/legacy/
    username = __token__
-   password = pypi-AgEIcHRlc3RweXBpLm9yZw...   # separate TestPyPI token
+   password = pypi-<your-testpypi-token-here>        # separate TestPyPI token
    ```
 
 4. **Verify the package name is available** on PyPI by visiting
