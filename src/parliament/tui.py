@@ -8,9 +8,11 @@ import json
 import os
 import re
 import sys
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from threading import Event, Thread
 from typing import Any
 
 import yaml
@@ -23,18 +25,35 @@ from parliament.config import (
     api_key_status,
     build_parliament_from_config,
     load_keys,
+    resolve_hansard_level,
+    resolve_show_debate,
     save_config,
     save_key,
 )
+from parliament.render.hansard import HansardLevel
 from parliament.core.model_tiers import get_tier, get_tier_label
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
 from parliament.model_catalog import picker_data_for
+from parliament.render import build_renderer
 
 SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
 DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
 SUPPORTED_PROVIDERS = ["ollama", "anthropic", "openai", "google", "mock"]
 MEMBER_FIELDS = ["provider", "model", "base_url"]
+
+_TUI_COLOR_PAIR = {
+    "title": 21,
+    "consensus": 22,
+    "split": 23,
+    "risks": 24,
+    "recommendation": 25,
+    "meta": 26,
+    "success": 27,
+    "error": 28,
+}
+
+_TUI_COLORS_READY = False
 
 
 @dataclass(frozen=True)
@@ -52,6 +71,145 @@ class AppSettings:
     """User-configurable TUI settings."""
 
     save_dir: str
+
+
+class DebateCancelled(Exception):
+    """Raised when the user cancels an in-flight debate from the TUI."""
+
+
+@dataclass
+class SettingsScreenState:
+    """In-screen state for the Settings dialog (focus + per-field draft values).
+
+    save_dir lives in settings.json (TUI-only); show_debate and
+    hansard.level live in config.yaml.
+    """
+
+    save_dir: str
+    show_debate: bool
+    hansard_level: "HansardLevel"
+    focus: str = "save_dir"  # "save_dir" | "hansard_level" | "show_debate"
+    editing: bool = False    # True while save_dir field is in text-edit mode
+
+
+_SETTINGS_FOCUS_ORDER = ("save_dir", "hansard_level", "show_debate")
+
+_HANSARD_LEVEL_CYCLE = (
+    HansardLevel.MINIMAL,
+    HansardLevel.VERDICT,
+    HansardLevel.ARCHIVE,
+    HansardLevel.FULL,
+)
+
+
+def _next_focus(focus: str) -> str:
+    idx = _SETTINGS_FOCUS_ORDER.index(focus)
+    return _SETTINGS_FOCUS_ORDER[(idx + 1) % len(_SETTINGS_FOCUS_ORDER)]
+
+
+def _prev_focus(focus: str) -> str:
+    idx = _SETTINGS_FOCUS_ORDER.index(focus)
+    return _SETTINGS_FOCUS_ORDER[(idx - 1) % len(_SETTINGS_FOCUS_ORDER)]
+
+
+def _init_settings_state(save_dir: str, config: dict[str, Any]) -> SettingsScreenState:
+    """Build the initial Settings-screen state from persisted sources."""
+    show_debate = bool(config.get("display", {}).get("show_debate", True))
+    raw_level = (config.get("hansard") or {}).get("level")
+    hansard_level = HansardLevel.parse(raw_level)
+    return SettingsScreenState(
+        save_dir=save_dir,
+        show_debate=show_debate,
+        hansard_level=hansard_level,
+        focus="save_dir",
+    )
+
+
+def _cycle_hansard_level(current: HansardLevel, direction: int) -> HansardLevel:
+    """Advance through the level cycle by `direction` (±1) with wrap-around."""
+    idx = _HANSARD_LEVEL_CYCLE.index(current)
+    return _HANSARD_LEVEL_CYCLE[(idx + direction) % len(_HANSARD_LEVEL_CYCLE)]
+
+
+def _handle_settings_key(
+    state: SettingsScreenState, key: int
+) -> tuple[SettingsScreenState, str]:
+    """Handle a key press on the Settings screen.
+
+    Returns ``(state, action)``. ``action`` is one of:
+      - ``"continue"``: keep editing, redraw with new state
+      - ``"save"``:     persist and return to dashboard
+    Cancel (Backspace/Esc/b) is handled in the outer dispatcher.
+    """
+    # --- save_dir edit mode: text input is active ---
+    if state.editing:
+        if key in (curses.KEY_ENTER, 10, 13):  # confirm edit, stay in settings
+            return dataclasses.replace(state, editing=False), "continue"
+        if key == 27:  # Esc — leave edit mode without going to dashboard
+            return dataclasses.replace(state, editing=False), "continue"
+        if key in (9, curses.KEY_DOWN):  # Tab/Down — confirm and advance focus
+            return dataclasses.replace(
+                state, editing=False, focus=_next_focus(state.focus)
+            ), "continue"
+        if key == curses.KEY_UP:  # Up — confirm and retreat focus
+            return dataclasses.replace(
+                state, editing=False, focus=_prev_focus(state.focus)
+            ), "continue"
+        return dataclasses.replace(
+            state, save_dir=_handle_text_key(state.save_dir, key)
+        ), "continue"
+
+    # --- normal (non-editing) navigation ---
+    if key in (curses.KEY_ENTER, 10, 13):
+        if state.focus == "save_dir":
+            return dataclasses.replace(state, editing=True), "continue"
+        return state, "save"
+    if key in (9, curses.KEY_DOWN):  # Tab / Down
+        return dataclasses.replace(state, focus=_next_focus(state.focus)), "continue"
+    if key == curses.KEY_UP:
+        return dataclasses.replace(state, focus=_prev_focus(state.focus)), "continue"
+    if state.focus == "hansard_level":
+        if key in (curses.KEY_RIGHT, ord(" ")):
+            new_level = _cycle_hansard_level(state.hansard_level, +1)
+            return dataclasses.replace(state, hansard_level=new_level), "continue"
+        if key == curses.KEY_LEFT:
+            new_level = _cycle_hansard_level(state.hansard_level, -1)
+            return dataclasses.replace(state, hansard_level=new_level), "continue"
+        return state, "continue"
+    if state.focus == "show_debate":
+        if key == ord(" "):
+            return dataclasses.replace(state, show_debate=not state.show_debate), "continue"
+        return state, "continue"
+    # save_dir focused but not editing — ignore typing
+    return state, "continue"
+
+
+def _save_settings(
+    runtime_config: dict[str, Any],
+    config_path: Path,
+    *,
+    show_debate: bool,
+    hansard_level: "HansardLevel",
+    persist: bool = True,
+) -> dict[str, Any]:
+    """Persist Settings-screen state to YAML config (skipped in mock mode).
+
+    Writes both ``display.show_debate`` and ``hansard.level`` in one
+    round-trip via ``_load_editable_config`` + ``save_config`` so that
+    unrelated YAML keys (e.g. members, providers) are preserved.
+    """
+    show_value = bool(show_debate)
+    level_value = hansard_level.value
+
+    if persist:
+        editable_config = _load_editable_config(config_path, runtime_config)
+        editable_config.setdefault("display", {})["show_debate"] = show_value
+        editable_config.setdefault("hansard", {})["level"] = level_value
+        save_config(editable_config, config_path)
+
+    runtime_config.setdefault("display", {})["show_debate"] = show_value
+    runtime_config.setdefault("hansard", {})["level"] = level_value
+    return runtime_config
 
 
 @dataclass
@@ -228,6 +386,41 @@ def _disable_terminal_flow_control() -> None:
         pass
 
 
+def _init_tui_colors() -> None:
+    """Initialise shared curses colors for non-live TUI screens."""
+    global _TUI_COLORS_READY
+    try:
+        if not curses.has_colors():
+            _TUI_COLORS_READY = False
+            return
+        curses.start_color()
+        try:
+            curses.use_default_colors()
+            background = -1
+        except curses.error:
+            background = curses.COLOR_BLACK
+        curses.init_pair(_TUI_COLOR_PAIR["title"], curses.COLOR_CYAN, background)
+        curses.init_pair(_TUI_COLOR_PAIR["consensus"], curses.COLOR_BLUE, background)
+        curses.init_pair(_TUI_COLOR_PAIR["split"], curses.COLOR_YELLOW, background)
+        curses.init_pair(_TUI_COLOR_PAIR["risks"], curses.COLOR_RED, background)
+        curses.init_pair(_TUI_COLOR_PAIR["recommendation"], curses.COLOR_GREEN, background)
+        curses.init_pair(_TUI_COLOR_PAIR["meta"], curses.COLOR_BLUE, background)
+        curses.init_pair(_TUI_COLOR_PAIR["success"], curses.COLOR_GREEN, background)
+        curses.init_pair(_TUI_COLOR_PAIR["error"], curses.COLOR_RED, background)
+        _TUI_COLORS_READY = True
+    except (AttributeError, curses.error):
+        _TUI_COLORS_READY = False
+
+
+def _tui_attr(role: str, fallback: int = curses.A_NORMAL) -> int:
+    if not _TUI_COLORS_READY:
+        return fallback
+    try:
+        return fallback | curses.color_pair(_TUI_COLOR_PAIR[role])
+    except (KeyError, curses.error):
+        return fallback
+
+
 def _run(
     stdscr,
     settings: list[ModelSettings],
@@ -241,6 +434,7 @@ def _run(
     except curses.error:
         # Some terminals (e.g. legacy Windows cmd.exe) reject cursor toggling.
         pass
+    _init_tui_colors()
     stdscr.keypad(True)
     try:
         curses.set_escdelay(25)
@@ -260,7 +454,7 @@ def _run(
     error_message = ""
     result_message = ""
     app_settings = load_app_settings()
-    settings_input = app_settings.save_dir
+    settings_state = _init_settings_state(app_settings.save_dir, config)
     member_editor: MemberEditorState | None = None
     palette_index = 0
     members_expanded = False
@@ -334,11 +528,12 @@ def _run(
                 app_settings.save_dir,
                 height,
                 width,
+                level=resolve_hansard_level(cli_flag=None, config=config),
             )
         elif screen == "error":
             _draw_error(stdscr, error_message, height, width)
         elif screen == "app_settings":
-            _draw_app_settings(stdscr, settings_input, height, width)
+            _draw_app_settings(stdscr, settings_state, height, width)
         elif screen == "api_key_input" and api_key_provider is not None:
             existing = os.environ.get(KEY_PROVIDERS[api_key_provider], "")
             _draw_api_key_input(
@@ -404,6 +599,8 @@ def _run(
                         )
                         result = dispatch(stripped, ctx)
                         if result.quit:
+                            if result.message:
+                                _show_quit_notice(stdscr, result.message)
                             return
                         if result.clear_question:
                             question = ""
@@ -425,7 +622,7 @@ def _run(
                             question = ""
                         message = result.message
                         if result.open_screen == "app_settings":
-                            settings_input = app_settings.save_dir
+                            settings_state = _init_settings_state(app_settings.save_dir, config)
                             screen = "app_settings"
                         if result.open_key_input:
                             api_key_provider = result.open_key_input
@@ -444,11 +641,20 @@ def _run(
                             question = ""
                             result_top = 0
                             try:
-                                saved_path = save_hansard(hansard, app_settings.save_dir)
+                                saved_path = save_hansard(
+                                    hansard,
+                                    app_settings.save_dir,
+                                    level=resolve_hansard_level(cli_flag=None, config=config),
+                                )
                                 result_message = f"Auto-saved to {saved_path}"
                             except OSError as exc:
                                 result_message = f"Auto-save failed: {exc}"
+                            _init_tui_colors()  # re-init after live renderer's start_color() reset pairs
                             screen = "result"
+                        except DebateCancelled:
+                            message = "Debate cancelled."
+                            result_message = ""
+                            screen = "dashboard"
                         except Exception as exc:
                             error_message = str(exc)
                             screen = "error"
@@ -461,7 +667,7 @@ def _run(
                         palette_index = 0
                     message = ""
             elif key in (ord("s"), ord("S")):
-                settings_input = app_settings.save_dir
+                settings_state = _init_settings_state(app_settings.save_dir, config)
                 screen = "app_settings"
             elif key in (curses.KEY_DOWN, ord("j")) and selected < len(settings) - 1:
                 selected += 1
@@ -667,7 +873,6 @@ def _run(
                 api_key_input = _handle_text_key(api_key_input, key)
 
         elif screen in ("error", "app_settings") and key in (
-            curses.KEY_LEFT,
             curses.KEY_BACKSPACE,
             27,
             ord("b"),
@@ -684,7 +889,11 @@ def _run(
                 # Auto-save already ran; only retry when it failed.
                 if not result_message.startswith("Auto-saved"):
                     try:
-                        saved_path = save_hansard(hansard, app_settings.save_dir)
+                        saved_path = save_hansard(
+                            hansard,
+                            app_settings.save_dir,
+                            level=resolve_hansard_level(cli_flag=None, config=config),
+                        )
                         result_message = f"Saved to {saved_path}"
                     except OSError as exc:
                         result_message = f"Save failed: {exc}"
@@ -692,13 +901,26 @@ def _run(
                 screen = "dashboard"
 
         elif screen == "app_settings":
-            if key in (curses.KEY_ENTER, 10, 13):
-                app_settings = AppSettings(save_dir=settings_input.strip() or str(DEFAULT_SAVE_DIR))
+            settings_state, action = _handle_settings_key(settings_state, key)
+            if action == "save":
+                app_settings = AppSettings(
+                    save_dir=settings_state.save_dir.strip() or str(DEFAULT_SAVE_DIR)
+                )
                 save_app_settings(app_settings)
-                message = f"Save directory set to {app_settings.save_dir}"
+                config = _save_settings(
+                    config,
+                    active_config_path,
+                    show_debate=settings_state.show_debate,
+                    hansard_level=settings_state.hansard_level,
+                    persist=not mock,
+                )
+                live_label = "live view ON" if settings_state.show_debate else "live view OFF"
+                level_label = settings_state.hansard_level.value
+                if mock:
+                    message = f"Settings updated for this session ({live_label} · level: {level_label}; mock mode — not saved)."
+                else:
+                    message = f"Settings saved ({live_label} · level: {level_label}, save dir: {app_settings.save_dir})."
                 screen = "dashboard"
-            else:
-                settings_input = _handle_text_key(settings_input, key)
 
 
 def _handle_question_key(question: str, key: int) -> tuple[str, str]:
@@ -976,6 +1198,34 @@ def _save_member_edit(
     return runtime_config
 
 
+def _show_quit_notice(stdscr, message: str) -> None:
+    """Display a centered notification and wait for a keypress before exit."""
+    try:
+        curses.curs_set(0)
+    except curses.error:
+        pass
+    stdscr.nodelay(False)
+    stdscr.erase()
+    height, width = stdscr.getmaxyx()
+
+    lines = message.splitlines() or [message]
+    lines.append("")
+    lines.append("Press any key to exit…")
+
+    start_row = max(0, (height - len(lines)) // 2)
+    for i, line in enumerate(lines):
+        attr = curses.A_BOLD if i == 0 else curses.A_NORMAL
+        if line == "Press any key to exit…":
+            attr = curses.A_DIM
+        col = max(0, (width - len(line)) // 2)
+        _add_line(stdscr, start_row + i, col, line, attr, width)
+    stdscr.refresh()
+    try:
+        stdscr.getch()
+    except curses.error:
+        pass
+
+
 def _draw_dashboard(
     stdscr,
     settings: list[ModelSettings],
@@ -1138,23 +1388,100 @@ def _run_debate(
     config: dict[str, Any],
     speaker_override: str | None,
 ) -> Hansard:
-    height, width = stdscr.getmaxyx()
-    stdscr.erase()
-    _add_line(stdscr, 0, 0, "Running Parliament", curses.A_BOLD, width)
-    _add_line(stdscr, 2, 0, f"Question: {question}", curses.A_NORMAL, width)
-    _add_line(stdscr, 4, 0, "First Reading -> Debate -> Division", curses.A_DIM, width)
-    _add_line(stdscr, max(0, height - 2), 0, "Please wait...", curses.A_DIM, width)
-    stdscr.refresh()
-
     members, providers = build_parliament_from_config(config)
+
+    show = resolve_show_debate(cli_flag=None, config=config)
+    renderer = build_renderer(show_debate=show, mode="tui", stdscr=stdscr)
+
     parliament = Parliament(
         members=members,
         providers=providers,
+        on_progress=renderer.emit,
         speaker_override=speaker_override,
     )
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    return asyncio.run(parliament.ask(question))
+
+    with renderer:
+        return _run_cancellable_debate(stdscr, parliament.ask(question), renderer)
+
+
+def _run_cancellable_debate(stdscr, awaitable, renderer: Any = None) -> Hansard:
+    """Run a debate coroutine while polling curses for cancel keys.
+
+    Curses input AND all drawing stay on the main thread. The renderer's
+    redraw() is called here each polling tick so no separate refresh thread
+    touches the curses window — PDCurses is not thread-safe.
+    """
+    done = Event()
+    cancel_requested = Event()
+    result: dict[str, Any] = {}
+
+    def run_worker() -> None:
+        loop = asyncio.new_event_loop()
+        task = None
+        try:
+            if sys.platform == "win32":
+                asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+            asyncio.set_event_loop(loop)
+            task = loop.create_task(awaitable)
+            while not task.done():
+                if cancel_requested.is_set():
+                    task.cancel()
+                loop.run_until_complete(asyncio.sleep(0.05))
+            try:
+                result["hansard"] = loop.run_until_complete(task)
+            except asyncio.CancelledError:
+                result["cancelled"] = True
+            except BaseException as exc:
+                result["error"] = exc
+        finally:
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    loop.run_until_complete(task)
+                except asyncio.CancelledError:
+                    result["cancelled"] = True
+            asyncio.set_event_loop(None)
+            loop.close()
+            done.set()
+
+    worker = Thread(target=run_worker, name="parliament-debate-worker", daemon=True)
+    worker.start()
+    _set_nodelay(stdscr, True)
+    try:
+        while not done.wait(0.05):
+            if renderer is not None:
+                renderer.redraw()
+            if _read_cancel_key(stdscr):
+                cancel_requested.set()
+                done.wait(2.0)
+                raise DebateCancelled()
+    finally:
+        _set_nodelay(stdscr, False)
+
+    if result.get("cancelled"):
+        raise DebateCancelled()
+    if "error" in result:
+        raise result["error"]
+    return result["hansard"]
+
+
+def _set_nodelay(stdscr, enabled: bool) -> None:
+    try:
+        stdscr.nodelay(enabled)
+    except AttributeError:
+        return
+    except curses.error:
+        return
+
+
+def _read_cancel_key(stdscr) -> bool:
+    try:
+        key = stdscr.getch()
+    except (AttributeError, curses.error):
+        return False
+    return key in (3, 27, ord("q"), ord("Q"))
 
 
 def _draw_result(
@@ -1165,52 +1492,129 @@ def _draw_result(
     save_dir: str,
     height: int,
     width: int,
+    level: "HansardLevel | None" = None,
 ) -> int:
-    lines = _result_lines(hansard)
+    lines = _result_lines(hansard, level, width)
     body_top = 2
     body_bottom = max(body_top, height - 3)
     visible = max(1, body_bottom - body_top + 1)
     max_top = max(0, len(lines) - visible)
     top = min(top, max_top)
 
-    _add_line(stdscr, 0, 0, "Verdict", curses.A_BOLD, width)
+    _add_line(stdscr, 0, 0, "Verdict", _tui_attr("title", curses.A_BOLD), width)
 
     for offset, line in enumerate(lines[top : top + visible]):
-        attr = curses.A_BOLD if line.isupper() else curses.A_NORMAL
+        attr = _result_line_attr(line)
         _add_line(stdscr, body_top + offset, 0, line, attr, width)
 
     if message:
-        _add_line(stdscr, max(0, height - 2), 0, message, curses.A_BOLD, width)
+        _add_line(stdscr, max(0, height - 2), 0, message, _tui_attr("success", curses.A_BOLD), width)
 
     controls = "Up/down: scroll  b/Esc/backspace: dashboard  q: quit"
     if save_dir and len(controls) + len(save_dir) + 7 < width:
         controls = f"{controls}  Dir: {save_dir}"
-    _add_line(stdscr, max(0, height - 1), 0, controls, curses.A_DIM, width)
+    _add_line(stdscr, max(0, height - 1), 0, controls, _tui_attr("meta", curses.A_DIM), width)
 
     if top > 0:
-        _add_line(stdscr, 0, max(0, width - 8), "more ^", curses.A_DIM, width)
+        _add_line(stdscr, 0, max(0, width - 8), "more ^", _tui_attr("meta", curses.A_DIM), width)
     if top < max_top:
-        _add_line(stdscr, max(0, height - 2), max(0, width - 8), "more v", curses.A_DIM, width)
+        _add_line(stdscr, max(0, height - 2), max(0, width - 8), "more v", _tui_attr("meta", curses.A_DIM), width)
     return top
 
 
+def _result_line_attr(line: str) -> int:
+    if line == "CONSENSUS":
+        return _tui_attr("consensus", curses.A_BOLD)
+    if line == "SPLIT":
+        return _tui_attr("split", curses.A_BOLD)
+    if line == "RISKS":
+        return _tui_attr("risks", curses.A_BOLD)
+    if line == "RECOMMENDATION":
+        return _tui_attr("recommendation", curses.A_BOLD)
+    if line.startswith(("Session:", "Calls:", "Speaker:", "Hansard:")) or set(line) == {"-"}:
+        return _tui_attr("meta", curses.A_DIM)
+    return curses.A_NORMAL
+
+
 def _draw_error(stdscr, error_message: str, height: int, width: int) -> None:
-    _add_line(stdscr, 0, 0, "Parliament Error", curses.A_BOLD, width)
-    _add_line(stdscr, 1, 0, "b/Esc/backspace: dashboard  q: quit", curses.A_DIM, width)
-    _add_line(stdscr, 3, 0, error_message or "Unknown error", curses.A_NORMAL, width)
+    _add_line(stdscr, 0, 0, "Parliament Error", _tui_attr("error", curses.A_BOLD), width)
+    _add_line(stdscr, 1, 0, "b/Esc/backspace: dashboard  q: quit", _tui_attr("meta", curses.A_DIM), width)
+    msg_lines = _wrap_text(error_message or "Unknown error", width)
+    max_msg_rows = max(1, height - 6)
+    for offset, line in enumerate(msg_lines[:max_msg_rows]):
+        _add_line(stdscr, 3 + offset, 0, line, _tui_attr("error"), width)
+    hint_row = min(3 + len(msg_lines[:max_msg_rows]) + 1, height - 3)
     if "Connection" in error_message or "connect" in error_message.lower():
-        _add_line(stdscr, 5, 0, "Try `parliament --mock` for a no-service test run.", curses.A_DIM, width)
-    _add_line(stdscr, max(0, height - 2), 0, "The one-shot CLI is still available with --mock.", curses.A_DIM, width)
+        _add_line(stdscr, hint_row, 0, "Try `parliament --mock` for a no-service test run.", _tui_attr("meta", curses.A_DIM), width)
+    _add_line(stdscr, max(0, height - 2), 0, "The one-shot CLI is still available with --mock.", _tui_attr("meta", curses.A_DIM), width)
 
 
-def _draw_app_settings(stdscr, save_dir: str, height: int, width: int) -> None:
+def _draw_app_settings(
+    stdscr,
+    state: "SettingsScreenState",
+    height: int,
+    width: int,
+) -> None:
+    """Render the Settings screen with three fields and focus highlight."""
     _add_line(stdscr, 0, 0, "Settings", curses.A_BOLD, width)
-    _add_line(stdscr, 1, 0, "Enter: save  Ctrl+U: clear  b/Esc/backspace: cancel", curses.A_DIM, width)
+    if state.editing:
+        hint = "Enter/Tab: confirm  Esc: cancel edit  Type to change path"
+    else:
+        hint = "Enter: edit/save  Tab: next  Space: toggle  ←/→: cycle  b/Esc: cancel"
+    _add_line(stdscr, 1, 0, hint, curses.A_DIM, width)
+
+    # --- Field 1: Hansard save directory ---
     _add_line(stdscr, 3, 0, "Hansard save directory", curses.A_BOLD, width)
-    value = save_dir or str(DEFAULT_SAVE_DIR)
-    if len(value) > width - 5:
-        value = value[-(width - 5):]
-    _add_line(stdscr, 4, 0, f" {value}", curses.A_REVERSE, width)
+    value = state.save_dir or str(DEFAULT_SAVE_DIR)
+    if state.editing:
+        display = f" {value}_"
+        if len(display) > width - 1:
+            display = f" {value[-(width - 3):]}_"
+        save_dir_attr = curses.A_REVERSE
+    elif state.focus == "save_dir":
+        display = f" {value}  [Enter to edit]"
+        if len(display) > width - 1:
+            display = f" {value[-(width - 5):]}"
+        save_dir_attr = curses.A_REVERSE
+    else:
+        display = f" {value}"
+        if len(display) > width - 1:
+            display = f" {value[-(width - 5):]}"
+        save_dir_attr = curses.A_NORMAL
+    _add_line(stdscr, 4, 0, display, save_dir_attr, width)
+
+    # --- Field 2: Hansard detail level ---
+    _add_line(stdscr, 6, 0, "Hansard detail level", curses.A_BOLD, width)
+    cycle_text = " · ".join(
+        f"[{lvl.value}]" if lvl is state.hansard_level else lvl.value
+        for lvl in _HANSARD_LEVEL_CYCLE
+    )
+    level_attr = curses.A_REVERSE if state.focus == "hansard_level" else curses.A_NORMAL
+    _add_line(stdscr, 7, 0, f" {cycle_text}", level_attr, width)
+    _add_line(
+        stdscr,
+        8,
+        0,
+        "     minimal: rec only · verdict: + 4-part synthesis · archive: + frontmatter+footer · full: + transcripts",
+        curses.A_DIM,
+        width,
+    )
+
+    # --- Field 3: Live debate view toggle ---
+    _add_line(stdscr, 10, 0, "Live debate view", curses.A_BOLD, width)
+    box = "[x]" if state.show_debate else "[ ]"
+    label = "Show debate as it happens"
+    toggle_attr = curses.A_REVERSE if state.focus == "show_debate" else curses.A_NORMAL
+    _add_line(stdscr, 11, 0, f" {box} {label}", toggle_attr, width)
+    _add_line(
+        stdscr,
+        12,
+        0,
+        "     Also: --show-debate / --no-show-debate or PARLIAMENT_SHOW_DEBATE",
+        curses.A_DIM,
+        width,
+    )
+
     _add_line(
         stdscr,
         max(0, height - 2),
@@ -1221,74 +1625,25 @@ def _draw_app_settings(stdscr, save_dir: str, height: int, width: int) -> None:
     )
 
 
-def save_hansard(hansard: Hansard, save_dir: str) -> Path:
-    """Save a Hansard Markdown file into the configured local directory."""
+def save_hansard(
+    hansard: Hansard,
+    save_dir: str,
+    *,
+    level: "HansardLevel | None" = None,
+) -> Path:
+    """Save a Hansard Markdown file at the given level (defaults to VERDICT)."""
+    from parliament.render.hansard import HansardLevel as _HL, render_markdown
+
+    resolved_level = level if level is not None else _HL.VERDICT
+
     directory = Path(save_dir).expanduser()
     directory.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     slug = _slugify(hansard.bill.title or hansard.bill.content)
     path = directory / f"{timestamp}-{slug}-{hansard.id[:8]}.md"
-    path.write_text(_hansard_markdown(hansard), encoding="utf-8")
+    path.write_text(render_markdown(hansard, resolved_level), encoding="utf-8")
     return path
-
-
-def _hansard_markdown(hansard: Hansard) -> str:
-    synthesis = hansard.synthesis
-    duration = hansard.duration_ms / 1000
-    calls = len(hansard.members) * 2 + 1
-    members = ", ".join(f"{m.name} ({m.provider_name}/{m.model})" for m in hansard.members)
-
-    lines = [
-        "---",
-        f"id: {hansard.id}",
-        f"created_at: {hansard.created_at}",
-        "type: parliament-hansard",
-        "---",
-        "",
-        f"# {hansard.bill.title}",
-        "",
-        "## Question",
-        "",
-        hansard.bill.content,
-        "",
-        "## Verdict",
-        "",
-    ]
-
-    for heading, value in (
-        ("Consensus", synthesis.consensus),
-        ("Split", synthesis.split),
-        ("Risks", synthesis.risks),
-        ("Recommendation", synthesis.recommendation),
-    ):
-        if value:
-            lines.extend([f"### {heading}", "", value, ""])
-
-    lines.extend([
-        "## First Reading",
-        "",
-    ])
-    for response in hansard.first_reading:
-        lines.extend([f"### {response.member_name}", "", response.content, ""])
-
-    lines.extend([
-        "## Debate",
-        "",
-    ])
-    for response in hansard.debate:
-        lines.extend([f"### {response.member_name}", "", response.content, ""])
-
-    lines.extend([
-        "## Session",
-        "",
-        f"- Speaker: {synthesis.speaker_name}",
-        f"- Members: {members}",
-        f"- Calls: {calls}",
-        f"- Duration: {duration:.1f}s",
-        "",
-    ])
-    return "\n".join(lines)
 
 
 def _slugify(value: str) -> str:
@@ -1296,31 +1651,61 @@ def _slugify(value: str) -> str:
     return slug[:48] or "parliament-response"
 
 
-def _result_lines(hansard: Hansard) -> list[str]:
+def _result_lines(hansard: Hansard, level: "HansardLevel | None" = None, width: int = 80) -> list[str]:
+    """Render the TUI result screen text, gated by Hansard detail level.
+
+    Same level semantics as `parliament.render.hansard.render_terminal`:
+      - minimal: question + recommendation only
+      - verdict: + consensus / split / risks
+      - archive: + session footer (Speaker/Calls/Duration)
+      - full:    + first reading and debate transcripts (rendered as
+                 ### {member} blocks, scrollable in the result screen)
+    """
+    from parliament.render.hansard import HansardLevel as _HL, includes
+    resolved = level if level is not None else _HL.VERDICT
+
     synthesis = hansard.synthesis
     duration = hansard.duration_ms / 1000
     calls = len(hansard.members) * 2 + 1
-    lines = [
-        f"Question: {hansard.bill.content}",
-        "",
-    ]
+    q = f"Question: {hansard.bill.content}"
+    lines = [*_wrap_text(q, width), ""]
 
-    for heading, value in (
-        ("CONSENSUS", synthesis.consensus),
-        ("SPLIT", synthesis.split),
-        ("RISKS", synthesis.risks),
-        ("RECOMMENDATION", synthesis.recommendation),
+    for section_key, heading, value in (
+        ("consensus",      "CONSENSUS",      synthesis.consensus),
+        ("split",          "SPLIT",          synthesis.split),
+        ("risks",          "RISKS",          synthesis.risks),
+        ("recommendation", "RECOMMENDATION", synthesis.recommendation),
     ):
-        if value:
-            lines.extend([heading, *value.splitlines(), ""])
+        if not includes(resolved, section_key):
+            continue
+        # Recommendation is always rendered (with placeholder if empty);
+        # other sections are omitted when empty.
+        if section_key == "recommendation":
+            display = (value or "").strip() or "(no recommendation parsed)"
+        else:
+            if not value or not value.strip():
+                continue
+            display = value
+        lines.extend([heading, *_wrap_text(display, width), ""])
 
-    lines.extend([
-        "-" * 40,
-        f"Session: {duration:.1f}s",
-        f"Calls: {calls}",
-        f"Speaker: {synthesis.speaker_name}",
-        f"Hansard: {hansard.id}",
-    ])
+    if includes(resolved, "first_reading"):
+        lines.extend(["FIRST READING", ""])
+        for r in hansard.first_reading:
+            lines.extend([f"### {r.member_name}", "", *_wrap_text(r.content, width), ""])
+
+    if includes(resolved, "debate"):
+        lines.extend(["DEBATE", ""])
+        for r in hansard.debate:
+            lines.extend([f"### {r.member_name} (critique)", "", *_wrap_text(r.content, width), ""])
+
+    if includes(resolved, "footer"):
+        lines.extend([
+            "-" * 40,
+            f"Session: {duration:.1f}s",
+            f"Calls: {calls}",
+            f"Speaker: {synthesis.speaker_name}",
+            f"Hansard: {hansard.id}",
+        ])
     return lines
 
 
@@ -1335,6 +1720,21 @@ def _settings_rows(setting: ModelSettings) -> list[tuple[str, str]]:
         ("API key", setting.api_key_status),
         ("Base URL", setting.base_url),
     ]
+
+
+def _wrap_text(text: str, width: int) -> list[str]:
+    """Word-wrap text to fit within width columns, preserving blank lines."""
+    import textwrap
+    limit = max(1, width - 1)
+    result: list[str] = []
+    for line in text.splitlines():
+        if not line.strip():
+            result.append("")
+        elif len(line) <= limit:
+            result.append(line)
+        else:
+            result.extend(textwrap.wrap(line, width=limit, break_long_words=True))
+    return result or [""]
 
 
 def _add_line(stdscr, y: int, x: int, text: str, attr: int, width: int) -> None:

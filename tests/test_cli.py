@@ -5,6 +5,12 @@ from click.testing import CliRunner
 from parliament import cli
 
 
+# Sentinel strings the live renderer prints on each phase header.
+_LIVE_FIRST_READING_MARKER = "First Reading"
+_LIVE_DEBATE_MARKER = "Debate"
+_LIVE_DIVISION_MARKER = "Division"
+
+
 def test_bare_command_launches_tui(monkeypatch):
     calls = {}
 
@@ -59,7 +65,7 @@ def test_keys_list_empty_shows_keys_file(monkeypatch, tmp_path):
 
     assert result.exit_code == 0
     assert "No API keys configured" in result.output
-    assert str(tmp_path / "keys.env") in result.output
+    assert str(tmp_path / "keys.env") in result.output.replace("\n", "")
     assert "{KEYS_FILE}" not in result.output
 
 
@@ -93,3 +99,197 @@ def test_keys_list_includes_environment_keys(monkeypatch):
     assert "environment" in result.output
     assert "sk-ant****cdef" in result.output
     assert secret not in result.output
+
+
+# ---------- ask --show-debate / --no-show-debate ----------
+
+
+def test_ask_default_shows_live_debate(monkeypatch):
+    """Default behavior (no flag, no env, no config) renders live phase headers."""
+    monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+
+    result = CliRunner().invoke(cli.main, ["ask", "--mock", "Postgres or Mongo?"])
+
+    assert result.exit_code == 0, result.output
+    # All three phase headers should appear before the final verdict.
+    assert _LIVE_FIRST_READING_MARKER in result.output
+    assert _LIVE_DEBATE_MARKER in result.output
+    assert _LIVE_DIVISION_MARKER in result.output
+    # Post-run verdict panel prints at the end.
+    assert "Parliament Verdict" in result.output
+    # Mock provider's content should appear in the live panels.
+    assert "Mock" in result.output
+
+
+def test_ask_no_show_debate_keeps_live_status(monkeypatch):
+    """--no-show-debate hides response panels but keeps live phase/status feedback."""
+    monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--no-show-debate", "Test?"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert _LIVE_FIRST_READING_MARKER in result.output
+    assert _LIVE_DEBATE_MARKER in result.output
+    assert "Parliament Verdict" in result.output
+
+
+def test_ask_env_var_hides_response_panels_but_keeps_status(monkeypatch):
+    """PARLIAMENT_SHOW_DEBATE=0 hides responses but keeps live status when no flag is set."""
+    monkeypatch.setenv("PARLIAMENT_SHOW_DEBATE", "0")
+
+    result = CliRunner().invoke(cli.main, ["ask", "--mock", "Test?"])
+
+    assert result.exit_code == 0, result.output
+    assert _LIVE_FIRST_READING_MARKER in result.output
+    assert "Parliament Verdict" in result.output
+
+
+def test_ask_cli_flag_overrides_env(monkeypatch):
+    """--show-debate beats PARLIAMENT_SHOW_DEBATE=0."""
+    monkeypatch.setenv("PARLIAMENT_SHOW_DEBATE", "0")
+
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--show-debate", "Test?"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert _LIVE_FIRST_READING_MARKER in result.output
+
+
+def test_ask_verbose_coexists_with_show_debate(monkeypatch):
+    """--verbose aliases to --hansard=full; live view + full post-run output."""
+    monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--verbose", "Test?"]
+    )
+
+    assert result.exit_code == 0, result.output
+    # Live view renders "First Reading"; full-level post-run also emits "📖 First Reading"
+    assert result.output.count("First Reading") >= 2
+
+
+# ── New hansard-level tests ──────────────────────────────────────────────────
+
+_VERDICT_RECOMMENDATION_MARKER = "✓ Recommendation"
+_FULL_TRANSCRIPT_MARKER = "📖 First Reading"
+
+
+def test_ask_default_uses_verdict_level(monkeypatch):
+    """Default behavior: post-run terminal shows verdict block, no transcripts."""
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
+
+    result = CliRunner().invoke(cli.main, ["ask", "--mock", "--no-show-debate", "Test?"])
+
+    assert result.exit_code == 0, result.output
+    # All four verdict panels appear; no transcripts.
+    assert "ℹ Consensus" in result.output
+    assert "⚖ Split" in result.output
+    assert "! Risks" in result.output
+    assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert _FULL_TRANSCRIPT_MARKER not in result.output
+
+
+def test_ask_minimal_level_omits_other_verdict_sections(monkeypatch):
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--no-show-debate", "--hansard", "minimal", "Test?"]
+    )
+    assert result.exit_code == 0, result.output
+    assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert "ℹ Consensus" not in result.output
+    assert "⚖ Split" not in result.output
+
+
+def test_ask_full_level_shows_transcripts(monkeypatch):
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--no-show-debate", "--hansard", "full", "Test?"]
+    )
+    assert result.exit_code == 0, result.output
+    assert _FULL_TRANSCRIPT_MARKER in result.output
+    assert "🗣 Debate" in result.output
+
+
+def test_verbose_flag_aliases_to_full(monkeypatch):
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    result = CliRunner().invoke(
+        cli.main, ["ask", "--mock", "--no-show-debate", "--verbose", "Test?"]
+    )
+    assert result.exit_code == 0, result.output
+    assert _FULL_TRANSCRIPT_MARKER in result.output
+
+
+def test_explicit_hansard_flag_wins_over_verbose(monkeypatch):
+    """When both --verbose and --hansard are passed, --hansard wins (more specific)."""
+    monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
+    result = CliRunner().invoke(
+        cli.main,
+        ["ask", "--mock", "--no-show-debate", "--verbose", "--hansard", "verdict", "Test?"],
+    )
+    assert result.exit_code == 0, result.output
+    assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert _FULL_TRANSCRIPT_MARKER not in result.output
+
+
+def test_env_var_sets_level(monkeypatch):
+    monkeypatch.setenv("PARLIAMENT_HANSARD_LEVEL", "minimal")
+    result = CliRunner().invoke(cli.main, ["ask", "--mock", "--no-show-debate", "Test?"])
+    assert result.exit_code == 0, result.output
+    assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert "ℹ Consensus" not in result.output
+
+
+# ---------- parliament update CLI subcommand ----------
+
+
+def test_update_cli_success_exits_zero(monkeypatch):
+    """`parliament update` happy path: editable install + git pull succeeds → exit 0."""
+    import parliament.commands as cmd_mod
+
+    monkeypatch.setattr(
+        cmd_mod, "_detect_install", lambda: ("editable", __import__("pathlib").Path("/tmp/fake-repo")),
+    )
+    import subprocess as sp
+
+    def fake_run(cmd, **kwargs):
+        return sp.CompletedProcess(args=cmd, returncode=0, stdout="Already up to date.\n", stderr="")
+
+    monkeypatch.setattr("parliament.commands.subprocess.run", fake_run)
+
+    result = CliRunner().invoke(cli.main, ["update"])
+    assert result.exit_code == 0, result.output
+    assert "Updated" in result.output or "Restart" in result.output
+
+
+def test_update_cli_non_editable_install_exits_one(monkeypatch):
+    """Pipx/pip installs aren't supported yet → exit 1 with explanation."""
+    import parliament.commands as cmd_mod
+
+    monkeypatch.setattr(cmd_mod, "_detect_install", lambda: ("non-editable", None))
+
+    result = CliRunner().invoke(cli.main, ["update"])
+    assert result.exit_code == 1
+    assert "editable" in result.output.lower() or "pipx" in result.output.lower()
+
+
+def test_update_cli_pull_failure_exits_one(monkeypatch):
+    import parliament.commands as cmd_mod
+    from pathlib import Path
+
+    monkeypatch.setattr(cmd_mod, "_detect_install", lambda: ("editable", Path("/tmp/fake")))
+
+    import subprocess as sp
+
+    def fake_run(cmd, **kwargs):
+        return sp.CompletedProcess(args=cmd, returncode=1, stdout="", stderr="fatal: conflict\n")
+
+    monkeypatch.setattr("parliament.commands.subprocess.run", fake_run)
+
+    result = CliRunner().invoke(cli.main, ["update"])
+    assert result.exit_code == 1
+    assert "fail" in result.output.lower() or "conflict" in result.output.lower()

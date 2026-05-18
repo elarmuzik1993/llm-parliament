@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import Callable
 
-from parliament.core.types import Bill, Member, Response
+from parliament.core.types import Bill, Member, ProgressEvent, Response
 from parliament.providers.base import Provider
 
 PROMPT_TEMPLATE = """\
@@ -47,7 +47,13 @@ async def _debate_one(
     peers: list[tuple[str, str]],
     on_progress: Callable,
 ) -> Response:
-    on_progress("debate", member.name, "started")
+    on_progress(
+        ProgressEvent(
+            phase="debate",
+            member_name=member.name,
+            kind="started",
+        )
+    )
     start = time.monotonic()
     try:
         prompt = PROMPT_TEMPLATE.format(
@@ -57,15 +63,33 @@ async def _debate_one(
         )
         content = await provider.generate(prompt)
         duration_ms = int((time.monotonic() - start) * 1000)
-        on_progress("debate", member.name, "done")
-        return Response(
+        response = Response(
             member_name=member.name,
             content=content,
             phase="debate",
             duration_ms=duration_ms,
         )
-    except Exception:
-        on_progress("debate", member.name, "failed")
+        on_progress(
+            ProgressEvent(
+                phase="debate",
+                member_name=member.name,
+                kind="completed",
+                response=response,
+                duration_ms=duration_ms,
+            )
+        )
+        return response
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        on_progress(
+            ProgressEvent(
+                phase="debate",
+                member_name=member.name,
+                kind="failed",
+                error=f"{type(exc).__name__}: {exc}",
+                duration_ms=duration_ms,
+            )
+        )
         raise
 
 

@@ -37,3 +37,17 @@ parliament:
       model: mock-v3
 
 providers: {}
+
+# Live debate view — set to false to suppress and only show the final verdict.
+# Override per-call with --show-debate / --no-show-debate or PARLIAMENT_SHOW_DEBATE.
+display:
+  show_debate: true
+
+# Hansard detail level — controls saved .md file and post-run terminal print.
+# Override per-call with --hansard or PARLIAMENT_HANSARD_LEVEL.
+#   minimal  recommendation only
+#   verdict  full synthesis (default)
+#   archive  + frontmatter + session footer
+#   full     + first-reading and debate transcripts
+hansard:
+  level: verdict

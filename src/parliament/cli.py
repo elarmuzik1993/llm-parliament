@@ -18,14 +18,21 @@ from parliament.config import (
     build_parliament_from_config,
     load_config,
     load_keys,
+    resolve_hansard_level,
+    resolve_show_debate,
     save_key,
     remove_key,
 )
 from parliament.core.model_tiers import get_tier_label, detect_gap
 from parliament.core.parliament import Parliament
-from parliament.core.types import Hansard
+from parliament.render import build_renderer
+from parliament.render.hansard import HansardLevel, render_terminal
 
-console = Console()
+console = (
+    Console(force_terminal=True, legacy_windows=False)
+    if sys.stdout.isatty()
+    else Console()
+)
 
 
 def _mock_config() -> dict:
@@ -41,66 +48,6 @@ def _mock_config() -> dict:
         },
         "providers": {},
     }
-
-
-def _make_progress_callback(status: dict):
-    """Return a callback that updates a shared status dict for Rich display."""
-    def on_progress(phase: str, member: str, state: str):
-        status[f"{phase}:{member}"] = state
-    return on_progress
-
-
-def _render_synthesis(hansard: Hansard) -> None:
-    """Print the structured synthesis."""
-    s = hansard.synthesis
-    console.print()
-    console.rule("[bold]VERDICT[/bold]", style="bright_yellow")
-    console.print()
-
-    if s.consensus:
-        console.print("[bold cyan]CONSENSUS[/bold cyan]")
-        console.print(s.consensus)
-        console.print()
-
-    if s.split:
-        console.print("[bold yellow]SPLIT[/bold yellow]")
-        console.print(s.split)
-        console.print()
-
-    if s.risks:
-        console.print("[bold red]RISKS[/bold red]")
-        console.print(s.risks)
-        console.print()
-
-    if s.recommendation:
-        console.print("[bold green]RECOMMENDATION[/bold green]")
-        console.print(s.recommendation)
-        console.print()
-
-    console.rule(style="dim")
-    duration = hansard.duration_ms / 1000
-    members = len(hansard.members)
-    calls = members * 2 + 1
-    speaker = hansard.synthesis.speaker_name
-    summary = Table.grid(padding=(0, 2))
-    summary.add_column(style="dim")
-    summary.add_column(style="dim")
-    summary.add_column(style="dim")
-    summary.add_row(f"Session: {duration:.1f}s", f"Calls: {calls}", f"Speaker: {speaker}")
-    summary.add_row(f"Members: {members}", f"Hansard: {hansard.id[:8]}", "")
-    console.print(summary)
-
-
-def _render_verbose(hansard: Hansard) -> None:
-    """Print full debate transcript before the synthesis."""
-    console.print()
-    console.rule("[bold]FIRST READING[/bold]", style="blue")
-    for r in hansard.first_reading:
-        console.print(Panel(r.content, title=r.member_name, border_style="blue"))
-
-    console.rule("[bold]DEBATE[/bold]", style="magenta")
-    for r in hansard.debate:
-        console.print(Panel(r.content, title=f"{r.member_name} (critique)", border_style="magenta"))
 
 
 def _mask_key(value: str) -> str:
@@ -158,9 +105,30 @@ def main(ctx: click.Context, config_path: Path | None, speaker: str | None, mock
 @click.argument("question")
 @click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
 @click.option("--speaker", default=None, help="Override Speaker selection")
-@click.option("--verbose", is_flag=True, help="Show full debate transcript")
+@click.option(
+    "--hansard",
+    "hansard_flag",
+    type=click.Choice(["minimal", "verdict", "archive", "full"], case_sensitive=False),
+    default=None,
+    help="Hansard detail level (default: verdict; override with config or PARLIAMENT_HANSARD_LEVEL)",
+)
+@click.option("--verbose", is_flag=True, help="Alias for --hansard=full (back-compat)")
+@click.option(
+    "--show-debate/--no-show-debate",
+    "show_debate",
+    default=None,
+    help="Show the debate process live (default: on; override with config or PARLIAMENT_SHOW_DEBATE)",
+)
 @click.option("--mock", is_flag=True, help="Use mock providers (dev/testing)")
-def ask(question: str, config_path: Path | None, speaker: str | None, verbose: bool, mock: bool):
+def ask(
+    question: str,
+    config_path: Path | None,
+    speaker: str | None,
+    hansard_flag: str | None,
+    verbose: bool,
+    show_debate: bool | None,
+    mock: bool,
+):
     """Ask Parliament a question."""
     try:
         if mock:
@@ -177,21 +145,31 @@ def ask(question: str, config_path: Path | None, speaker: str | None, verbose: b
                 "Mock-B": MockProvider(model="mock-v2"),
                 "Mock-C": MockProvider(model="mock-v3"),
             }
+            config = {}
         else:
             config = load_config(config_path)
             members, providers = build_parliament_from_config(config)
 
+        # Resolve Hansard detail level: CLI > env > config > default(verdict).
+        # --verbose is a back-compat alias for --hansard=full, but only when
+        # --hansard wasn't passed explicitly.
+        level = resolve_hansard_level(cli_flag=hansard_flag, config=config)
+        if verbose and hansard_flag is None:
+            level = HansardLevel.FULL
+
+        show = resolve_show_debate(cli_flag=show_debate, config=config)
+        renderer = build_renderer(show_debate=show, mode="cli", console=console)
+
         p = Parliament(
             members=members,
             providers=providers,
+            on_progress=renderer.emit,
             speaker_override=speaker,
         )
 
-        # Show warnings
         for warning in p.check_gaps():
             console.print(f"[yellow]Warning: {warning}[/yellow]")
 
-        # Show session header
         member_names = " | ".join(m.name for m in members)
         bill = question if len(question) <= 100 else question[:97].rstrip() + "..."
         console.print()
@@ -202,18 +180,17 @@ def ask(question: str, config_path: Path | None, speaker: str | None, verbose: b
         ))
         console.print()
 
-        # Windows: SelectorEventLoop required for asyncio + openai/httpx
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-        # Run
-        with console.status("[bold]First Reading...[/bold]"):
-            hansard = asyncio.run(p.ask(question))
+        with renderer:
+            try:
+                hansard = asyncio.run(p.ask(question))
+            except KeyboardInterrupt:
+                console.print("[yellow]Debate cancelled.[/yellow]")
+                raise SystemExit(130)
 
-        if verbose:
-            _render_verbose(hansard)
-
-        _render_synthesis(hansard)
+        render_terminal(hansard, level, console)
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -325,6 +302,25 @@ def doctor():
 
     exit_code = run_doctor(console)
     raise SystemExit(exit_code)
+
+
+@main.command()
+def update():
+    """Pull the latest code from the editable git tree backing this install."""
+    from parliament.commands import CommandContext, _update
+
+    # CLI invocation has no live members/hansard state; pass a stub context.
+    ctx = CommandContext(members=[], speaker_override=None, hansard=None, save_dir="")
+    result = _update("", ctx)
+
+    if result.message:
+        # Print a green check on success (quit=True signals success), red on failure.
+        if result.quit:
+            console.print(f"[green]✓[/green] {result.message}")
+            raise SystemExit(0)
+        console.print(f"[red]✗[/red] {result.message}")
+        raise SystemExit(1)
+    raise SystemExit(0)
 
 
 if __name__ == "__main__":

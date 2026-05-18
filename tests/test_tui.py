@@ -1,10 +1,11 @@
 """TUI state-building and persistence tests."""
 
+import curses
 import json
 
 import yaml
 
-from parliament.core.types import Bill, Hansard, Member, Response, Synthesis
+from parliament import tui as tui_mod
 from parliament.tui import (
     AppSettings,
     MemberEditorState,
@@ -12,6 +13,7 @@ from parliament.tui import (
     load_app_settings,
     _mask_api_key,
     _model_picker_options,
+    _draw_result,
     _save_member_edit,
     save_app_settings,
     save_hansard,
@@ -77,36 +79,152 @@ def test_app_settings_round_trip(monkeypatch, tmp_path):
     assert json.loads(settings_file.read_text()) == {"save_dir": str(tmp_path / "hansards")}
 
 
-def test_save_hansard_writes_markdown(monkeypatch, tmp_path):
-    hansard = Hansard(
-        bill=Bill(content="Should we use PostgreSQL?"),
-        members=[
-            Member(name="A", provider_name="mock", model="mock-v1", tier=3),
-            Member(name="B", provider_name="mock", model="mock-v2", tier=3),
-        ],
-        first_reading=[Response(member_name="A", content="yes", phase="first_reading")],
-        debate=[Response(member_name="B", content="agree", phase="debate")],
-        synthesis=Synthesis(
-            speaker_name="A",
-            consensus="Use PostgreSQL.",
-            recommendation="Proceed.",
-        ),
+def test_save_hansard_writes_verdict_level_by_default(make_hansard, tmp_path):
+    """Without an explicit level, save_hansard defaults to VERDICT (compact)."""
+    from parliament.render.hansard import HansardLevel
+
+    hansard = make_hansard()
+    path = save_hansard(hansard, str(tmp_path), level=HansardLevel.VERDICT)
+
+    text = path.read_text(encoding="utf-8")
+    assert "# Should we use Postgres or MongoDB?" in text
+    # All four callouts present at verdict level
+    assert "> [!info] Consensus" in text
+    assert "> [!warning] Split" in text
+    assert "> [!danger] Risks" in text
+    assert "> [!success] Recommendation" in text
+    # No frontmatter, no transcripts
+    assert not text.startswith("---")
+    assert "## First Reading" not in text
+
+
+def test_save_hansard_writes_full_level_with_transcripts(make_hansard, tmp_path):
+    from parliament.render.hansard import HansardLevel
+
+    hansard = make_hansard()
+    path = save_hansard(hansard, str(tmp_path), level=HansardLevel.FULL)
+
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n")  # frontmatter
+    assert "## First Reading" in text
+    assert "## Debate" in text
+    assert "## Session" in text
+
+
+def test_save_hansard_filename_includes_slug_and_id_prefix(make_hansard, tmp_path):
+    from parliament.render.hansard import HansardLevel
+
+    hansard = make_hansard()
+    path = save_hansard(hansard, str(tmp_path), level=HansardLevel.VERDICT)
+
+    name = path.name
+    # Format: YYYYMMDD-HHMMSS-slug-shortid.md
+    assert name.endswith(".md")
+    assert hansard.id[:8] in name
+
+
+class _FakeStdscr:
+    def __init__(self, height=24, width=100):
+        self._h = height
+        self._w = width
+        self.lines: list[tuple[int, int, str, int]] = []
+
+    def getmaxyx(self):
+        return (self._h, self._w)
+
+    def addnstr(self, y, x, text, n, attr=0):
+        self.lines.append((y, x, text[:n], attr))
+
+    def addstr(self, y, x, text, attr=0):
+        self.lines.append((y, x, text, attr))
+
+    def attr_for(self, text: str) -> int:
+        return next(attr for _, _, value, attr in self.lines if value == text)
+
+
+def test_result_screen_uses_colored_verdict_sections(make_hansard, monkeypatch):
+    monkeypatch.setattr(tui_mod, "_TUI_COLORS_READY", True)
+    monkeypatch.setattr(tui_mod.curses, "color_pair", lambda pair: pair << 8)
+
+    scr = _FakeStdscr()
+    _draw_result(scr, make_hansard(), top=0, height=24, width=100, message="", save_dir=None)
+
+    assert scr.attr_for("Verdict") & curses.A_BOLD
+    assert scr.attr_for("CONSENSUS") != scr.attr_for("SPLIT")
+    assert scr.attr_for("SPLIT") != scr.attr_for("RISKS")
+    assert scr.attr_for("RISKS") != scr.attr_for("RECOMMENDATION")
+    assert scr.attr_for("RECOMMENDATION") & curses.A_BOLD
+
+
+# ---------- TUI result screen respects hansard level ----------
+
+
+def test_result_screen_minimal_level_shows_only_recommendation(make_hansard):
+    """At hansard.level=minimal, the TUI result screen must hide Consensus / Split / Risks."""
+    from parliament.render.hansard import HansardLevel
+    from parliament.tui import _result_lines
+
+    lines = _result_lines(make_hansard(), HansardLevel.MINIMAL)
+    body = "\n".join(lines)
+
+    assert "RECOMMENDATION" in body
+    assert "CONSENSUS" not in body
+    assert "SPLIT" not in body
+    assert "RISKS" not in body
+
+
+def test_result_screen_verdict_level_shows_all_four_sections(make_hansard):
+    from parliament.render.hansard import HansardLevel
+    from parliament.tui import _result_lines
+
+    body = "\n".join(_result_lines(make_hansard(), HansardLevel.VERDICT))
+
+    assert "CONSENSUS" in body
+    assert "SPLIT" in body
+    assert "RISKS" in body
+    assert "RECOMMENDATION" in body
+
+
+def test_result_screen_minimal_level_hides_session_footer(make_hansard):
+    """The Session/Calls/Speaker/Hansard footer is metadata; gated by archive+ levels."""
+    from parliament.render.hansard import HansardLevel
+    from parliament.tui import _result_lines
+
+    body = "\n".join(_result_lines(make_hansard(), HansardLevel.MINIMAL))
+    assert "Session:" not in body
+    assert "Calls:" not in body
+
+
+def test_result_screen_archive_level_shows_session_footer(make_hansard):
+    from parliament.render.hansard import HansardLevel
+    from parliament.tui import _result_lines
+
+    body = "\n".join(_result_lines(make_hansard(), HansardLevel.ARCHIVE))
+    assert "Session:" in body
+    assert "Calls:" in body
+    assert "Speaker:" in body
+
+
+def test_draw_result_threads_level_through(make_hansard, monkeypatch):
+    monkeypatch.setattr(tui_mod, "_TUI_COLORS_READY", True)
+    monkeypatch.setattr(tui_mod.curses, "color_pair", lambda pair: pair << 8)
+
+    from parliament.render.hansard import HansardLevel
+
+    scr = _FakeStdscr()
+    _draw_result(
+        scr,
+        make_hansard(),
+        top=0,
+        height=24,
+        width=100,
+        message="",
+        save_dir=None,
+        level=HansardLevel.MINIMAL,
     )
-
-    path = save_hansard(hansard, str(tmp_path / "responses"))
-
-    assert path.parent == tmp_path / "responses"
-    assert path.suffix == ".md"
-    assert path.exists()
-    content = path.read_text()
-    assert "type: parliament-hansard" in content
-    assert "# Should we use PostgreSQL?" in content
-    assert "## Question" in content
-    assert "Should we use PostgreSQL?" in content
-    assert "### Recommendation" in content
-    assert "Proceed." in content
-    assert "## First Reading" in content
-    assert "## Debate" in content
+    body = "\n".join(line for _, _, line, _ in scr.lines)
+    assert "RECOMMENDATION" in body
+    assert "CONSENSUS" not in body
 
 
 def test_member_edit_updates_active_config(tmp_path):

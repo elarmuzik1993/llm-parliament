@@ -22,3 +22,16 @@ providers:
     api_key: ${ANTHROPIC_API_KEY}
   ollama:
     base_url: http://localhost:11434/v1
+
+# Live debate view — set to false to suppress and only show the final verdict.
+display:
+  show_debate: true
+
+# Hansard detail level — controls saved .md file and post-run terminal print.
+# Override per-call with --hansard or PARLIAMENT_HANSARD_LEVEL.
+#   minimal  recommendation only
+#   verdict  full synthesis (default)
+#   archive  + frontmatter + session footer
+#   full     + first-reading and debate transcripts
+hansard:
+  level: verdict

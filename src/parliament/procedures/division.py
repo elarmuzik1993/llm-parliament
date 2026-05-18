@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Callable
 
-from parliament.core.types import Bill, Member, Response, Synthesis
+from parliament.core.types import Bill, Member, ProgressEvent, Response, Synthesis
 from parliament.providers.base import Provider
 
 PROMPT_TEMPLATE = """\
@@ -48,8 +49,9 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
         "recommendation": "",
     }
 
-    # Try to extract sections
-    pattern = r"(?:^|\n)\s*(CONSENSUS|SPLIT|RISKS|RECOMMENDATION)\s*:?\s*\n?"
+    # Try to extract sections — match plain headers (CONSENSUS:), markdown
+    # h1-h6 (### CONSENSUS), and bold (**CONSENSUS**) variants.
+    pattern = r"(?:^|\n)\s*#{0,6}\s*\*{0,2}(CONSENSUS|SPLIT|RISKS|RECOMMENDATION)\*{0,2}\s*:?\s*\n?"
     parts = re.split(pattern, raw, flags=re.IGNORECASE)
 
     # parts alternates: [preamble, HEADER, content, HEADER, content, ...]
@@ -84,14 +86,44 @@ async def run_division(
     on_progress: Callable,
 ) -> Synthesis:
     """Speaker synthesizes the debate into a structured verdict."""
-    on_progress("division", speaker.name, "started")
+    on_progress(
+        ProgressEvent(
+            phase="division",
+            member_name=speaker.name,
+            kind="started",
+        )
+    )
+    start = time.monotonic()
 
     prompt = PROMPT_TEMPLATE.format(
         question=bill.content,
         member_blocks=_build_member_blocks(debate_responses),
     )
 
-    raw = await speaker_provider.generate(prompt)
+    try:
+        raw = await speaker_provider.generate(prompt)
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        on_progress(
+            ProgressEvent(
+                phase="division",
+                member_name=speaker.name,
+                kind="failed",
+                error=f"{type(exc).__name__}: {exc}",
+                duration_ms=duration_ms,
+            )
+        )
+        raise
 
-    on_progress("division", speaker.name, "done")
-    return parse_synthesis(raw, speaker.name)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    synthesis = parse_synthesis(raw, speaker.name)
+    on_progress(
+        ProgressEvent(
+            phase="division",
+            member_name=speaker.name,
+            kind="completed",
+            synthesis=synthesis,
+            duration_ms=duration_ms,
+        )
+    )
+    return synthesis
