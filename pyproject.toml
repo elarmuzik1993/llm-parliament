@@ -9,7 +9,7 @@ description = "Multi-agent debate for better AI decisions. Research-backed, loca
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.11"
-authors = [{ name = "Boris" }]
+authors = [{ name = "Boris Miscenco" }]
 keywords = ["llm", "multi-agent", "debate", "ai", "ollama", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",
