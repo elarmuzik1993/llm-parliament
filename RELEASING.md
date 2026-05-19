@@ -2,31 +2,6 @@
 
 This document describes how to publish a new version of `llm-parliament` to PyPI.
 
-## Unreleased / notable changes
-
-### Behavior change: compact Hansards by default
-
-The post-run terminal output and saved `.md` file now contain only the
-four-part Speaker synthesis at the new default detail level (`verdict`).
-Previously, the saved file always included the full First Reading and
-Debate transcripts; now those appear only at `--hansard=full` (or
-`--verbose`, which aliases to full). This is an intentional UX shift
-toward a smaller, more skimmable artifact.
-
-Migration notes for existing users:
-
-- Pass `--hansard=full` (or `--verbose`) to restore the previous
-  chatty output.
-- Set `hansard:\n  level: full` in `~/.parliament/config.yaml` to make
-  full output the default again.
-- Existing saved `.md` files are untouched — only new writes use the new
-  format.
-
-Three new control surfaces, all mirroring the recent `show_debate` toggle:
-CLI flag `--hansard {minimal,verdict,archive,full}`, environment variable
-`PARLIAMENT_HANSARD_LEVEL`, and config key `hansard.level`. Settable from
-the TUI Settings screen as a fourth-state cycle widget.
-
 ## One-time setup
 
 1. **Create a PyPI account** at <https://pypi.org/account/register/>.
