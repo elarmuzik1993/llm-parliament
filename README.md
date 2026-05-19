@@ -99,7 +99,7 @@ parliament doctor
 - All cloud provider SDKs (Anthropic, Google, OpenAI) are bundled. No extras needed.
 - Ollama (for local models) is a separate native daemon — install from <https://ollama.com> if you want local models. The `parliament doctor` command tells you what's detected.
 - On Windows, the install pulls in `windows-curses` automatically so the TUI works out of the box. Windows Terminal is recommended over `cmd.exe` (better VT/UTF-8 support); legacy `cmd.exe` is supported.
-- Keys are stored in `~/.parliament/keys.env` (`%USERPROFILE%\.parliament\keys.env` on Windows) with restricted permissions on Unix.
+- Keys are stored in the OS native credential store (Windows Credential Manager, macOS Keychain, GNOME Keyring) via `parliament keys set`. Falls back to `~/.parliament/keys.env` if no keyring is available.
 
 ## Verify your install
 
@@ -140,13 +140,31 @@ Your personal config lives at `~/.parliament/config.yaml` (or
 `%USERPROFILE%\.parliament\config.yaml` on Windows) — outside the repo, so
 your settings never end up in git.
 
-On first run, a default mock-only config is copied from the bundled
-`config.example.yaml`. The mock config works immediately with no setup so
-you can verify the install. Edit it via `parliament members`, the TUI, or
-directly in your editor to swap in real models.
+On first run (triggered by `parliament doctor`, `parliament ask`, or launching
+the TUI), a setup wizard runs automatically. It detects your API keys, local
+Ollama models, and available RAM, then proposes a matching preset:
 
-The repo only ships `config.example.yaml` (the template). The runtime
-`config.yaml` is gitignored.
+```text
+Welcome to Parliament. No config found - let's set one up.
+
+Detected:
+  ✓ ANTHROPIC_API_KEY (configured)
+  ℹ OPENAI_API_KEY (not set)
+  ✓ GOOGLE_API_KEY (configured)
+  ℹ Ollama: not reachable
+  System RAM: 16 GB
+
+Proposed preset: cloud-anthropic-google (Anthropic + Google)
+  - Claude (anthropic / claude-sonnet-4-6)
+  - Claude-Haiku (anthropic / claude-haiku-4-5-20251001)
+  - Gemini (google / gemini-2.5-flash)
+
+Use these defaults? [Y/n]:
+```
+
+Confirm with `Y` and the config is written. If no keys or Ollama are detected,
+you get a working mock preset — no setup needed to verify the install. Edit
+members later via the TUI (`parliament`) or directly in the file.
 
 ## Optional: Local Models (Ollama)
 
@@ -179,7 +197,16 @@ separately, then point a parliament member at it.
 
 ## Optional: Cloud Models
 
-To use Anthropic, Google, or OpenAI, set the corresponding API key:
+**Easiest path** — export your keys in your shell profile before the first run
+and the wizard picks them up automatically:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export GOOGLE_API_KEY=...
+parliament doctor   # wizard fires, detects keys, writes a cloud preset
+```
+
+**After first run** — add or change keys at any time:
 
 ```bash
 parliament keys set anthropic sk-ant-...
@@ -187,28 +214,28 @@ parliament keys set google ...
 parliament keys set openai sk-...
 ```
 
-Then edit `~/.parliament/config.yaml` (or use the TUI) to add cloud
-members:
+Keys are saved to the OS native credential store. Then edit members via the
+TUI (`parliament`) or directly in `~/.parliament/config.yaml`:
 
 ```yaml
 parliament:
   members:
     - name: Claude
       provider: anthropic
-      model: claude-haiku-4-5-20251001
+      model: claude-sonnet-4-6
     - name: Gemini
       provider: google
-      model: gemini-2.0-flash-lite
+      model: gemini-2.5-flash
 ```
 
-Keys are stored in `~/.parliament/keys.env` with `chmod 0600` on Unix.
 You can also export `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and
-`GOOGLE_API_KEY` directly in your environment if you prefer.
+`GOOGLE_API_KEY` directly in your environment instead of using the keyring.
 
 Useful key commands:
 
 ```bash
 parliament keys list
+parliament keys migrate   # move existing keys.env entries to the OS keyring
 parliament keys remove openai
 ```
 
