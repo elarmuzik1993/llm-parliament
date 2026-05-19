@@ -128,5 +128,7 @@ def run_first_run_wizard(path: Path) -> Preset:
             "Run `parliament doctor` for details.",
             file=sys.stderr,
         )
+        if preset.notice:
+            print(f"  {preset.notice}", file=sys.stderr)
 
     return preset
