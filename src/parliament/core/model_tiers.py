@@ -18,6 +18,7 @@ MODEL_TIERS: dict[str, int] = {
     # Tier 2 — strong
     "claude-sonnet-4-6": 2,
     "gpt-4o-mini": 2,
+    "gemini-2.5-flash": 2,
     "gemini-2.0-flash": 2,
     "llama3.1:70b": 2,
     "mistral-large": 2,
@@ -30,6 +31,7 @@ MODEL_TIERS: dict[str, int] = {
     "mistral": 3,
     "mistral:7b": 3,
     "qwen2:7b": 3,
+    "gemini-2.5-flash-lite": 3,
     # Tier 4 — small
     "phi3:mini": 4,
     "gemma2:2b": 4,

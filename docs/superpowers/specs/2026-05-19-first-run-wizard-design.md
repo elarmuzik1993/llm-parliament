@@ -67,22 +67,24 @@ parliament <any command>
 
 | Module | Status | Responsibility |
 |---|---|---|
-| `src/parliament/first_run.py` | new | `Environment`, `OllamaModel` dataclasses; `detect_environment()`; `run_first_run_wizard()`; Rich-based confirmation prompt. |
+| `src/parliament/first_run.py` | new | `Environment` dataclass; `detect_environment()`; `run_first_run_wizard()`; Rich-based confirmation prompt. |
 | `src/parliament/presets.py` | new | `Preset` dataclass; `select_preset(env) -> Preset`; one `build_<preset>(env)` function per preset; model-name constants at the top. |
-| `src/parliament/config.py` | modified | `_ensure_user_config()` calls `run_first_run_wizard()` instead of `shutil.copyfile`. Keeps the example-config fallback on wizard failure. |
-| `src/parliament/model_catalog.py` | modified | `fetch_ollama_models()` returns `size_bytes` alongside names. Backward-compat: `PickerData.models` still returns the name list. |
+| `src/parliament/config.py` | modified | `_ensure_user_config()` calls `run_first_run_wizard()` instead of `shutil.copyfile`. `_ensure_user_config()` owns the example-config fallback if the wizard raises. |
+| `src/parliament/model_catalog.py` | modified | `fetch_ollama_models()` returns `OllamaModel` detail records via a new `PickerData.ollama_models` field. Backward-compat: `PickerData.models` still returns the name list. |
 | `src/parliament/doctor.py` | modified | New `_check_member_viability()` rendered under a new `Members` heading. |
 | `pyproject.toml` | modified | Adds `psutil` to runtime dependencies. |
 
 ### Data shapes
 
 ```python
-# first_run.py
+# model_catalog.py
 
 @dataclass(frozen=True)
 class OllamaModel:
     name: str
     size_bytes: int
+
+# first_run.py
 
 @dataclass(frozen=True)
 class Environment:
@@ -99,7 +101,8 @@ class Environment:
 class Preset:
     name: str                     # e.g. "mixed", "cloud-anthropic"
     summary: str                  # human-readable one-liner shown in the wizard
-    config: dict[str, Any]        # full YAML-serialisable config dict
+    config: dict[str, Any]        # full YAML-serialisable config dict, including
+                                  # display.show_debate + hansard.level defaults
     notice: str | None = None     # e.g. "Install at least 3 local models, …"
 ```
 
@@ -111,24 +114,24 @@ Eight presets, first match wins:
 
 | # | Trigger | Preset name | Members |
 |---|---|---|---|
-| 1 | Anthropic + OpenAI + Google keys all set | `cloud-full` | Claude (anthropic / claude-sonnet-4-6), GPT (openai / gpt-4o-mini), Gemini (google / gemini-2.0-flash) |
+| 1 | Anthropic + OpenAI + Google keys all set | `cloud-full` | Claude (anthropic / claude-sonnet-4-6), GPT (openai / gpt-4o-mini), Gemini (google / gemini-2.5-flash) |
 | 2 | Anthropic + Google keys, no OpenAI | `cloud-anthropic-google` | Claude (sonnet), Claude (haiku), Gemini (flash) |
 | 3 | Anthropic + OpenAI keys, no Google | `cloud-anthropic-openai` | Claude (sonnet), Claude (haiku), GPT (4o-mini) |
 | 4 | Any single cloud key + Ollama reachable with ≥2 installed models that fit RAM | `mixed` | 1× top model of that cloud, 2× smallest installed Ollama models that fit |
-| 5 | Single cloud key, no usable Ollama | `cloud-anthropic` / `cloud-google` / `cloud-openai` | 3× model tiers of that provider. Anthropic: Claude Sonnet, Claude Haiku, Claude Sonnet (3rd slot duplicates the strongest available model with a distinct member name like `Claude-2`). Google: Gemini 2.0 Flash, Gemini 2.0 Flash-Lite, Gemini 1.5 Pro. OpenAI: GPT-4o, GPT-4o-mini, GPT-4o (duplicated). Summary notes: "All three members use {provider} — add another key for cross-provider debate." |
+| 5 | Single cloud key, no usable Ollama | `cloud-anthropic` / `cloud-google` / `cloud-openai` | 3× model tiers of that provider. Anthropic: Claude Sonnet, Claude Haiku, Claude Sonnet (3rd slot duplicates the strongest available model with a distinct member name like `Claude-2`). Google: Gemini 2.5 Flash, Gemini 2.5 Flash-Lite, Gemini 2.5 Flash (duplicated). OpenAI: GPT-4o, GPT-4o-mini, GPT-4o (duplicated). Summary notes: "All three members use {provider} — add another key for cross-provider debate." |
 | 6 | No cloud keys + Ollama reachable + ≥3 installed models that fit RAM | `local-safe` | 3× smallest installed Ollama models that fit |
 | 7 | Ollama reachable but <3 installed models, OR all candidates exceed RAM | `mock-ollama-hint` | 3× mock; notice: `Install at least 3 local models, e.g. ollama pull llama3.2:3b` |
 | 8 | Nothing detected | `mock` | 3× mock (current behaviour) |
 
 ### "Fits RAM" filter
 
-A candidate Ollama model passes the filter when:
+Selected Ollama models pass the filter when:
 
 ```
-3 × model.size_bytes ≤ 0.8 × total_ram_bytes
+sum(selected_model.size_bytes) ≤ 0.8 × total_ram_bytes
 ```
 
-- 3× accounts for the parallel first-reading phase loading all members concurrently.
+- The sum accounts for the parallel first-reading phase loading all local members concurrently.
 - 0.8 leaves headroom for OS + Python.
 - If `total_ram_bytes is None` (psutil unavailable), the filter is dropped — candidates are sorted by smallest `size_bytes` and the top N are selected unconditionally.
 
@@ -141,12 +144,13 @@ CLAUDE_SONNET    = "claude-sonnet-4-6"
 CLAUDE_HAIKU     = "claude-haiku-4-5-20251001"
 GPT_4O           = "gpt-4o"
 GPT_4O_MINI      = "gpt-4o-mini"
-GEMINI_FLASH     = "gemini-2.0-flash"
-GEMINI_FLASH_LITE = "gemini-2.0-flash-lite"
-GEMINI_PRO_15    = "gemini-1.5-pro"
+GEMINI_FLASH     = "gemini-2.5-flash"
+GEMINI_FLASH_LITE = "gemini-2.5-flash-lite"
 ```
 
 Updating the default cloud models later = one edit per provider.
+
+OpenAI defaults intentionally stay on `gpt-4o` / `gpt-4o-mini` for compatibility with the current Chat Completions provider implementation. Revisit these constants when the provider moves to the Responses API or explicitly supports GPT-5-family request parameters.
 
 ---
 
@@ -256,7 +260,7 @@ Members
 |---|---|
 | Ollama probe timeout / connection refused | `ollama_reachable=False`, empty model list; preset rules 4/6/7 don't trigger. |
 | `psutil` not importable | `total_ram_bytes=None`; RAM filter dropped during preset selection; doctor emits `ℹ RAM check skipped`. |
-| Wizard write fails (disk full, permission denied) | Caught in `_ensure_user_config()`; falls back to `shutil.copyfile(EXAMPLE_CONFIG, USER_CONFIG)`; prints stderr warning. Existing safety net preserved. |
+| Wizard write fails (disk full, permission denied) | Wizard raises; `_ensure_user_config()` catches the failure, falls back to `shutil.copyfile(EXAMPLE_CONFIG, USER_CONFIG)`, and prints a stderr warning. Existing safety net preserved. |
 | EOF on stdin during the prompt | Treated as `n` → writes mock preset; no crash. |
 | Two `parliament` invocations racing on first run | The `USER_CONFIG.exists()` check is the gate. The second invocation finds the config already written and skips the wizard. (No file lock — racing two `parliament` processes from a brand-new install is not a realistic flow.) |
 | Config is malformed YAML on disk (post-wizard write) | Existing `yaml.safe_load` path handles this — unchanged. |

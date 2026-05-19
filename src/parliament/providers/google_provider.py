@@ -10,7 +10,7 @@ class GoogleProvider(Provider):
 
     def __init__(
         self,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         api_key: str | None = None,
         timeout: float | None = None,
     ) -> None:

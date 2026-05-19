@@ -114,6 +114,123 @@ def _check_ollama(base_url: str = "http://localhost:11434") -> CheckResult:
         )
 
 
+def _format_gb(size_bytes: int) -> str:
+    return f"{size_bytes / 1024**3:.1f} GB"
+
+
+def _system_ram_bytes() -> int | None:
+    try:
+        import psutil
+    except ImportError:
+        return None
+    return int(psutil.virtual_memory().total)
+
+
+def _check_member_viability(config: dict | None = None) -> list[CheckResult]:
+    """Check configured members against provider keys, Ollama installs, and RAM."""
+    from parliament.config import KEY_PROVIDERS, api_key_status, load_config
+    from parliament.model_catalog import _ollama_base_url, fetch_ollama_models
+
+    cfg = config if config is not None else load_config()
+    members = (cfg.get("parliament") or {}).get("members") or []
+    results: list[CheckResult] = []
+    installed_local_sizes: list[int] = []
+    ollama_members = [
+        m for m in members
+        if isinstance(m, dict) and str(m.get("provider") or "") == "ollama"
+    ]
+    base_url = _ollama_base_url(cfg)
+    ollama_sizes: dict[str, int] = {}
+    if ollama_members:
+        ollama_data = fetch_ollama_models(base_url)
+        ollama_sizes = {m.name: m.size_bytes for m in ollama_data.ollama_models}
+
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        name = str(member.get("name") or "Member")
+        provider = str(member.get("provider") or "")
+        model = str(member.get("model") or "")
+
+        if provider == "mock":
+            continue
+        if provider in KEY_PROVIDERS:
+            env_var = KEY_PROVIDERS[provider]
+            if api_key_status(provider) == "configured":
+                results.append(
+                    CheckResult(
+                        ok=True,
+                        message=f"{name} ({provider} / {model}) - key configured",
+                    )
+                )
+            else:
+                results.append(
+                    CheckResult(
+                        ok=True,
+                        warn=True,
+                        message=f"{name} member needs {env_var}",
+                    )
+                )
+            continue
+        if provider == "ollama":
+            if model not in ollama_sizes:
+                results.append(
+                    CheckResult(
+                        ok=True,
+                        warn=True,
+                        message=f"{name} (ollama / {model}) - not pulled. "
+                        f"Run: ollama pull {model}",
+                    )
+                )
+                continue
+            size = ollama_sizes[model]
+            installed_local_sizes.append(size)
+            results.append(
+                CheckResult(
+                    ok=True,
+                    message=f"{name} (ollama / {model}) - installed, {_format_gb(size)}",
+                )
+            )
+
+    if ollama_members:
+        total_ram = _system_ram_bytes()
+        if total_ram is None:
+            results.append(
+                CheckResult(
+                    ok=True,
+                    info=True,
+                    message="RAM check skipped (psutil not installed)",
+                )
+            )
+        elif installed_local_sizes:
+            total = sum(installed_local_sizes)
+            limit = int(total_ram * 0.8)
+            if total > limit:
+                results.append(
+                    CheckResult(
+                        ok=True,
+                        warn=True,
+                        message=(
+                            f"Members may OOM: ~{_format_gb(total)} needed for local "
+                            f"models, {_format_gb(total_ram)} RAM "
+                            f"(limit {_format_gb(limit)} at 80%)"
+                        ),
+                    )
+                )
+            else:
+                results.append(
+                    CheckResult(
+                        ok=True,
+                        message=(
+                            f"Aggregate footprint: ~{_format_gb(total)} / "
+                            f"{_format_gb(total_ram)} RAM (well within limit)"
+                        ),
+                    )
+                )
+
+    return results
+
+
 def _symbol_for(r: CheckResult) -> tuple[str, str]:
     """Map a CheckResult to (unicode-symbol, rich-color)."""
     if not r.ok:
@@ -155,6 +272,13 @@ def run_doctor(console: Console) -> int:
     sym, col = _symbol_for(ollama_result)
     console.print(f"  [{col}]{sym}[/{col}] {ollama_result.message}")
 
+    member_checks = _check_member_viability()
+    if member_checks:
+        console.print("[bold]Members[/bold]")
+        for r in member_checks:
+            symbol, color = _symbol_for(r)
+            console.print(f"  [{color}]{symbol}[/{color}] {r.message}")
+
     console.print("[bold]Next steps[/bold]")
     cloud_keys_missing = any(r.info for r in provider_checks)
     if cloud_keys_missing:
@@ -166,7 +290,7 @@ def run_doctor(console: Console) -> int:
         )
     console.print("  - Run the TUI:      parliament")
 
-    all_checks = env_checks + provider_checks + [ollama_result]
+    all_checks = env_checks + provider_checks + [ollama_result] + member_checks
     has_failure = any((not r.ok) for r in all_checks)
     if has_failure:
         console.print()
