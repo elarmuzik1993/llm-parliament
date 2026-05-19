@@ -212,6 +212,61 @@ parliament keys list
 parliament keys remove openai
 ```
 
+## Does it cost 3× more?
+
+Yes — Parliament makes more API calls than asking a single model: 3 for First
+Reading, 3 for Debate, 1 for Division (7 total). On cloud APIs, that's real money.
+
+**Approximate cost per query:**
+
+| Setup | Cost | When to use |
+|-------|------|-------------|
+| Single GPT-4o | ~$0.02 | Quick lookups, drafting, anything with an obvious answer |
+| Parliament — 3× cheap (Haiku + Flash-Lite + GPT-4o-mini) | ~$0.04–0.06 | Decisions with real trade-offs |
+| Parliament — 3× mid-tier (Sonnet + GPT-4o + Flash) | ~$0.15–0.30 | High-stakes architecture or strategy calls |
+| Parliament — local Ollama models | ~$0.00 | Any decision, no API cost |
+
+**The right question is whether that cost is worth it for the specific decision.**
+
+Parliament is designed for decisions where being wrong is expensive — architecture
+choices, technical trade-offs, strategy calls. Getting those wrong can cost days
+or weeks of rework. The token cost of a debate is a rounding error compared to
+the cost of a wrong call.
+
+For quick lookups, summaries, or anything with an obvious answer, use a single
+model. Parliament is a deliberation tool, not a throughput tool.
+
+**Three reasons the cost argument flips:**
+
+1. **Tier mixing closes the gap.** One strong model for Division + two fast cheap
+   models for First Reading and Debate is the default wizard preset — total cost
+   is close to a single mid-tier call, with multi-perspective quality.
+
+2. **Local models make it free.** Ollama runs 3B–13B models on commodity hardware
+   at no API cost. For anyone who can run two small local models, the "3×" concern
+   disappears entirely.
+
+3. **One good answer beats three mediocre ones.** A single-model answer on a hard
+   architectural question has blind spots the model doesn't know it has. The debate
+   surfaces them. If it prevents one wrong architectural decision, it has paid for
+   months of usage.
+
+**Three ways to keep costs low:**
+
+| Approach | Effect |
+|----------|--------|
+| Mix cheap models for First Reading + Debate, one strong model for Division only | Total cost comparable to a single mid-tier call |
+| Run local Ollama models for some or all members | No API cost — just electricity |
+| `parliament ask "..." --mock` | Zero cost — useful for exploring the format |
+
+The first-run wizard (`parliament doctor` on a fresh install) automatically
+suggests a cost-aware preset based on what keys and local models you have
+available. You can also mix cloud and local: e.g. one Anthropic member + two
+Ollama members keeps the cloud bill minimal while still getting the debate benefit.
+
+**Rule of thumb:** if the cost of being wrong on this decision exceeds $1, the
+debate is worth it.
+
 ## CLI Usage
 
 ```bash
