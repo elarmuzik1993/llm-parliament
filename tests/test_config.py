@@ -19,8 +19,16 @@ def fresh_home(tmp_path, monkeypatch):
     return config, tmp_path
 
 
-def test_first_run_copies_example_to_user_config(fresh_home):
+def test_first_run_creates_user_config_from_wizard(fresh_home, monkeypatch):
     config, home = fresh_home
+    from parliament.presets import build_mock_preset
+
+    def fake_wizard(path):
+        preset = build_mock_preset()
+        config.save_config(preset.config, path)
+        return preset
+
+    monkeypatch.setattr("parliament.first_run.run_first_run_wizard", fake_wizard)
 
     assert not config.USER_CONFIG.exists()
 
@@ -30,6 +38,20 @@ def test_first_run_copies_example_to_user_config(fresh_home):
     assert config.USER_CONFIG.parent == home / ".parliament"
     names = [m["name"] for m in cfg["parliament"]["members"]]
     assert names == ["Mock-A", "Mock-B", "Mock-C"]
+
+
+def test_first_run_falls_back_to_example_when_wizard_fails(fresh_home, monkeypatch):
+    config, _ = fresh_home
+
+    def boom(path):
+        raise RuntimeError("wizard failed")
+
+    monkeypatch.setattr("parliament.first_run.run_first_run_wizard", boom)
+
+    cfg = config.load_config()
+
+    assert config.USER_CONFIG.exists()
+    assert [m["provider"] for m in cfg["parliament"]["members"]] == ["mock", "mock", "mock"]
 
 
 def test_second_run_does_not_overwrite_user_config(fresh_home):

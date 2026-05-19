@@ -150,19 +150,24 @@ def remove_key(provider: str) -> bool:
 
 
 def _ensure_user_config() -> Path:
-    """Create ~/.parliament/config.yaml from the bundled example on first run."""
+    """Create ~/.parliament/config.yaml on first run."""
     if not USER_CONFIG.exists():
         if not EXAMPLE_CONFIG.exists():
             raise FileNotFoundError(
                 f"Example config missing: {EXAMPLE_CONFIG}. Reinstall the package."
             )
         PARLIAMENT_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(EXAMPLE_CONFIG, USER_CONFIG)
-        print(
-            f"Created default config at {USER_CONFIG} — "
-            f"edit it via `parliament members` or the TUI.",
-            file=sys.stderr,
-        )
+        try:
+            from parliament.first_run import run_first_run_wizard
+
+            run_first_run_wizard(USER_CONFIG)
+        except Exception as e:
+            shutil.copyfile(EXAMPLE_CONFIG, USER_CONFIG)
+            print(
+                f"First-run wizard failed ({type(e).__name__}: {e}); "
+                f"created default config at {USER_CONFIG}.",
+                file=sys.stderr,
+            )
     return USER_CONFIG
 
 

@@ -32,7 +32,13 @@ def test_tags_url_handles_trailing_slash() -> None:
 
 
 def test_ollama_returns_sorted_models(monkeypatch: pytest.MonkeyPatch) -> None:
-    payload = {"models": [{"name": "llama3:latest"}, {"name": "gemma2"}, {"name": "mistral"}]}
+    payload = {
+        "models": [
+            {"name": "llama3:latest", "size": 3},
+            {"name": "gemma2", "size": 1},
+            {"name": "mistral", "size": 2},
+        ]
+    }
 
     def fake_urlopen(url, timeout):
         return _fake_response(payload)
@@ -40,6 +46,11 @@ def test_ollama_returns_sorted_models(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(model_catalog.urllib.request, "urlopen", fake_urlopen)
     data = model_catalog.fetch_ollama_models("http://localhost:11434/v1")
     assert data.models == ["gemma2", "llama3:latest", "mistral"]
+    assert [(m.name, m.size_bytes) for m in data.ollama_models] == [
+        ("gemma2", 1),
+        ("llama3:latest", 3),
+        ("mistral", 2),
+    ]
     assert data.notice is None
 
 

@@ -19,9 +19,16 @@ DEFAULT_TIMEOUT = 5.0
 
 
 @dataclass(frozen=True)
+class OllamaModel:
+    name: str
+    size_bytes: int
+
+
+@dataclass(frozen=True)
 class PickerData:
     models: list[str]
     notice: str | None = None
+    ollama_models: tuple[OllamaModel, ...] = ()
 
 
 def _ollama_tags_url(base_url: str) -> str:
@@ -46,16 +53,23 @@ def fetch_ollama_models(base_url: str, timeout: float = 2.0) -> PickerData:
         )
     except json.JSONDecodeError:
         return PickerData(models=[], notice=f"Ollama returned malformed JSON at {url}")
-    names = sorted(
-        str(m["name"]) for m in payload.get("models", [])
-        if isinstance(m, dict) and m.get("name")
+    ollama_models = tuple(
+        sorted(
+            (
+                OllamaModel(name=str(m["name"]), size_bytes=int(m.get("size") or 0))
+                for m in payload.get("models", [])
+                if isinstance(m, dict) and m.get("name")
+            ),
+            key=lambda m: m.name,
+        )
     )
+    names = [m.name for m in ollama_models]
     if not names:
         return PickerData(
             models=[],
             notice="No Ollama models installed. Pull one: ollama pull llama3.1",
         )
-    return PickerData(models=names, notice=None)
+    return PickerData(models=names, notice=None, ollama_models=ollama_models)
 
 
 def _no_key_notice(provider: str, env_var: str) -> str:
