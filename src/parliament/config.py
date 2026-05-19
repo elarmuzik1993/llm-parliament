@@ -21,12 +21,44 @@ PARLIAMENT_DIR = Path.home() / ".parliament"
 KEYS_FILE = PARLIAMENT_DIR / "keys.env"
 USER_CONFIG = PARLIAMENT_DIR / "config.yaml"
 EXAMPLE_CONFIG = Path(__file__).parent.parent.parent / "config.example.yaml"
+KEYRING_SERVICE = "llm-parliament"
 
 KEY_PROVIDERS = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "google": "GOOGLE_API_KEY",
 }
+
+
+def _keyring_get(env_var: str) -> str | None:
+    try:
+        import keyring
+        return keyring.get_password(KEYRING_SERVICE, env_var)
+    except Exception:
+        return None
+
+
+def _keyring_set(env_var: str, value: str) -> bool:
+    try:
+        import keyring
+        keyring.set_password(KEYRING_SERVICE, env_var, value)
+        return keyring.get_password(KEYRING_SERVICE, env_var) == value
+    except Exception:
+        return False
+
+
+def _keyring_delete(env_var: str) -> bool:
+    try:
+        import keyring
+        keyring.delete_password(KEYRING_SERVICE, env_var)
+        return True
+    except Exception:
+        return False
+
+
+def get_keyring_key(env_var: str) -> str | None:
+    """Return a key from the OS keyring, or None if not stored / keyring unavailable."""
+    return _keyring_get(env_var)
 
 
 def api_key_status(provider: str) -> str:
@@ -61,8 +93,8 @@ def resolve_hansard_level(*, cli_flag: str | None, config: dict[str, Any]):
     """Decide the Hansard detail level for this run.
 
     Precedence: CLI flag > PARLIAMENT_HANSARD_LEVEL env var > config
-    `hansard.level` > default `verdict`. Unknown values normalise to
-    `verdict` via `HansardLevel.parse`.
+    `hansard.level` > default `minimal`. Unknown values normalise to
+    `minimal` via `HansardLevel.parse`.
     """
     # Local import to avoid circular dependency: parliament.render.hansard
     # imports from parliament.core.types (which is fine), but we keep
@@ -90,7 +122,7 @@ def _resolve_env_vars(value: str) -> str:
 
 
 def load_keys() -> dict[str, str]:
-    """Load API keys from ~/.parliament/keys.env."""
+    """Load API keys from ~/.parliament/keys.env and OS keyring."""
     keys = {}
     if KEYS_FILE.exists():
         for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
@@ -101,17 +133,30 @@ def load_keys() -> dict[str, str]:
                 key, value = line.split("=", 1)
                 os.environ.setdefault(key.strip(), value.strip())
                 keys[key.strip()] = value.strip()
+    for env_var in KEY_PROVIDERS.values():
+        if env_var not in keys:
+            val = _keyring_get(env_var)
+            if val:
+                os.environ.setdefault(env_var, val)
+                keys[env_var] = val
     return keys
 
 
-def save_key(provider: str, key: str) -> None:
-    """Save an API key to ~/.parliament/keys.env."""
-    PARLIAMENT_DIR.mkdir(parents=True, exist_ok=True)
+def save_key(provider: str, key: str) -> str:
+    """Save an API key. Prefers OS keyring; falls back to keys.env.
 
+    Returns 'keyring' or 'file' indicating where the key was stored.
+    """
+    PARLIAMENT_DIR.mkdir(parents=True, exist_ok=True)
     env_var = f"{provider.upper()}_API_KEY"
+    os.environ[env_var] = key
+
+    if _keyring_set(env_var, key):
+        return "keyring"
+
+    # Keyring unavailable — fall back to file storage
     lines = []
     replaced = False
-
     if KEYS_FILE.exists():
         for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
             if line.strip().startswith(env_var + "="):
@@ -119,34 +164,64 @@ def save_key(provider: str, key: str) -> None:
                 replaced = True
             else:
                 lines.append(line)
-
     if not replaced:
         lines.append(f"{env_var}={key}")
-
     KEYS_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    # Restrict permissions on Unix; Windows ACLs don't support chmod
     if sys.platform != "win32":
         KEYS_FILE.chmod(0o600)
+    return "file"
 
 
 def remove_key(provider: str) -> bool:
-    """Remove an API key. Returns True if key existed."""
-    if not KEYS_FILE.exists():
-        return False
-
+    """Remove an API key from keys.env and OS keyring. Returns True if key existed."""
     env_var = f"{provider.upper()}_API_KEY"
-    lines = []
     found = False
 
-    for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
-        if line.strip().startswith(env_var + "="):
-            found = True
-        else:
-            lines.append(line)
+    if KEYS_FILE.exists():
+        lines = []
+        for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith(env_var + "="):
+                found = True
+            else:
+                lines.append(line)
+        if found:
+            KEYS_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    if found:
-        KEYS_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if _keyring_delete(env_var):
+        found = True
+
     return found
+
+
+def migrate_keys_to_keyring() -> dict[str, str]:
+    """Migrate API keys from keys.env to the OS keyring.
+
+    Returns {env_var: 'migrated'|'failed'}.
+    Renames keys.env → keys.env.bak on full success.
+    """
+    if not KEYS_FILE.exists():
+        return {}
+
+    file_keys: dict[str, str] = {}
+    for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            k, v = line.split("=", 1)
+            file_keys[k.strip()] = v.strip()
+
+    if not file_keys:
+        return {}
+
+    results: dict[str, str] = {}
+    for env_var, value in file_keys.items():
+        results[env_var] = "migrated" if _keyring_set(env_var, value) else "failed"
+
+    if all(s == "migrated" for s in results.values()):
+        KEYS_FILE.rename(KEYS_FILE.parent / "keys.env.bak")
+
+    return results
 
 
 def _ensure_user_config() -> Path:

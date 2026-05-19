@@ -36,7 +36,7 @@ def test_anthropic_key_selects_cloud_anthropic() -> None:
         "anthropic",
     ]
     assert preset.config["display"]["show_debate"] is True
-    assert preset.config["hansard"]["level"] == "verdict"
+    assert preset.config["hansard"]["level"] == "minimal"
 
 
 def test_single_cloud_key_plus_two_fit_local_models_selects_mixed() -> None:

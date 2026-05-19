@@ -79,8 +79,7 @@ def test_app_settings_round_trip(monkeypatch, tmp_path):
     assert json.loads(settings_file.read_text()) == {"save_dir": str(tmp_path / "hansards")}
 
 
-def test_save_hansard_writes_verdict_level_by_default(make_hansard, tmp_path):
-    """Without an explicit level, save_hansard defaults to VERDICT (compact)."""
+def test_save_hansard_at_verdict_level_has_all_synthesis_sections(make_hansard, tmp_path):
     from parliament.render.hansard import HansardLevel
 
     hansard = make_hansard()
@@ -88,14 +87,24 @@ def test_save_hansard_writes_verdict_level_by_default(make_hansard, tmp_path):
 
     text = path.read_text(encoding="utf-8")
     assert "# Should we use Postgres or MongoDB?" in text
-    # All four callouts present at verdict level
     assert "> [!info] Consensus" in text
     assert "> [!warning] Split" in text
     assert "> [!danger] Risks" in text
     assert "> [!success] Recommendation" in text
-    # No frontmatter, no transcripts
     assert not text.startswith("---")
     assert "## First Reading" not in text
+
+
+def test_save_hansard_default_level_is_archive(make_hansard, tmp_path):
+    """Default save level is ARCHIVE — full synthesis + frontmatter, no transcripts."""
+    hansard = make_hansard()
+    path = save_hansard(hansard, str(tmp_path))
+
+    text = path.read_text(encoding="utf-8")
+    assert "> [!info] Consensus" in text
+    assert "> [!success] Recommendation" in text
+    assert text.startswith("---")       # frontmatter present
+    assert "## First Reading" not in text  # transcripts excluded
 
 
 def test_save_hansard_writes_full_level_with_transcripts(make_hansard, tmp_path):

@@ -13,8 +13,8 @@ def _clear_env(monkeypatch):
     monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
 
 
-def test_default_is_verdict_when_nothing_set():
-    assert resolve_hansard_level(cli_flag=None, config={}) is HansardLevel.VERDICT
+def test_default_is_minimal_when_nothing_set():
+    assert resolve_hansard_level(cli_flag=None, config={}) is HansardLevel.MINIMAL
 
 
 def test_cli_flag_wins_over_env(monkeypatch):
@@ -39,11 +39,11 @@ def test_config_used_when_cli_and_env_unset():
 
 
 def test_missing_hansard_section_falls_back_to_default():
-    assert resolve_hansard_level(cli_flag=None, config={"parliament": {}}) is HansardLevel.VERDICT
+    assert resolve_hansard_level(cli_flag=None, config={"parliament": {}}) is HansardLevel.MINIMAL
 
 
 def test_hansard_present_but_level_missing_falls_back_to_default():
-    assert resolve_hansard_level(cli_flag=None, config={"hansard": {}}) is HansardLevel.VERDICT
+    assert resolve_hansard_level(cli_flag=None, config={"hansard": {}}) is HansardLevel.MINIMAL
 
 
 @pytest.mark.parametrize("env_val,expected", [
@@ -58,11 +58,11 @@ def test_env_normalization(monkeypatch, env_val, expected):
 
 
 def test_invalid_cli_flag_falls_back_to_default():
-    """Unknown CLI value is normalized via HansardLevel.parse, which falls back to VERDICT."""
+    """Unknown CLI value is normalized via HansardLevel.parse, which falls back to MINIMAL."""
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        assert resolve_hansard_level(cli_flag="nonsense", config={}) is HansardLevel.VERDICT
+        assert resolve_hansard_level(cli_flag="nonsense", config={}) is HansardLevel.MINIMAL
 
 
 def test_yaml_string_value_works(monkeypatch):

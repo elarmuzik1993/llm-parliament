@@ -131,7 +131,7 @@ def test_example_config_carries_hansard_level(fresh_home):
     """The bundled example must surface hansard.level so users discover the toggle."""
     config, _ = fresh_home
     cfg = config.load_config()
-    assert cfg.get("hansard", {}).get("level") == "verdict"
+    assert cfg.get("hansard", {}).get("level") == "minimal"
 
 
 def test_user_supplied_show_debate_false_round_trips(tmp_path, monkeypatch):

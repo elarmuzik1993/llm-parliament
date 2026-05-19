@@ -644,9 +644,8 @@ def _run(
                                 saved_path = save_hansard(
                                     hansard,
                                     app_settings.save_dir,
-                                    level=resolve_hansard_level(cli_flag=None, config=config),
                                 )
-                                result_message = f"Auto-saved to {saved_path}"
+                                result_message = f"Read full report: {saved_path}"
                             except OSError as exc:
                                 result_message = f"Auto-save failed: {exc}"
                             _init_tui_colors()  # re-init after live renderer's start_color() reset pairs
@@ -885,16 +884,23 @@ def _run(
                 result_top += 1
             elif key in (curses.KEY_UP, ord("k")) and result_top > 0:
                 result_top -= 1
+            elif key in (curses.KEY_NPAGE, ord(" "), ord("f")):  # Page Down / Space
+                result_top += max(1, height - 5)
+            elif key in (curses.KEY_PPAGE, ord("u")):  # Page Up
+                result_top = max(0, result_top - max(1, height - 5))
+            elif key in (ord("g"),):  # top
+                result_top = 0
+            elif key in (ord("G"),):  # bottom
+                result_top = 999999  # clamped to max_top inside _draw_result
             elif key in (ord("s"), ord("S")) and hansard is not None:
                 # Auto-save already ran; only retry when it failed.
-                if not result_message.startswith("Auto-saved"):
+                if not result_message.startswith("Read full report"):
                     try:
                         saved_path = save_hansard(
                             hansard,
                             app_settings.save_dir,
-                            level=resolve_hansard_level(cli_flag=None, config=config),
                         )
-                        result_message = f"Saved to {saved_path}"
+                        result_message = f"Read full report: {saved_path}"
                     except OSError as exc:
                         result_message = f"Save failed: {exc}"
             elif key in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 27, ord("b"), ord("B")):
@@ -1510,7 +1516,7 @@ def _draw_result(
     if message:
         _add_line(stdscr, max(0, height - 2), 0, message, _tui_attr("success", curses.A_BOLD), width)
 
-    controls = "Up/down: scroll  b/Esc/backspace: dashboard  q: quit"
+    controls = "↑↓/j/k: line  Space/PgDn: page  g/G: top/bot  b/Esc: back  q: quit"
     if save_dir and len(controls) + len(save_dir) + 7 < width:
         controls = f"{controls}  Dir: {save_dir}"
     _add_line(stdscr, max(0, height - 1), 0, controls, _tui_attr("meta", curses.A_DIM), width)
@@ -1631,10 +1637,10 @@ def save_hansard(
     *,
     level: "HansardLevel | None" = None,
 ) -> Path:
-    """Save a Hansard Markdown file at the given level (defaults to VERDICT)."""
+    """Save a Hansard Markdown file. Defaults to ARCHIVE level regardless of display level."""
     from parliament.render.hansard import HansardLevel as _HL, render_markdown
 
-    resolved_level = level if level is not None else _HL.VERDICT
+    resolved_level = level if level is not None else _HL.ARCHIVE
 
     directory = Path(save_dir).expanduser()
     directory.mkdir(parents=True, exist_ok=True)

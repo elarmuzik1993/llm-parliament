@@ -33,20 +33,20 @@ def test_parse_known_values(raw, expected):
     assert HansardLevel.parse(raw) is expected
 
 
-def test_parse_none_returns_verdict_default():
-    assert HansardLevel.parse(None) is HansardLevel.VERDICT
+def test_parse_none_returns_minimal_default():
+    assert HansardLevel.parse(None) is HansardLevel.MINIMAL
 
 
-def test_parse_unknown_returns_verdict_with_warning():
+def test_parse_unknown_returns_minimal_with_warning():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = HansardLevel.parse("nonsense")
-    assert result is HansardLevel.VERDICT
+    assert result is HansardLevel.MINIMAL
     assert any("nonsense" in str(w.message) for w in caught)
 
 
-def test_parse_empty_string_returns_verdict():
-    assert HansardLevel.parse("") is HansardLevel.VERDICT
+def test_parse_empty_string_returns_minimal():
+    assert HansardLevel.parse("") is HansardLevel.MINIMAL
 
 
 from parliament.render.hansard import includes  # noqa: E402

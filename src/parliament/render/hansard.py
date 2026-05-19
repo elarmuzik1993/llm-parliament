@@ -30,24 +30,24 @@ class HansardLevel(str, Enum):
 
     @classmethod
     def parse(cls, value: str | None) -> "HansardLevel":
-        """Lenient parser: unknown or None values fall back to VERDICT.
+        """Lenient parser: unknown or None values fall back to MINIMAL.
 
         Emits a UserWarning when an unknown non-empty string is passed so
         the user notices typos in CLI flags / env vars / YAML config.
         """
         if value is None:
-            return cls.VERDICT
+            return cls.MINIMAL
         s = value.strip().lower() if isinstance(value, str) else None
         if not s:
-            return cls.VERDICT
+            return cls.MINIMAL
         for level in cls:
             if level.value == s:
                 return level
         warnings.warn(
-            f"Unknown hansard level {value!r}; falling back to {cls.VERDICT.value!r}",
+            f"Unknown hansard level {value!r}; falling back to {cls.MINIMAL.value!r}",
             stacklevel=2,
         )
-        return cls.VERDICT
+        return cls.MINIMAL
 
 
 # Section-inclusion matrix — single source of truth for "what's in each level."

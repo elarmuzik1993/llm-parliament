@@ -34,7 +34,7 @@ def _base_config(members: list[dict[str, str]]) -> dict[str, Any]:
         },
         "providers": providers,
         "display": {"show_debate": True},
-        "hansard": {"level": "verdict"},
+        "hansard": {"level": "minimal"},
     }
 
 

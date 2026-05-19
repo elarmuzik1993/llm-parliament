@@ -45,9 +45,9 @@ display:
 
 # Hansard detail level — controls saved .md file and post-run terminal print.
 # Override per-call with --hansard or PARLIAMENT_HANSARD_LEVEL.
-#   minimal  recommendation only
-#   verdict  full synthesis (default)
+#   minimal  recommendation only (default)
+#   verdict  full synthesis (consensus, split, risks, recommendation)
 #   archive  + frontmatter + session footer
 #   full     + first-reading and debate transcripts
 hansard:
-  level: verdict
+  level: minimal

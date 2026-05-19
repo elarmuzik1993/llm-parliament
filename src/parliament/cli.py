@@ -16,8 +16,10 @@ from parliament.config import (
     KEYS_FILE,
     KEY_PROVIDERS,
     build_parliament_from_config,
+    get_keyring_key,
     load_config,
     load_keys,
+    migrate_keys_to_keyring,
     resolve_hansard_level,
     resolve_show_debate,
     save_key,
@@ -59,18 +61,27 @@ def _mask_key(value: str) -> str:
 
 def _configured_keys() -> list[tuple[str, str, str, str]]:
     """Return configured key rows as provider, env var, masked value, source."""
-    file_keys = load_keys()
+    all_keys = load_keys()
     rows = []
 
     for provider, env_var in KEY_PROVIDERS.items():
-        in_file = env_var in file_keys
-        value = os.environ.get(env_var) or file_keys.get(env_var)
+        kr_val = get_keyring_key(env_var)
+        in_keyring = kr_val is not None
+        # A key present in all_keys but not in keyring came from the file
+        in_file = (env_var in all_keys) and not in_keyring
+
+        value = os.environ.get(env_var) or all_keys.get(env_var)
         if not value:
             continue
 
-        source = "file" if in_file else "environment"
-        if in_file and file_keys[env_var] != value:
-            source = "file + environment"
+        if in_file and in_keyring:
+            source = "file + keyring"
+        elif in_file:
+            source = "file"
+        elif in_keyring:
+            source = "keyring"
+        else:
+            source = "environment"
 
         rows.append((provider, env_var, _mask_key(value), source))
 
@@ -110,7 +121,7 @@ def main(ctx: click.Context, config_path: Path | None, speaker: str | None, mock
     "hansard_flag",
     type=click.Choice(["minimal", "verdict", "archive", "full"], case_sensitive=False),
     default=None,
-    help="Hansard detail level (default: verdict; override with config or PARLIAMENT_HANSARD_LEVEL)",
+    help="Hansard detail level (default: minimal; override with config or PARLIAMENT_HANSARD_LEVEL)",
 )
 @click.option("--verbose", is_flag=True, help="Alias for --hansard=full (back-compat)")
 @click.option(
@@ -259,10 +270,13 @@ def keys():
 @click.argument("provider", type=click.Choice(["anthropic", "openai", "google"]))
 @click.argument("key")
 def keys_set(provider: str, key: str):
-    """Save an API key."""
-    save_key(provider, key)
+    """Save an API key to the OS keyring (or keys.env if keyring is unavailable)."""
+    storage = save_key(provider, key)
     env_var = KEY_PROVIDERS[provider]
-    console.print(f"[green]Saved {provider} key[/green] [dim]({env_var} in {KEYS_FILE})[/dim]")
+    if storage == "keyring":
+        console.print(f"[green]Saved {provider} key[/green] [dim]({env_var} → OS keyring)[/dim]")
+    else:
+        console.print(f"[green]Saved {provider} key[/green] [dim]({env_var} → {KEYS_FILE})[/dim]")
 
 
 @keys.command("list")
@@ -288,11 +302,41 @@ def keys_list():
 @keys.command("remove")
 @click.argument("provider", type=click.Choice(["anthropic", "openai", "google"]))
 def keys_remove(provider: str):
-    """Remove an API key."""
+    """Remove an API key from keys.env and OS keyring."""
     if remove_key(provider):
-        console.print(f"[green]Removed {provider} key from {KEYS_FILE}[/green]")
+        console.print(f"[green]Removed {provider} key[/green]")
     else:
-        console.print(f"[yellow]{provider} key not found in {KEYS_FILE}[/yellow]")
+        console.print(f"[yellow]{provider} key not found[/yellow]")
+
+
+@keys.command("migrate")
+def keys_migrate():
+    """Migrate API keys from keys.env to the OS keyring."""
+    if not KEYS_FILE.exists():
+        console.print(f"[dim]No {KEYS_FILE} found — nothing to migrate.[/dim]")
+        return
+
+    console.print(f"Migrating keys from [dim]{KEYS_FILE}[/dim] to OS keyring …")
+    results = migrate_keys_to_keyring()
+
+    if not results:
+        console.print("[dim]No keys found in keys.env.[/dim]")
+        return
+
+    all_ok = True
+    for env_var, status in results.items():
+        if status == "migrated":
+            console.print(f"  [green]✓[/green] {env_var}")
+        else:
+            console.print(f"  [red]✗[/red] {env_var} — keyring unavailable")
+            all_ok = False
+
+    if all_ok:
+        bak = KEYS_FILE.parent / "keys.env.bak"
+        console.print(f"\n[dim]Backed up original → {bak}[/dim]")
+        console.print("[green]Migration complete.[/green] Run [bold]parliament keys list[/bold] to verify.")
+    else:
+        console.print(f"\n[yellow]Some keys could not be migrated. {KEYS_FILE} preserved.[/yellow]")
 
 
 @main.command()

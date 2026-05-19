@@ -4,6 +4,61 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-19
+
+### Added
+
+- **First-run config wizard** — detects API keys, Ollama models, and system
+  RAM on first launch and writes a tailored preset; 8 factory presets covering
+  cloud-full, cloud-anthropic/openai/google, mixed, local-safe,
+  mock-ollama-hint, and mock. Wizard fires interactively when stdin is a TTY;
+  writes silently with a stderr notice on non-TTY (e.g. pipx postinstall).
+  Fixes USE-20.
+- **Resilient parliament** — provider failures drop that member and the debate
+  continues with survivors; Division Speaker is chosen only from debate
+  survivors with a retry loop; `is_fatal_provider_error()` gates reraise vs
+  drop. Fixes USE-35.
+- **Human-readable provider errors** — `providers/errors.py::format_provider_error()`
+  covers OOM, timeout, 429/rate-limit, auth, and model-not-found across all
+  three cloud providers. Fixes USE-21.
+- **OS keyring integration** — `parliament keys set` saves to the OS native
+  credential store (Windows Credential Manager, macOS Keychain, GNOME Keyring)
+  with automatic fallback to `keys.env`; `parliament keys migrate` moves
+  existing file keys to the keyring; `load_keys()` falls back to keyring for
+  any key not found in the file. Fixes USE-31.
+- **`parliament keys migrate`** — one-command migration of `keys.env` to the
+  OS keyring; renames `keys.env → keys.env.bak` on full success.
+- **`parliament update`** slash command + CLI subcommand — detects install
+  type (editable git / pipx / pip-user / pip-system) and runs the matching
+  upgrade command. Fixes USE-29.
+- **Member viability section in `parliament doctor`** — lists each configured
+  member with key/model status and aggregate RAM footprint check (via psutil).
+- **Gemini 2.5 Flash default** — `gemini-2.5-flash` replaces
+  `gemini-2.0-flash-lite` as the default Google model in presets and
+  `MODEL_TIERS`. Fixes USE-36.
+- **TUI result pager improvements** — Page Down (Space/PgDn/f), Page Up
+  (PgUp/u), jump to top (g), jump to bottom (G) added to the Hansard viewer.
+
+### Changed
+
+- **Default Hansard level is now `minimal`** (recommendation only) for both
+  display and new configs; saved `.md` files are always written at `archive`
+  level (full synthesis + frontmatter) regardless of display level.
+- **`parliament keys remove`** now clears the OS keyring in addition to
+  `keys.env`.
+- **Result pager footer** reads "Read full report: {path}" pointing to the
+  saved archive-level Hansard file.
+
+### Fixed
+
+- Stray leading `**` markdown markers stripped from parsed Synthesis fields.
+  Fixes USE-30.
+
+### Dependencies
+
+- Added `psutil>=5.9` (RAM detection in wizard and doctor).
+- Added `keyring>=24.0` (OS credential store integration).
+
 ## [0.1.0] — 2026-05-18
 
 First publishable release. Three LLM members debate a question through First

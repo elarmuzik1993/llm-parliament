@@ -58,6 +58,7 @@ def test_mock_config_uses_mock_members():
 def test_keys_list_empty_shows_keys_file(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "KEYS_FILE", tmp_path / "keys.env")
     monkeypatch.setattr(cli, "load_keys", lambda: {})
+    monkeypatch.setattr(cli, "get_keyring_key", lambda _: None)
     for env_var in cli.KEY_PROVIDERS.values():
         monkeypatch.delenv(env_var, raising=False)
 
@@ -88,6 +89,7 @@ def test_keys_list_masks_file_keys(monkeypatch):
 def test_keys_list_includes_environment_keys(monkeypatch):
     secret = "sk-ant-env-abcdef"
     monkeypatch.setattr(cli, "load_keys", lambda: {})
+    monkeypatch.setattr(cli, "get_keyring_key", lambda _: None)
     monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
@@ -178,19 +180,19 @@ _VERDICT_RECOMMENDATION_MARKER = "✓ Recommendation"
 _FULL_TRANSCRIPT_MARKER = "📖 First Reading"
 
 
-def test_ask_default_uses_verdict_level(monkeypatch):
-    """Default behavior: post-run terminal shows verdict block, no transcripts."""
+def test_ask_default_uses_minimal_level(monkeypatch):
+    """Default behavior: post-run terminal shows recommendation only, no full synthesis."""
     monkeypatch.delenv("PARLIAMENT_HANSARD_LEVEL", raising=False)
     monkeypatch.delenv("PARLIAMENT_SHOW_DEBATE", raising=False)
 
     result = CliRunner().invoke(cli.main, ["ask", "--mock", "--no-show-debate", "Test?"])
 
     assert result.exit_code == 0, result.output
-    # All four verdict panels appear; no transcripts.
-    assert "ℹ Consensus" in result.output
-    assert "⚖ Split" in result.output
-    assert "! Risks" in result.output
+    # Only recommendation panel appears; no full synthesis sections.
     assert _VERDICT_RECOMMENDATION_MARKER in result.output
+    assert "ℹ Consensus" not in result.output
+    assert "⚖ Split" not in result.output
+    assert "! Risks" not in result.output
     assert _FULL_TRANSCRIPT_MARKER not in result.output
 
 

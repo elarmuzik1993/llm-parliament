@@ -413,7 +413,7 @@ def test_settings_screen_renders_each_level_bracketed_in_turn():
 def test_settings_state_includes_hansard_level():
     from parliament.render.hansard import HansardLevel
     state = tui_mod._init_settings_state(save_dir="/tmp/x", config={})
-    assert state.hansard_level is HansardLevel.VERDICT  # default
+    assert state.hansard_level is HansardLevel.MINIMAL  # default
 
 
 def test_settings_state_loads_hansard_level_from_config():
