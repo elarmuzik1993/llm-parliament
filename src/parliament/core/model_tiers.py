@@ -14,6 +14,7 @@ MODEL_TIERS: dict[str, int] = {
     # Tier 1 — frontier
     "claude-opus-4-6": 1,
     "gpt-4o": 1,
+    "gemini-2.5-pro": 1,
     "gemini-2.0-pro": 1,
     # Tier 2 — strong
     "claude-sonnet-4-6": 2,
