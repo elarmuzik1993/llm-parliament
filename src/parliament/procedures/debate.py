@@ -8,6 +8,7 @@ from typing import Callable
 
 from parliament.core.types import Bill, Member, ProgressEvent, Response
 from parliament.providers.base import Provider
+from parliament.providers.errors import format_provider_error
 
 PROMPT_TEMPLATE = """\
 You previously analyzed this question:
@@ -86,7 +87,7 @@ async def _debate_one(
                 phase="debate",
                 member_name=member.name,
                 kind="failed",
-                error=f"{type(exc).__name__}: {exc}",
+                error=format_provider_error(exc),
                 duration_ms=duration_ms,
             )
         )
@@ -125,7 +126,7 @@ async def run_debate(
 
     if len(responses) < 2:
         failures = [
-            f"  - {m.name}: {type(r).__name__}: {r}"
+            f"  - {m.name}: {format_provider_error(r)}"
             for m, r in zip(active_members, results)
             if isinstance(r, Exception)
         ]
