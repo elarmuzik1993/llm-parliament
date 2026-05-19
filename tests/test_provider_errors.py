@@ -1,8 +1,6 @@
 """Tests for format_provider_error() — human-readable provider error formatting."""
 
-import subprocess
 
-import pytest
 
 from parliament.providers.errors import format_provider_error
 

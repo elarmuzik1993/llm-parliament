@@ -52,4 +52,5 @@ __all__ = [
     "MockProvider",
     "OllamaProvider",
     "create_provider",
+    "format_provider_error",
 ]

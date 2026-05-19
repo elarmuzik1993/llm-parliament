@@ -261,7 +261,6 @@ def _detect_install() -> tuple[str, Path | None]:
     have no ``direct_url.json`` or set ``url`` to a PyPI URL.
     """
     import site
-    import sys
 
     dist = _dist_for_self()
     if dist is None:
