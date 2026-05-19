@@ -59,7 +59,7 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
         i = 1
         while i < len(parts) - 1:
             header = parts[i].lower()
-            content = parts[i + 1].strip()
+            content = parts[i + 1].strip().strip("*").strip()
             if header in sections:
                 sections[header] = content
             i += 2

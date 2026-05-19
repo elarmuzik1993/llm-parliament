@@ -250,46 +250,98 @@ def _detect_install() -> tuple[str, Path | None]:
     Returns ``(kind, path)`` where:
       - ``("editable", Path)``: editable install backed by a local git
         working tree at *path*. Updateable via `git pull` in that tree.
-      - ``("non-editable", None)``: pipx/pip install from PyPI or a
-        wheel — not updateable by this command (yet).
+      - ``("pipx", None)``: managed by pipx — upgrade via `pipx upgrade`.
+      - ``("pip-user", None)``: pip user-site install — upgrade via `pip install --upgrade`.
+      - ``("pip-system", None)``: system-wide pip install — refuse (don't sudo from TUI).
       - ``("unknown", None)``: package metadata couldn't be located or
         didn't include direct_url info.
 
     Detection reads `direct_url.json` from the dist-info per PEP 610.
+    Editable installs set ``dir_info.editable = true``; PyPI installs
+    have no ``direct_url.json`` or set ``url`` to a PyPI URL.
     """
+    import site
+
     dist = _dist_for_self()
     if dist is None:
         return "unknown", None
 
     raw = dist.read_text("direct_url.json") if hasattr(dist, "read_text") else None
-    if not raw:
-        return "unknown", None
 
+    # Editable git install check (PEP 610)
+    if raw:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return "unknown", None
+
+        dir_info = data.get("dir_info") or {}
+        if dir_info.get("editable"):
+            url = data.get("url") or ""
+            parsed = urlparse(url)
+            if parsed.scheme == "file":
+                # file:// URLs encode the path; url2pathname handles Windows
+                # /C:/path → C:\path conversion that urlparse leaves with a leading slash.
+                raw_path = url2pathname(unquote(parsed.path or ""))
+                if raw_path:
+                    return "editable", Path(raw_path)
+            return "unknown", None
+
+    # Non-editable: determine pip vs pipx by inspecting the install location.
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return "unknown", None
+        dist_location = str(dist._path)  # type: ignore[attr-defined]
+    except AttributeError:
+        try:
+            # Fallback: derive path from the dist-info location
+            dist_location = str(next(iter(dist.files or []), ""))  # type: ignore[attr-defined]
+        except (AttributeError, StopIteration):
+            dist_location = ""
 
-    dir_info = data.get("dir_info") or {}
-    if not dir_info.get("editable"):
-        return "non-editable", None
+    # pipx installs live inside ~/.local/pipx/venvs/
+    if "pipx" in dist_location:
+        return "pipx", None
 
-    url = data.get("url") or ""
-    parsed = urlparse(url)
-    if parsed.scheme != "file":
-        return "non-editable", None
+    # pip user install: lives under site.getusersitepackages()
+    user_site = site.getusersitepackages() if hasattr(site, "getusersitepackages") else ""
+    if user_site and dist_location.startswith(user_site):
+        return "pip-user", None
 
-    # file:// URLs encode the path; url2pathname handles the Windows
-    # /C:/path → C:\path conversion that urlparse leaves with a leading slash.
-    raw_path = url2pathname(unquote(parsed.path or ""))
-    if not raw_path:
-        return "unknown", None
+    # pip system install: any other non-editable location
+    for sp in site.getsitepackages():
+        if dist_location.startswith(sp):
+            return "pip-system", None
 
-    return "editable", Path(raw_path)
+    return "unknown", None
+
+
+def _run_upgrade(cmd: list[str], timeout: int = 60) -> CommandResult:
+    """Run an upgrade command and return a CommandResult."""
+    binary = cmd[0]
+    if shutil.which(binary) is None:
+        return CommandResult(
+            message=f"`{binary}` not found on PATH. Run the upgrade from your shell instead.",
+            clear_question=False,
+        )
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        return CommandResult(
+            message=f"{binary} upgrade timed out after {timeout}s. Check your network.",
+            clear_question=False,
+        )
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or f"{binary} upgrade failed").strip()
+        if len(err) > 400:
+            err = err[:400] + "…"
+        return CommandResult(message=f"Update failed: {err}", clear_question=False)
+    return CommandResult(
+        message="Updated. Restart parliament to load new code.",
+        quit=True,
+    )
 
 
 def _update(_args: str, _ctx: CommandContext) -> CommandResult:
-    """Pull the latest code from the editable install's git tree.
+    """Upgrade parliament using the appropriate method for the install type.
 
     On success: returns ``quit=True`` so the TUI shuts down cleanly and
     the user re-launches `parliament` to load the new bytecode (Python
@@ -297,61 +349,65 @@ def _update(_args: str, _ctx: CommandContext) -> CommandResult:
     """
     kind, path = _detect_install()
 
-    if kind == "non-editable":
+    if kind == "editable":
+        if path is None:
+            return CommandResult(
+                message="Could not resolve editable install path. Update from your shell instead.",
+                clear_question=False,
+            )
+        if shutil.which("git") is None:
+            return CommandResult(
+                message="`git` not found on PATH. Install git or update from your shell.",
+                clear_question=False,
+            )
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(path), "pull", "--ff-only"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return CommandResult(
+                message="git pull timed out after 60s. Check your network and try again.",
+                clear_question=False,
+            )
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "git pull failed").strip()
+            if len(err) > 400:
+                err = err[:400] + "…"
+            return CommandResult(message=f"Update failed: {err}", clear_question=False)
+        summary = (proc.stdout or "").strip().splitlines()
+        headline = summary[0] if summary else "Pulled latest."
         return CommandResult(
-            message=(
-                "/update only supports editable git installs right now. "
-                "For pipx/pip installs, run `pipx upgrade llm-parliament` "
-                "or `pip install --upgrade llm-parliament` from your shell."
-            ),
-            clear_question=False,
+            message=f"Updated. Restart parliament to load new code. ({headline})",
+            quit=True,
         )
-    if kind != "editable" or path is None:
+
+    if kind == "pipx":
+        return _run_upgrade(["pipx", "upgrade", "llm-parliament"])
+
+    if kind == "pip-user":
+        return _run_upgrade(["pip", "install", "--upgrade", "llm-parliament"])
+
+    if kind == "pip-system":
         return CommandResult(
             message=(
-                "Could not determine how this parliament was installed "
-                "(no direct_url metadata). Update from your shell instead."
+                "System-wide pip install detected — won't run sudo from inside the TUI. "
+                "Run `sudo pip install --upgrade llm-parliament` from your shell."
             ),
             clear_question=False,
         )
 
-    try:
-        proc = subprocess.run(
-            ["git", "-C", str(path), "pull", "--ff-only"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-    except FileNotFoundError:
-        return CommandResult(
-            message=(
-                "`git` not found on PATH. Install git, or run `pipx install "
-                "--force --editable <path>` to refresh manually."
-            ),
-            clear_question=False,
-        )
-    except subprocess.TimeoutExpired:
-        return CommandResult(
-            message="git pull timed out after 60s. Check your network and try again.",
-            clear_question=False,
-        )
-
-    if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "git pull failed").strip()
-        # Cap noisy stderr to one screenful so the TUI message bar stays sane.
-        if len(err) > 400:
-            err = err[:400] + "…"
-        return CommandResult(
-            message=f"Update failed: {err}",
-            clear_question=False,
-        )
-
-    summary = (proc.stdout or "").strip().splitlines()
-    headline = summary[0] if summary else "Pulled latest."
+    # unknown
     return CommandResult(
-        message=f"Updated. Restart parliament to load new code. ({headline})",
-        quit=True,
+        message=(
+            "Could not determine how parliament was installed. "
+            "Run `pipx upgrade llm-parliament` or `pip install --upgrade llm-parliament` "
+            "from your shell."
+        ),
+        clear_question=False,
     )
 
 
@@ -407,7 +463,7 @@ COMMANDS: list[Command] = [
     Command("copy", "Copy last verdict to system clipboard", _copy),
     Command(
         "update",
-        "Pull latest code (editable git installs); exits so it loads on relaunch",
+        "Upgrade parliament (git/pipx/pip); exits so new code loads on relaunch",
         _update,
         aliases=("upgrade",),
     ),

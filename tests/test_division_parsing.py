@@ -72,6 +72,24 @@ def test_reordered_sections():
     assert "None" in s.split
 
 
+def test_bold_markdown_headers_strip_asterisks():
+    """Bold-wrapped headers (**CONSENSUS**) should not leave stray ** in body."""
+    raw = (
+        "**CONSENSUS**\n**\nAll agree on caching.\n\n"
+        "**SPLIT**\n**\nA prefers Redis.\n\n"
+        "**RISKS**\n**\nMemory pressure.\n\n"
+        "**RECOMMENDATION**\n**\nUse Redis."
+    )
+    s = parse_synthesis(raw, "Speaker")
+    assert not s.consensus.startswith("**"), f"consensus starts with **: {s.consensus!r}"
+    assert "All agree" in s.consensus
+    assert not s.split.startswith("**")
+    assert "prefers Redis" in s.split
+    assert not s.risks.startswith("**")
+    assert not s.recommendation.startswith("**")
+    assert "Use Redis" in s.recommendation
+
+
 def test_sections_without_colons():
     """Headers like 'CONSENSUS' without colon should still work."""
     raw = "CONSENSUS\nAgreed.\n\nSPLIT\nDisagreed.\n\nRISKS\nRisky.\n\nRECOMMENDATION\nDo it."

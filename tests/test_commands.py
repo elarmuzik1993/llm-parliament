@@ -440,17 +440,52 @@ def test_update_editable_pull_failure_reports_error(tmp_path: Path, monkeypatch)
     assert "fast-forward" in result.message or "failed" in result.message.lower()
 
 
-def test_update_non_editable_install_explains(tmp_path: Path, monkeypatch) -> None:
-    """Pipx/pip installs are not handled by /update yet — must say so cleanly."""
-    _patch_install(monkeypatch, "non-editable", None)
-    # Subprocess should never even be called in this branch.
+def test_update_pipx_success_quits(tmp_path: Path, monkeypatch) -> None:
+    """pipx install → runs `pipx upgrade llm-parliament` and quits."""
+    _patch_install(monkeypatch, "pipx", None)
+    monkeypatch.setattr("parliament.commands.shutil.which", lambda _: "/usr/bin/pipx")
+    calls = _patch_subprocess(monkeypatch, returncode=0, stdout="upgraded")
+
+    result = dispatch("/update", _ctx(tmp_path))
+
+    assert result.quit is True
+    assert "Restart" in result.message
+    assert any("pipx" in c[0] and "upgrade" in c for c in calls)
+
+
+def test_update_pipx_not_on_path(tmp_path: Path, monkeypatch) -> None:
+    """pipx install but pipx binary missing → helpful message, no crash."""
+    _patch_install(monkeypatch, "pipx", None)
+    monkeypatch.setattr("parliament.commands.shutil.which", lambda _: None)
+
+    result = dispatch("/update", _ctx(tmp_path))
+
+    assert result.quit is False
+    assert "pipx" in result.message.lower()
+
+
+def test_update_pip_user_success_quits(tmp_path: Path, monkeypatch) -> None:
+    """pip user install → runs `pip install --upgrade llm-parliament` and quits."""
+    _patch_install(monkeypatch, "pip-user", None)
+    monkeypatch.setattr("parliament.commands.shutil.which", lambda _: "/usr/bin/pip")
+    calls = _patch_subprocess(monkeypatch, returncode=0)
+
+    result = dispatch("/update", _ctx(tmp_path))
+
+    assert result.quit is True
+    assert any("pip" in c[0] and "--upgrade" in c for c in calls)
+
+
+def test_update_pip_system_refuses(tmp_path: Path, monkeypatch) -> None:
+    """System-wide pip install → refuse with a clear message, no subprocess."""
+    _patch_install(monkeypatch, "pip-system", None)
     calls = _patch_subprocess(monkeypatch)
 
     result = dispatch("/update", _ctx(tmp_path))
 
     assert result.quit is False
-    assert "editable" in result.message.lower() or "git" in result.message.lower()
-    assert calls == []  # didn't try git
+    assert "sudo" in result.message.lower() or "system" in result.message.lower()
+    assert calls == []
 
 
 def test_update_unknown_install_explains(tmp_path: Path, monkeypatch) -> None:
@@ -467,7 +502,7 @@ def test_update_git_not_on_path(tmp_path: Path, monkeypatch) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     _patch_install(monkeypatch, "editable", repo)
-    _patch_subprocess(monkeypatch, exception=FileNotFoundError("[Errno 2] No such file: 'git'"))
+    monkeypatch.setattr("parliament.commands.shutil.which", lambda _: None)
 
     result = dispatch("/update", _ctx(tmp_path))
     assert result.quit is False
