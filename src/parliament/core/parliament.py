@@ -8,6 +8,7 @@ from typing import Callable
 from parliament.core.types import Bill, Hansard, Member, ProgressEvent
 from parliament.core.model_tiers import detect_gap, resolve_member_tier
 from parliament.providers.base import Provider
+from parliament.providers.errors import format_provider_error
 from parliament.procedures.first_reading import run_first_reading
 from parliament.procedures.debate import run_debate
 from parliament.procedures.division import run_division
@@ -110,21 +111,49 @@ class Parliament:
         )
 
         # Phase 3: Division
-        speaker, speaker_provider = select_speaker(
-            members=self.members,
-            providers=self.providers,
-            override=self.speaker_override,
-            last_speaker=last_speaker,
-        )
+        debating_member_names = {r.member_name for r in debate}
+        surviving_members = [
+            m for m in self.members if m.name in debating_member_names
+        ]
+        division_failures = []
+        while True:
+            if len(surviving_members) < 2:
+                raise RuntimeError(
+                    "Not enough members responded to continue "
+                    "(need at least 2 responses after Division).\n"
+                    + "\n".join(division_failures)
+                )
 
-        synthesis = await run_division(
-            bill=bill,
-            members=self.members,
-            debate_responses=debate,
-            speaker=speaker,
-            speaker_provider=speaker_provider,
-            on_progress=self.on_progress,
-        )
+            override = (
+                self.speaker_override
+                if self.speaker_override
+                and any(m.name.lower() == self.speaker_override.lower() for m in surviving_members)
+                else None
+            )
+            speaker, speaker_provider = select_speaker(
+                members=surviving_members,
+                providers=self.providers,
+                override=override,
+                last_speaker=last_speaker,
+            )
+
+            try:
+                synthesis = await run_division(
+                    bill=bill,
+                    members=self.members,
+                    debate_responses=debate,
+                    speaker=speaker,
+                    speaker_provider=speaker_provider,
+                    on_progress=self.on_progress,
+                )
+                break
+            except Exception as exc:
+                division_failures.append(
+                    f"  - {speaker.name}: {format_provider_error(exc)}"
+                )
+                surviving_members = [
+                    m for m in surviving_members if m.name != speaker.name
+                ]
 
         duration_ms = int((time.monotonic() - start) * 1000)
 

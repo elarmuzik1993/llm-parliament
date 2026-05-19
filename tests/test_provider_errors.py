@@ -1,8 +1,6 @@
-"""Tests for format_provider_error() — human-readable provider error formatting."""
+"""Tests for format_provider_error() and is_fatal_provider_error()."""
 
-
-
-from parliament.providers.errors import format_provider_error
+from parliament.providers.errors import format_provider_error, is_fatal_provider_error
 
 
 def _exc(msg: str, cls=Exception) -> Exception:
@@ -84,3 +82,68 @@ def test_unknown_error_single_line():
 def test_empty_exception():
     result = format_provider_error(_exc(""))
     assert result  # non-empty, doesn't crash
+
+
+# ── is_fatal_provider_error ───────────────────────────────────────────────────
+
+def test_fatal_quota_resource_exhausted():
+    assert is_fatal_provider_error(_exc("429 RESOURCE_EXHAUSTED: You exceeded your current quota"))
+
+
+def test_fatal_quota_keyword():
+    assert is_fatal_provider_error(_exc("quota exceeded for this project"))
+
+
+def test_fatal_billing():
+    assert is_fatal_provider_error(_exc("429: check your billing details"))
+
+
+def test_fatal_auth_401():
+    assert is_fatal_provider_error(_exc("401 Unauthorized: invalid api key"))
+
+
+def test_fatal_auth_403():
+    assert is_fatal_provider_error(_exc("403 Forbidden: permission denied"))
+
+
+def test_fatal_api_key_phrase():
+    assert is_fatal_provider_error(_exc("Authentication failed: bad api key provided"))
+
+
+def test_fatal_model_not_found_404():
+    assert is_fatal_provider_error(_exc("404: model 'llama99' does not exist"))
+
+
+def test_fatal_model_not_found_phrase():
+    assert is_fatal_provider_error(_exc("model not found in registry"))
+
+
+def test_transient_timeout_by_type():
+    class ReadTimeout(Exception):
+        pass
+    assert not is_fatal_provider_error(ReadTimeout("timed out after 30s"))
+
+
+def test_transient_timeout_by_message():
+    assert not is_fatal_provider_error(_exc("request timed out after 60s"))
+
+
+def test_transient_connection_refused():
+    assert not is_fatal_provider_error(ConnectionRefusedError("connection refused"))
+
+
+def test_transient_5xx():
+    assert not is_fatal_provider_error(_exc("HTTP 503 Service Unavailable"))
+
+
+def test_transient_bare_429_rate_limit():
+    # A plain rate-limit 429 (no quota/billing language) is transient — will recover
+    assert not is_fatal_provider_error(_exc("HTTP 429 Too Many Requests"))
+
+
+def test_transient_oom():
+    assert not is_fatal_provider_error(_exc("model requires more system memory (31 GiB)"))
+
+
+def test_transient_generic_unknown():
+    assert not is_fatal_provider_error(_exc("something unexpected happened"))

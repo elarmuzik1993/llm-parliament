@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from parliament.providers.base import Provider
-from parliament.providers.errors import format_provider_error
+from parliament.providers.errors import format_provider_error, is_fatal_provider_error
 from parliament.providers.mock import MockProvider
 from parliament.providers.ollama import OllamaProvider
 
@@ -53,4 +53,5 @@ __all__ = [
     "OllamaProvider",
     "create_provider",
     "format_provider_error",
+    "is_fatal_provider_error",
 ]

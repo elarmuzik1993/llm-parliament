@@ -131,7 +131,8 @@ async def run_debate(
             if isinstance(r, Exception)
         ]
         raise RuntimeError(
-            "Too many members failed in Debate (need at least 2 responses).\n"
+            "Not enough members responded to continue "
+            "(need at least 2 responses after Debate).\n"
             + "\n".join(failures)
         )
 

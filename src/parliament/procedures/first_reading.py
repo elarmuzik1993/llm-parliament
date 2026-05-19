@@ -99,8 +99,8 @@ async def run_first_reading(
             if isinstance(r, Exception)
         ]
         raise RuntimeError(
-            "Too many members failed in First Reading "
-            "(need at least 2 responses).\n" + "\n".join(failures)
+            "Not enough members responded to continue "
+            "(need at least 2 responses after First Reading).\n" + "\n".join(failures)
         )
 
     return responses

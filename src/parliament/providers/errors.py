@@ -57,3 +57,33 @@ def format_provider_error(exc: BaseException) -> str:
     if len(first_line) > 120:
         first_line = first_line[:117] + "…"
     return f"{exc_type}: {first_line}" if first_line and first_line != exc_type else exc_type
+
+
+def is_fatal_provider_error(exc: BaseException) -> bool:
+    """True for errors that won't resolve by retrying and require user action.
+
+    Fatal: quota/billing exhaustion, auth failures, model-not-found.
+    Transient: timeouts, connection errors, 5xx server errors, OOM.
+    """
+    raw = str(exc).lower()
+    exc_type = type(exc).__name__
+
+    # Transient: network-layer errors that may succeed on retry
+    if exc_type in ("ReadTimeout", "ConnectTimeout", "TimeoutError") or "timed out" in raw:
+        return False
+    if exc_type in ("ConnectError", "ConnectionRefusedError") or "connection refused" in raw:
+        return False
+
+    # Fatal: quota or billing exhaustion — won't recover without billing action
+    if any(s in raw for s in ("quota", "resource_exhausted", "billing", "exceeded your")):
+        return True
+
+    # Fatal: auth / permission — won't fix without a config change
+    if any(s in raw for s in ("401", "403", "authentication", "api key", "permission denied", "unauthorized")):
+        return True
+
+    # Fatal: model not found — won't fix without a config change
+    if "404" in raw or "model not found" in raw or "does not exist" in raw:
+        return True
+
+    return False
