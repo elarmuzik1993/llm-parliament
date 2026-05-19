@@ -3,6 +3,12 @@
 Source of truth for project rules, architecture, and development conventions.
 `CLAUDE.md` and `GEMINI.md` point here.
 
+<!-- Git Hook Test: USE-34 -->
+
+**External Documentation:**
+- **Obsidian Vault:** [[03 Projects/LLM Parliament]]
+- **Projects HUB:** [[03 Projects/Projects HUB]]
+
 ---
 
 ## Project overview
