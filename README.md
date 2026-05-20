@@ -483,6 +483,31 @@ with the Terms of Service and Usage Policies of their respective LLM providers
 (e.g., Ollama, OpenAI, Anthropic, Google). This tool does not bypass safety filters or
 usage restrictions of the underlying models.
 
+## Privacy
+
+LLM Parliament is a local tool with no telemetry, analytics, or remote
+reporting of any kind. The author receives no data from your usage.
+
+**What leaves your machine and where it goes:**
+
+| Traffic | Destination | When |
+|---------|-------------|------|
+| Your debate question + LLM responses | Your configured providers only (Anthropic / OpenAI / Google / Ollama) | During a debate |
+| Model list request (for TUI picker) | Same provider API, using your key | When you open the member picker |
+| Ollama reachability probe | `localhost:11434` — never leaves the machine | On `parliament doctor` and first-run wizard |
+
+**What never leaves your machine:**
+
+- API keys — stored in the OS keyring or `~/.parliament/keys.env`, never
+  logged or included in any output
+- Saved Hansard files — written to `~/.parliament/hansards/` locally only
+- Config — `~/.parliament/config.yaml` is read locally, never transmitted
+
+You can verify this by inspecting the source: all outbound calls are in
+`src/parliament/providers/` (debate traffic to your providers) and
+`src/parliament/model_catalog.py` (model list fetches to your providers).
+There are no other network calls in the codebase.
+
 ## License
 
 AGPLv3
