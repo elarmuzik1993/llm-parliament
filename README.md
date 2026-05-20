@@ -467,7 +467,7 @@ src/parliament/
 tests/                    Pytest suite (pytest-asyncio)
 scripts/
   diagnose-render.py      Render diagnostic — colors + spinner debugging
-config.example.yaml       Default config template (copied to ~/.parliament/config.yaml on first run)
+config.example.yaml       Default config template (fallback if first-run wizard fails)
 config.cloud.yaml         Cloud-only example (Anthropic + Google + OpenAI)
 config.mixed.yaml         Mixed example (Ollama + cloud)
 AGENTS.md                 Contributor source-of-truth (architecture, conventions)

@@ -55,7 +55,7 @@ src/parliament/
     hansard.py        HansardLevel enum, render_markdown(), render_terminal()
 
 tests/               Unit tests (pytest + pytest-asyncio)
-config.example.yaml  Default template — copied to ~/.parliament/config.yaml on first run
+config.example.yaml  Default template — fallback if first-run wizard fails
 scripts/
   diagnose-render.py  Render diagnostic — colors, spinner, terminal detection
 ```
@@ -103,7 +103,7 @@ All `resolve_*` helpers in `config.py` follow: CLI flag > env var > config YAML 
 ### Testing
 
 ```bash
-python -m pytest -q          # 321 tests expected (as of Animation branch)
+python -m pytest -q          # 400 tests expected (as of v0.2.0)
 ruff check .                 # must be clean before any commit
 ```
 
@@ -171,7 +171,7 @@ If parsing fails the entire response falls back to `recommendation`.
 ### Editable install (for /update to work)
 
 ```powershell
-git clone -b Animation https://github.com/elarmuzik1993/llm-parliament.git C:\Code\llm-parliament
+git clone https://github.com/elarmuzik1993/llm-parliament.git C:\Code\llm-parliament
 pipx install --force --editable C:\Code\llm-parliament
 ```
 
@@ -184,19 +184,14 @@ is enough to update without reinstalling.
 
 | Platform | Config | Keys | Hansards |
 |----------|--------|------|---------|
-| Linux/macOS | `~/.parliament/config.yaml` | `~/.parliament/keys.env` | `~/.parliament/hansards/` |
-| Windows | `%USERPROFILE%\.parliament\config.yaml` | `%USERPROFILE%\.parliament\keys.env` | `%USERPROFILE%\.parliament\hansards\` |
+| Linux/macOS | `~/.parliament/config.yaml` | OS keyring / `~/.parliament/keys.env` | `~/.parliament/hansards/` |
+| Windows | `%USERPROFILE%\.parliament\config.yaml` | OS keyring / `%USERPROFILE%\.parliament\keys.env` | `%USERPROFILE%\.parliament\hansards\` |
 
 Config is outside the repo — never committed. Only `config.example.yaml` ships with the repo.
 
 ---
 
-## Current branch status (Animation)
+## Current release
 
-Branch: `origin/Animation` — tip `23eaab9`
-Windows testing: ✅ complete (321 tests passing, ruff clean)
-Linux testing: pending
-PR to main: blocked on Linux verification
-
-See `docs/superpowers/plans/2026-05-09-hansard-redesign.md` for the full
-implementation plan behind this branch.
+`v0.2.0` — tagged `cd6bd45`, published to PyPI 2026-05-19.
+400 tests passing, ruff clean. See `CHANGELOG.md` for full history.
