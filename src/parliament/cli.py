@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from parliament import __version__
 from parliament.config import (
     KEY_PROVIDERS,
     KEYS_FILE,
@@ -89,6 +90,7 @@ def _configured_keys() -> list[tuple[str, str, str, str]]:
 
 
 @click.group(invoke_without_command=True)
+@click.version_option(__version__, "-V", "--version", package_name="llm-parliament")
 @click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
 @click.option("--speaker", default=None, help="Override Speaker selection in the TUI")
 @click.option("--mock", is_flag=True, help="Use mock providers in the TUI")

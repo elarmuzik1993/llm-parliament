@@ -313,3 +313,47 @@ def test_update_cli_pull_failure_exits_one(monkeypatch):
     result = CliRunner().invoke(cli.main, ["update"])
     assert result.exit_code == 1
     assert "fail" in result.output.lower() or "conflict" in result.output.lower()
+
+
+def test_version_flag_prints_the_installed_version():
+    """`--version` is what the bug report template asks reporters for (#19)."""
+    from parliament import __version__
+
+    result = CliRunner().invoke(cli.main, ["--version"])
+
+    assert result.exit_code == 0
+    assert __version__ in result.output
+
+
+def test_short_version_flag_matches_the_long_one():
+    runner = CliRunner()
+
+    assert runner.invoke(cli.main, ["-V"]).output == runner.invoke(cli.main, ["--version"]).output
+
+
+def test_version_is_importable_from_the_package():
+    import parliament
+
+    assert isinstance(parliament.__version__, str)
+    assert parliament.__version__
+    assert "__version__" in parliament.__all__
+
+
+def test_version_matches_installed_metadata():
+    """It is read from metadata, so it cannot drift from pyproject.toml."""
+    from importlib.metadata import version
+
+    from parliament import __version__
+
+    assert __version__ == version("llm-parliament")
+
+
+def test_doctor_reports_the_version_first():
+    """`doctor` is the output we ask people to paste, so it has to carry it."""
+    from parliament import __version__
+
+    result = CliRunner().invoke(cli.main, ["doctor"])
+
+    assert __version__ in result.output
+    # Before the Python line, so it is the first thing read.
+    assert result.output.index(__version__) < result.output.index("Python")

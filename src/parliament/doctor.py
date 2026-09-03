@@ -242,9 +242,21 @@ def _symbol_for(r: CheckResult) -> tuple[str, str]:
     return ("✓", "green")          # ✓
 
 
+def _check_version() -> CheckResult:
+    """The version, first, because this is the output a bug report pastes.
+
+    Always ok: not knowing the version is not a broken environment, and failing
+    the check would make `doctor` exit 1 for someone running from a checkout.
+    """
+    from parliament import __version__
+
+    return CheckResult(ok=True, message=f"LLM Parliament {__version__}")
+
+
 def run_doctor(console: Console) -> int:
     """Run all doctor checks and print a report. Returns exit code (0 ok, 1 broken)."""
     env_checks = [
+        _check_version(),
         _check_python_version(),
         _check_curses(),
         _check_terminal_size(),
