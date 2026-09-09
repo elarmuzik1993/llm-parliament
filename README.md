@@ -177,6 +177,11 @@ Confirm with `Y` and the config is written. If no keys or Ollama are detected,
 you get a working mock preset — no setup needed to verify the install. Edit
 members later via the TUI (`parliament`) or directly in the file.
 
+**[`docs/configuration.md`](docs/configuration.md)** is the complete reference:
+every key, its type, its real default, and the environment variable or CLI flag
+that overrides it — plus `settings.json`, which the TUI writes and this file
+does not cover.
+
 ## Optional: Local Models (Ollama)
 
 Ollama runs LLMs locally — free, private, no API keys. Install it
