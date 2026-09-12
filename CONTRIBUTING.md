@@ -202,12 +202,11 @@ That includes the git identity: coding agents often default to committing as
 `claude <noreply@anthropic.com>` (or similar) when no local git identity is
 configured, which credits the tool as author instead of you in GitHub's
 contributor graphs. Set `git config user.name`/`user.email` to your own
-before committing, and if you want to credit the assistant, add it as a
-trailer instead of the author:
+before committing.
 
-```
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
+This project does not use AI attribution trailers — no `Co-Authored-By:` for a
+model or agent, and no generated-by footers in PR descriptions. The contributor
+is the author.
 
 ## Reporting bugs
 
