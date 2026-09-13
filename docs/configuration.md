@@ -3,10 +3,15 @@
 Every key the code reads, its type, its default, and what overrides it.
 
 Values below were read out of the source, not out of the prose: `src/parliament/config.py`
-(the `resolve_*` helpers, `load_config`, `build_parliament_from_config`),
+(the `resolve_*` helpers, `load_config`, `load_keys`, `save_key`,
+`build_parliament_from_config`), `src/parliament/providers/__init__.py`
+(`create_provider`), `src/parliament/cli.py`, `src/parliament/first_run.py`,
 `src/parliament/tui.py` (`SETTINGS_FILE`), `src/parliament/render/hansard.py`
-(`HansardLevel`) and the four provider `__init__` signatures under
+(`HansardLevel`, `DEFAULT_LEVEL`) and the five provider modules under
 `src/parliament/providers/`.
+
+Last checked against `main` at `12244bf`. If a default here disagrees with the
+code, the code has moved; please open an issue.
 
 ## Where things live
 
@@ -15,19 +20,29 @@ from `Path.home()`, so it does not follow `XDG_CONFIG_HOME`.
 
 | Path | Written by | Holds |
 | --- | --- | --- |
-| `~/.parliament/config.yaml` | you, `parliament members`, the TUI | everything on this page except `save_dir` |
+| `~/.parliament/config.yaml` | you, the first-run wizard, the TUI's member editor | everything on this page except `save_dir` |
 | `~/.parliament/settings.json` | the TUI only | `save_dir` |
-| `~/.parliament/keys.env` | `parliament keys set`, when no OS keyring is available | `NAME=value` lines, `chmod 0600` |
-| OS keyring (service `llm-parliament`) | `parliament keys set` | API keys, preferred over `keys.env` |
+| `~/.parliament/keys.env` | `parliament keys set`, when no OS keyring is available | `NAME=value` lines; `chmod 0600` on POSIX, left as-is on Windows |
+| OS keyring (service `llm-parliament`) | `parliament keys set`, when a keyring is available | API keys |
 | `~/.parliament/hansards/` | each run | saved Hansards, unless `save_dir` says otherwise |
 
-On first run `config.example.yaml` is copied to `~/.parliament/config.yaml`.
-`parliament ask --config <path>` reads a different file instead.
+`parliament keys set` **writes** to the keyring when one is available and only
+falls back to `keys.env` when it is not. `load_keys` **reads** the other way
+round: `keys.env` first, then the keyring only for variables the file did not
+set. So if the same variable is in both, the file wins. Neither overrides a
+variable already set in the process environment.
+
+On first run, when `~/.parliament/config.yaml` does not exist, a detection
+wizard checks for API keys, a reachable Ollama and system RAM, then writes a
+matching preset (an interactive run shows the proposal first, and declining it
+writes the mock preset). `config.example.yaml` is copied verbatim only if the
+wizard raises. `parliament ask --config <path>` reads a different file instead.
 
 `${VAR}` anywhere in the YAML is substituted from the environment before
 parsing. An unset variable is **not** an error at load time: the raw text is
 parsed instead and the failure surfaces later, when the provider is
-constructed.
+constructed. That fallback is all-or-nothing: if any one `${VAR}` is unset,
+**none** of them are substituted, including the ones that are set.
 
 ## Precedence
 
@@ -60,13 +75,22 @@ per member**: two members on the same provider share one block.
 | Provider | `model` | `api_key` | `base_url` | `timeout` | other |
 | --- | --- | --- | --- | --- | --- |
 | `ollama` | ✅ | — | ✅ `http://localhost:11434/v1` | ✅ `null` | |
-| `openai` | ✅ | ✅ | — | ✅ `null` | |
+| `openai` | ✅ | ✅ | ✅ `null` | ✅ `null` | |
 | `anthropic` | ✅ | ✅ | — | ✅ `null` | |
 | `google` | ✅ | ✅ | — | ✅ `null` | |
-| `mock` | ✅ | — | — | — | `latency_ms`, default `50` |
+| `mock` | ✅ | — | — | — | none |
 
-`model` comes from the member entry and is passed for you; setting it here as
-well would be passed twice.
+`mock` takes **no** keys from this block. `create_provider` constructs it with
+`model` alone and drops everything else, so `providers.mock.latency_ms` (which
+`MockProvider` accepts as a constructor argument, default `50`) is silently
+ignored.
+
+`openai`'s `base_url` routes requests to any OpenAI-compatible endpoint.
+
+`model` comes from the member entry and is passed for you. Setting it here as
+well raises `TypeError: create_provider() got multiple values for argument
+'model'` before the provider is constructed, which stops `parliament ask` and
+TUI startup.
 
 `timeout` is `null` (no limit) everywhere by default. `api_key` is usually
 better left out — the provider SDKs read `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
@@ -95,7 +119,7 @@ silently turns the debate view off.
 
 | Key | Type | Default | Overridden by |
 | --- | --- | --- | --- |
-| `hansard.level` | string | `minimal` | `--hansard <level>`, then `PARLIAMENT_HANSARD_LEVEL` |
+| `hansard.level` | string | `verdict` | `--hansard <level>`, then `PARLIAMENT_HANSARD_LEVEL`; `--verbose` is an alias for `--hansard=full`, applied only when `--hansard` is absent |
 
 | Level | Includes |
 | --- | --- |
@@ -104,7 +128,7 @@ silently turns the debate view off.
 | `archive` | `verdict` + frontmatter + session footer |
 | `full` | `archive` + first-reading and debate transcripts |
 
-Unknown values fall back to `minimal` **and emit a `UserWarning`**, so a typo in
+Unknown values fall back to `verdict` **and emit a `UserWarning`**, so a typo in
 a flag, an env var or the YAML is visible rather than silent.
 
 ## `settings.json`
