@@ -56,7 +56,7 @@ CLI flag  >  environment variable  >  config.yaml  >  built-in default
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `parliament.name` | string | — | Display name for the house. |
+| `parliament.name` | string | — | Not read by any code. The first-run presets and `config.example.yaml` write it (`House of AI`), but nothing displays it. |
 | `parliament.members` | list | **required** | `build_parliament_from_config` indexes `config["parliament"]["members"]` directly, so a missing key is a `KeyError`. |
 | `parliament.members[].name` | string | **required** | Also the key each provider instance is stored under, so it must be unique. |
 | `parliament.members[].provider` | string | **required** | One of `ollama`, `anthropic`, `openai`, `google`, `mock`. |
@@ -85,17 +85,22 @@ per member**: two members on the same provider share one block.
 `MockProvider` accepts as a constructor argument, default `50`) is silently
 ignored.
 
-`openai`'s `base_url` routes requests to any OpenAI-compatible endpoint.
+`openai`'s `base_url` routes requests to any OpenAI-compatible endpoint. When it
+points anywhere other than OpenAI, set `api_key` in the same block to that
+vendor's key (for example `api_key: ${GROQ_API_KEY}`). Left unset, the OpenAI
+SDK falls back to `OPENAI_API_KEY` and sends your OpenAI credential to the
+other host.
 
 `model` comes from the member entry and is passed for you. Setting it here as
 well raises `TypeError: create_provider() got multiple values for argument
 'model'` before the provider is constructed, which stops `parliament ask` and
 TUI startup.
 
-`timeout` is `null` (no limit) everywhere by default. `api_key` is usually
-better left out — the provider SDKs read `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
-and `GOOGLE_API_KEY` themselves, and `load_config` injects `keys.env` and the
-keyring into the environment before anything is constructed.
+`timeout` is `null` (no limit) everywhere by default. Apart from that `base_url`
+case, `api_key` is usually better left out — the provider SDKs read
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `GOOGLE_API_KEY` themselves, and
+`load_config` injects `keys.env` and the keyring into the environment before
+anything is constructed.
 
 ```yaml
 providers:
