@@ -8,6 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`openrouter` provider** — OpenRouter speaks the OpenAI API at its own
+  address, so it needs no class of its own: it reuses `OpenAIProvider` with the
+  address and the `OPENROUTER_API_KEY` variable read from its
+  `model_catalog.OPENAI_COMPATIBLE` row. A member can now name
+  `provider: openrouter` instead of pointing `openai` at a `base_url`, and
+  because `openrouter` is in `KEY_PROVIDERS`, `parliament keys set openrouter`,
+  `keys list`, the TUI's `/key`, and the doctor's key check all follow with no
+  further wiring. The `groq` and `mistral` registry rows stay discovery-only.
+  Fixes #36.
+
 - **`degraded` on `Hansard`** — `true` when the verdict was reached with fewer
   members than configured because one or more members failed with a provider
   error. Degraded mode itself is unchanged, but `--json` consumers can now tell
@@ -89,6 +99,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   response arrays.
 - `parliament ask --json` now writes warnings and errors to stderr, keeping
   stdout a clean JSON document for `jq` and other consumers.
+- **`openrouter` no longer borrows `OPENAI_API_KEY`.** Building a client for a
+  wired OpenAI-compatible provider used to leave `api_key` unset when the
+  vendor's own variable was missing, and the OpenAI SDK silently fell back to
+  `OPENAI_API_KEY` -- so a real OpenAI credential would be posted to another
+  vendor without anyone noticing. Construction now raises a clear error that
+  names the missing variable and the recovery command, and the model picker
+  uses the same rule (`openai_compatible_key()` returns `None` for any row
+  that has its own `KEY_PROVIDERS` entry, instead of borrowing). The
+  discovery-only rows (`groq`, `mistral`) keep the `OPENAI_API_KEY` fallback,
+  because they have no key home of their own. Fixes #48.
 
 ## [0.2.0] — 2026-05-19
 

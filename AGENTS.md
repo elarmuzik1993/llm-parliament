@@ -49,8 +49,9 @@ src/parliament/
     errors.py         Human-readable formatting for provider exceptions
     anthropic_provider.py
     google_provider.py
-    openai_provider.py   (also used for Ollama via base_url override)
-    ollama.py
+    openai_provider.py   OpenAI API; takes a base_url, so it also serves any
+                         OpenAI-compatible endpoint (see model_catalog.py)
+    ollama.py            its own class — hardcodes a dummy key, no auth
     mock.py           Deterministic mock — used in tests and --mock flag
   render/
     __init__.py       build_renderer() factory, SilentRenderer, DebateRenderer ABC
@@ -213,10 +214,51 @@ checked at all. Treat a green run as “nothing already annotated regressed”.
 
 ### Adding a provider
 
-1. Subclass `Provider` in `providers/base.py`
-2. Add the provider key to `KEY_PROVIDERS` in `config.py`
-3. Wire it up in `config.py::build_parliament_from_config()`
-4. Add model presets to `model_catalog.py`
+Two shapes exist today, and they are not interchangeable -- pick the one that
+matches the SDK you have.
+
+#### OpenAI-compatible registry row (no new class needed)
+
+For any service that speaks the OpenAI API at its own address (`OpenRouter`
+today). The model picker's discovery is already covered by a row in
+`model_catalog.OPENAI_COMPATIBLE`; wiring it as a usable `provider:` value is
+three steps:
+
+1. Add the address and the key variable to `OPENAI_COMPATIBLE` in
+   `model_catalog.py`.
+2. Add the provider to `KEY_PROVIDERS` in `config.py` so `parliament keys set`
+   knows the variable and `parliament doctor` reports it.
+3. Add the provider name to `_OPENAI_COMPATIBLE_PROVIDERS` in
+   `providers/__init__.py` -- this is what opts the row in as a wired
+   provider. Discovery (`groq`, `mistral`) and wiring (`openrouter`) are
+   deliberately separate: a name that has a row but is not in the tuple is
+   still an error in a config, because the README documents `provider: groq`
+   that way too.
+
+`create_provider(...)` builds the client by reusing `OpenAIProvider` with the
+registry row's `base_url` and `env_var`. A missing vendor key is a hard error
+-- `AsyncOpenAI(api_key=None)` would silently read `OPENAI_API_KEY` from the
+process environment and post an OpenAI credential to the other vendor (#48).
+
+#### Cloud-native SDK
+
+For a vendor whose SDK is not OpenAI-compatible (`anthropic`, `google` today):
+
+1. Subclass `Provider` in `providers/base.py`.
+2. Add the provider key to `KEY_PROVIDERS` in `config.py`.
+3. Add it to `_CLOUD_PROVIDERS` in `providers/__init__.py` (the lazy-import
+   table), and wire the member in `config.py::build_parliament_from_config()`.
+4. Add model presets to `model_catalog.py`.
+
+#### Both shapes
+
+- `parliament doctor` reports each wired provider. For the registry shape, the
+  SDK import is covered by whichever entry maps to the underlying SDK
+  (`openrouter` reuses the `openai` SDK row); the doctor only needs the key
+  check.
+- The TUI's `SUPPORTED_PROVIDERS` list in `tui.py` gates both the provider
+  picker and `_save_member_edit`. Add a new wired provider there too, or it
+  can be named in a config but not edited from the TUI.
 
 ### Synthesis parser
 

@@ -39,7 +39,7 @@ from parliament.render.hansard import HansardLevel
 
 SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
 DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
-SUPPORTED_PROVIDERS = ["ollama", "anthropic", "openai", "google", "mock"]
+SUPPORTED_PROVIDERS = ["ollama", "anthropic", "openai", "google", "openrouter", "mock"]
 MEMBER_FIELDS = ["provider", "model", "base_url"]
 
 _TUI_COLOR_PAIR = {

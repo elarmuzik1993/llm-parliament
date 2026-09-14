@@ -176,13 +176,23 @@ def test_picker_data_for_unknown_provider() -> None:
 
 
 def test_openai_compatible_registry_shape() -> None:
-    # Groq and Mistral speak the OpenAI API at a different address; the
-    # registry is what stops that becoming a second client.
-    assert set(model_catalog.OPENAI_COMPATIBLE) == {"openai", "groq", "mistral"}
+    # Groq, Mistral and OpenRouter speak the OpenAI API at a different address;
+    # the registry is what stops that becoming a second client.
+    assert set(model_catalog.OPENAI_COMPATIBLE) == {
+        "openai",
+        "groq",
+        "mistral",
+        "openrouter",
+    }
     assert model_catalog.OPENAI_COMPATIBLE["groq"].base_url == "https://api.groq.com/openai/v1"
     assert model_catalog.OPENAI_COMPATIBLE["mistral"].base_url == "https://api.mistral.ai/v1"
+    assert (
+        model_catalog.OPENAI_COMPATIBLE["openrouter"].base_url
+        == "https://openrouter.ai/api/v1"
+    )
     assert model_catalog.OPENAI_COMPATIBLE["groq"].env_var == "GROQ_API_KEY"
     assert model_catalog.OPENAI_COMPATIBLE["mistral"].env_var == "MISTRAL_API_KEY"
+    assert model_catalog.OPENAI_COMPATIBLE["openrouter"].env_var == "OPENROUTER_API_KEY"
 
 
 @pytest.mark.parametrize(
@@ -191,6 +201,7 @@ def test_openai_compatible_registry_shape() -> None:
         ("openai", "https://api.openai.com/v1/models"),
         ("groq", "https://api.groq.com/openai/v1/models"),
         ("mistral", "https://api.mistral.ai/v1/models"),
+        ("openrouter", "https://openrouter.ai/api/v1/models"),
     ],
 )
 def test_each_provider_is_asked_at_its_own_address(
@@ -294,3 +305,25 @@ def test_discovery_key_falls_back_to_the_openai_variable(monkeypatch: pytest.Mon
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     assert model_catalog.openai_compatible_key("groq") is None
     assert model_catalog.openai_compatible_key("nope") is None
+
+
+def test_discovery_key_does_not_borrow_for_providers_with_their_own_key_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`openrouter` has its own row in `KEY_PROVIDERS`, so a missing
+    `OPENROUTER_API_KEY` must report "no key" rather than borrow `OPENAI_API_KEY`
+    -- the picker ought to agree with the eventual `create_provider(...)` call,
+    which refuses the same fallback (#48). Discovery-only rows (`groq`) still
+    borrow, since they have no key home to honour.
+    """
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-real-openai-secret")
+    assert model_catalog.openai_compatible_key("openrouter") is None
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-dedicated")
+    assert model_catalog.openai_compatible_key("openrouter") == "sk-or-dedicated"
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    # And `groq` (no key home) still borrows, so the previous test's contract
+    # holds for the discovery-only rows.
+    assert model_catalog.openai_compatible_key("groq") == "sk-proj-real-openai-secret"

@@ -70,6 +70,9 @@ PROVIDER_DISPLAY = {
     "anthropic": ("Anthropic SDK", "anthropic"),
     "google": ("Google SDK", "google.genai"),
     "openai": ("OpenAI SDK", "openai"),
+    # OpenRouter reuses the OpenAI SDK, so its SDK presence is already covered
+    # by the `openai` row; the row here is only there for the key check.
+    "openrouter": ("OpenRouter", "openai"),
 }
 
 
@@ -265,7 +268,7 @@ def run_doctor(console: Console) -> int:
 
     console.print("[bold]Providers[/bold]")
     provider_checks: list[CheckResult] = []
-    for provider in ("anthropic", "google", "openai"):
+    for provider in ("anthropic", "google", "openai", "openrouter"):
         sdk_r, key_r = _check_provider(provider)
         provider_checks.extend([sdk_r, key_r])
         sdk_sym, sdk_col = _symbol_for(sdk_r)

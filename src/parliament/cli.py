@@ -332,7 +332,7 @@ def keys():
 
 
 @keys.command("set")
-@click.argument("provider", type=click.Choice(["anthropic", "openai", "google"]))
+@click.argument("provider", type=click.Choice(list(KEY_PROVIDERS)))
 @click.argument("key")
 def keys_set(provider: str, key: str):
     """Save an API key to the OS keyring (or keys.env if keyring is unavailable)."""
@@ -365,7 +365,7 @@ def keys_list():
 
 
 @keys.command("remove")
-@click.argument("provider", type=click.Choice(["anthropic", "openai", "google"]))
+@click.argument("provider", type=click.Choice(list(KEY_PROVIDERS)))
 def keys_remove(provider: str):
     """Remove an API key from keys.env and OS keyring."""
     if remove_key(provider):

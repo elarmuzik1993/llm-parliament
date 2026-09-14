@@ -12,6 +12,7 @@ from typing import Callable
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
+from parliament.config import KEY_PROVIDERS
 from parliament.core.types import Hansard, Member
 
 
@@ -139,7 +140,8 @@ def _settings(_args: str, _ctx: CommandContext) -> CommandResult:
     return CommandResult(open_screen="app_settings")
 
 
-CLOUD_KEY_PROVIDERS = ("anthropic", "openai", "google")
+# Derived, not retyped — the TUI's `/key` must offer whatever `keys set` does.
+CLOUD_KEY_PROVIDERS = tuple(KEY_PROVIDERS)
 
 
 def _key(args: str, _ctx: CommandContext) -> CommandResult:

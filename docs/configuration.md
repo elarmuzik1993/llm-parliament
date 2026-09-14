@@ -59,7 +59,7 @@ CLI flag  >  environment variable  >  config.yaml  >  built-in default
 | `parliament.name` | string | — | Not read by any code. The first-run presets and `config.example.yaml` write it (`House of AI`), but nothing displays it. |
 | `parliament.members` | list | **required** | `build_parliament_from_config` indexes `config["parliament"]["members"]` directly, so a missing key is a `KeyError`. |
 | `parliament.members[].name` | string | **required** | Also the key each provider instance is stored under, so it must be unique. |
-| `parliament.members[].provider` | string | **required** | One of `ollama`, `anthropic`, `openai`, `google`, `mock`. |
+| `parliament.members[].provider` | string | **required** | One of `ollama`, `anthropic`, `openai`, `google`, `openrouter`, `mock`. |
 | `parliament.members[].model` | string | **required** | Also decides the member's tier — see [tiers](#tiers). |
 
 A member's `tier` is **not** configurable: it is resolved from the model name
@@ -78,6 +78,7 @@ per member**: two members on the same provider share one block.
 | `openai` | ✅ | ✅ | ✅ `null` | ✅ `null` | |
 | `anthropic` | ✅ | ✅ | — | ✅ `null` | |
 | `google` | ✅ | ✅ | — | ✅ `null` | |
+| `openrouter` | ✅ | ✅ `OPENROUTER_API_KEY` | ✅ `https://openrouter.ai/api/v1` | ✅ `null` | |
 | `mock` | ✅ | — | — | — | none |
 
 `mock` takes **no** keys from this block. `create_provider` constructs it with
@@ -85,11 +86,14 @@ per member**: two members on the same provider share one block.
 `MockProvider` accepts as a constructor argument, default `50`) is silently
 ignored.
 
-`openai`'s `base_url` routes requests to any OpenAI-compatible endpoint. When it
-points anywhere other than OpenAI, set `api_key` in the same block to that
-vendor's key (for example `api_key: ${GROQ_API_KEY}`). Left unset, the OpenAI
-SDK falls back to `OPENAI_API_KEY` and sends your OpenAI credential to the
-other host.
+`openai`'s `base_url` routes requests to any OpenAI-compatible endpoint that
+does not yet have its own `provider:` value (Groq, Mistral, self-hosted
+gateways). When it points anywhere other than OpenAI, set `api_key` in the same
+block to that vendor's key (for example `api_key: ${GROQ_API_KEY}`) -- leaving
+it unset lets the OpenAI SDK fall back to `OPENAI_API_KEY` and send your
+OpenAI credential to the other host. For OpenRouter specifically, prefer
+`provider: openrouter`: it has its own address and key variable, and
+construction refuses to borrow `OPENAI_API_KEY` (#48).
 
 `model` comes from the member entry and is passed for you. Setting it here as
 well raises `TypeError: create_provider() got multiple values for argument
@@ -159,6 +163,7 @@ the TUI, edit the file:
 | `ANTHROPIC_API_KEY` | provider SDK | Anthropic credentials |
 | `OPENAI_API_KEY` | provider SDK | OpenAI credentials |
 | `GOOGLE_API_KEY` | provider SDK | Google credentials |
+| `OPENROUTER_API_KEY` | provider SDK | OpenRouter credentials |
 | `PARLIAMENT_SHOW_DEBATE` | `resolve_show_debate` | overrides `display.show_debate` |
 | `PARLIAMENT_HANSARD_LEVEL` | `resolve_hansard_level` | overrides `hansard.level` |
 | any `${VAR}` in the YAML | `load_config` | substituted before parsing |

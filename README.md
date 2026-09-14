@@ -255,15 +255,15 @@ parliament keys migrate   # move existing keys.env entries to the OS keyring
 parliament keys remove openai
 ```
 
-## Optional: OpenAI-compatible providers (Groq, Mistral)
+## Optional: OpenAI-compatible providers (Groq, Mistral, OpenRouter)
 
 Groq and Mistral serve the OpenAI API at their own addresses, so they need no
 new client — just a key and a `base_url`. Groq has a free tier, which makes it
 a cheap way to add a second opinion to a parliament.
 
-`parliament keys set` knows `anthropic`, `openai` and `google`, so store the
-Groq or Mistral key as the openai one — it is the openai provider that will
-use it:
+`parliament keys set` knows `anthropic`, `openai`, `google`, and `openrouter`,
+so store the Groq or Mistral key as the openai one — it is the openai provider
+that will use it:
 
 ```bash
 parliament keys set openai gsk_...      # a Groq key
@@ -308,11 +308,36 @@ The TUI's provider picker does not offer `groq` or `mistral` as providers — se
 `provider: openai` with a `base_url`, as above. Writing `provider: groq` in the
 config is an error.
 
+### OpenRouter
+
+OpenRouter is also OpenAI-compatible, but it is common enough to deserve its
+own line in `parliament keys`, its own button in the TUI provider picker, and
+its own row in `parliament doctor`. Name it directly:
+
+```bash
+parliament keys set openrouter sk-or-...
+```
+
+```yaml
+parliament:
+  members:
+    - name: Claude
+      provider: openrouter
+      model: anthropic/claude-sonnet-4-6
+```
+
+The address (`https://openrouter.ai/api/v1`) and the key variable
+(`OPENROUTER_API_KEY`) come from `model_catalog.OPENAI_COMPATIBLE`; you do not
+set a `base_url`. The TUI's model picker fetches OpenRouter's live catalogue
+the same way it does for Anthropic, OpenAI, and Google.
+
 ## Other OpenAI-compatible endpoints
 
-Nothing above is specific to Groq or Mistral. Any service speaking the OpenAI
-API — OpenRouter, an aggregator such as one-api, a self-hosted gateway — works
-the same way: point `providers.openai` at its `base_url` and give it a key.
+Any service speaking the OpenAI API that is not its own first-class provider
+works the way Groq and Mistral do above: point `providers.openai` at its
+`base_url` and give it a key. Aggregators such as one-api, self-hosted
+gateways, and small vendors that ship only an OpenAI-shaped endpoint all fall
+into this category.
 
 ## Does it cost 3× more?
 
