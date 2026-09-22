@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
+from itertools import product
+from types import SimpleNamespace
+
+import pytest
 
 from parliament.first_run import Environment
 from parliament.model_catalog import OllamaModel
@@ -106,3 +110,26 @@ def test_all_cloud_keys_selects_cloud_full_with_current_google_default() -> None
         ("GPT-Mini", "openai", "gpt-4o-mini"),
         ("Gemini", "google", "gemini-2.5-flash"),
     ]
+
+
+@pytest.mark.parametrize("keys", list(product([False, True], repeat=3)))
+@pytest.mark.parametrize("local", [False, True])
+def test_openrouter_precedence_and_model_diversity(keys: tuple[bool, ...], local: bool) -> None:
+    env = SimpleNamespace(**{**asdict(BASE_ENV), "openrouter_key": True})
+    env.anthropic_key, env.openai_key, env.google_key = keys
+    if local:
+        env.ollama_reachable = True
+        env.ollama_models = tuple(OllamaModel(name, 1) for name in ["a", "b", "c"])
+    preset = select_preset(env)
+
+    if all(keys):
+        assert preset.name == "cloud-full"
+    else:
+        assert preset.name == "cloud-openrouter"
+        members = preset.config["parliament"]["members"]
+        assert len(members) == 3
+        assert {member["provider"] for member in members} == {"openrouter"}
+        assert {member["model"].split("/")[0] for member in members} == {
+            "anthropic", "openai", "google",
+        }
+        assert preset.config["hansard"]["level"] == "verdict"

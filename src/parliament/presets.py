@@ -197,6 +197,21 @@ def _cloud_openai_google_preset() -> Preset:
     )
 
 
+def _cloud_openrouter_preset() -> Preset:
+    return Preset(
+        name="cloud-openrouter",
+        summary="Anthropic + OpenAI + Google via OpenRouter",
+        config=_base_config(
+            [
+                _member("Claude", "openrouter", "anthropic/claude-sonnet-4.6"),
+                _member("GPT-Mini", "openrouter", "openai/gpt-4o-mini"),
+                _member("Gemini", "openrouter", "google/gemini-2.5-flash"),
+            ]
+        ),
+        notice="Uses your OpenRouter account for all three models; API usage may incur charges.",
+    )
+
+
 def select_preset(env: Any) -> Preset:
     """Select the best first-run preset for a detected environment."""
     cloud = _cloud_providers(env)
@@ -213,6 +228,10 @@ def select_preset(env: Any) -> Preset:
 
     if cloud == ["anthropic", "openai", "google"]:
         return _cloud_full_preset()
+    # Preserve an already diverse direct setup; otherwise the single router
+    # key supplies three labs instead of repeating a provider's models.
+    if env.openrouter_key:
+        return _cloud_openrouter_preset()
     if cloud == ["anthropic", "google"]:
         return _cloud_anthropic_google_preset()
     if cloud == ["anthropic", "openai"]:
