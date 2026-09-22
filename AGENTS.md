@@ -392,6 +392,6 @@ Config is outside the repo — never committed. Only `config.example.yaml` ships
 ## Current release
 
 `v0.2.0` — tagged `cd6bd45`, published to PyPI 2026-05-19.
-See `CHANGELOG.md` for full history, and the Testing section above for the
-current expected test count (a count pinned to a tag goes stale immediately —
-this one said 401 long after it stopped being true).
+See `CHANGELOG.md` for full history. No expected test count is recorded here
+or under Testing: a count in prose goes stale the next time anyone adds a test,
+and this one said 401, then 460, long after either was true.
