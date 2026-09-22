@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Groq and Mistral providers** — use `provider: groq` or `provider: mistral`
+  directly, with dedicated key management, TUI selection, and doctor checks.
+  Model discovery no longer falls back to `OPENAI_API_KEY` for other vendors.
+  Fixes #48.
+
 - **`openrouter` provider** — OpenRouter speaks the OpenAI API at its own
   address, so it needs no class of its own: it reuses `OpenAIProvider` with the
   address and the `OPENROUTER_API_KEY` variable read from its
@@ -15,7 +20,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `provider: openrouter` instead of pointing `openai` at a `base_url`, and
   because `openrouter` is in `KEY_PROVIDERS`, `parliament keys set openrouter`,
   `keys list`, the TUI's `/key`, and the doctor's key check all follow with no
-  further wiring. The `groq` and `mistral` registry rows stay discovery-only.
+  further wiring. The compatible-provider registry is shared with Groq and Mistral.
   Fixes #36.
 
 - **`degraded` on `Hansard`** — `true` when the verdict was reached with fewer
