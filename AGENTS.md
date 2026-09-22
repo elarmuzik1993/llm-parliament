@@ -177,11 +177,11 @@ loop and `docs/configuration.md` behind.
 
 | | The fact | Where it lives | Guarded by |
 | --- | --- | --- | --- |
-| **A** | Which providers exist, and the key each uses | `model_catalog.OPENAI_COMPATIBLE`, `config.KEY_PROVIDERS`, `providers._OPENAI_COMPATIBLE_PROVIDERS`, `providers._CLOUD_PROVIDERS`, `tui.SUPPORTED_PROVIDERS`, `doctor.PROVIDER_DISPLAY` and its hardcoded loop, `commands.CLOUD_KEY_PROVIDERS`, README, `docs/configuration.md`, this file | partly -- `test_every_wired_provider_has_a_home_for_its_key`. `CLOUD_KEY_PROVIDERS` is the only derived copy of the seven in code |
+| **A** | Which providers exist, and the key each uses | `model_catalog.OPENAI_COMPATIBLE`, `config.KEY_PROVIDERS`, `providers._OPENAI_COMPATIBLE_PROVIDERS`, `providers._CLOUD_PROVIDERS`, `tui.SUPPORTED_PROVIDERS`, `doctor.PROVIDER_DISPLAY` and its hardcoded loop, `commands.CLOUD_KEY_PROVIDERS`, README, `docs/configuration.md`, this file | partly -- `test_every_wired_provider_has_a_home_for_its_key`, and `tests/test_docs_match_code.py` pins the three copies in `docs/configuration.md` to the code. `CLOUD_KEY_PROVIDERS` is the only derived copy of the seven in code |
 | **B** | What a model is called | `MODEL_TIERS` (bare ids), `presets.py` constants, OpenRouter `vendor/slug`, Ollama `name:tag` | **nothing.** `get_tier` is an exact dict lookup, so every `vendor/slug` falls to `DEFAULT_TIER` and `detect_gap` can never fire for an OpenRouter parliament (#37) |
 | **C** | Which preset wins for an environment | the `if`/`return` ladder in `presets.select_preset` | partly -- `tests/test_first_run_presets.py` covers chosen cases, not the matrix |
 | **D** | Where an API key comes from | env var, `keys.env`, keyring, `providers.<name>.api_key` | partly -- precedence is stated under **Config precedence**, and tested per path rather than as a whole |
-| **E** | What is true, for a reader | README (five provider sections), `docs/configuration.md`, this file, three shipped YAMLs, `CHANGELOG.md` | only the YAMLs -- `test_shipped_configs_pin_the_built_in_default_level` |
+| **E** | What is true, for a reader | README (five provider sections), `docs/configuration.md`, this file, three shipped YAMLs, `CHANGELOG.md` | the YAMLs (`test_shipped_configs_pin_the_built_in_default_level`) and `docs/configuration.md` (`tests/test_docs_match_code.py`). README, this file and the CHANGELOG are unguarded |
 
 **A** and **B** are load-bearing. **E** is a consequence of A--C rather than an
 independent problem, which is why rewriting docs before the code settles is
@@ -192,16 +192,17 @@ wasted work.
 - **Derive it, or test it.** A new list of provider names, model names or
   preset rules must either be computed from an existing one, or pinned by a
   test that fails when it disagrees with its source. `commands.CLOUD_KEY_PROVIDERS`
-  and `test_shipped_configs_pin_the_built_in_default_level` are the two shapes
+  (derive it) and `tests/test_docs_match_code.py` (pin it) are the two shapes
   to copy.
 - **Prefer deleting a copy to correcting it.** The test count this section
   opens with was not updated; it was removed.
 - **A young decision goes in one comment**, at the decision point -- not into
   this file, the README and a docstring as well, until it has survived a
   release.
-- **Claims about behaviour are claims.** "`parliament doctor` reports each
-  wired provider", below, is true only of the providers named in that
-  module's own loop. Check a claim in the code before repeating it.
+- **Claims about behaviour are claims.** Until this section was written, the
+  provider recipe below stated that `parliament doctor` reports each wired
+  provider. Its Providers section walks a hardcoded tuple, so it never did.
+  Check a claim against the code before repeating it.
 
 ### Direction
 
@@ -324,10 +325,15 @@ For a vendor whose SDK is not OpenAI-compatible (`anthropic`, `google` today):
 
 #### Both shapes
 
-- `parliament doctor` reports each wired provider. For the registry shape, the
-  SDK import is covered by whichever entry maps to the underlying SDK
-  (`openrouter` reuses the `openai` SDK row); the doctor only needs the key
-  check.
+- `parliament doctor` does **not** pick a new provider up on its own. Its
+  Providers section walks a hardcoded tuple in `doctor.py`, so a newly wired
+  name needs a `PROVIDER_DISPLAY` entry and a place in that loop or its key
+  status is never shown. (A *configured* member is still checked, by
+  `_check_member_viability` reading `KEY_PROVIDERS` -- a different check, and
+  one that only fires for someone who already has the member in their config.)
+  For the registry shape the SDK import is covered by whichever entry maps to
+  the underlying SDK (`openrouter` reuses the `openai` SDK row), so only the
+  key check is needed.
 - The TUI's `SUPPORTED_PROVIDERS` list in `tui.py` gates both the provider
   picker and `_save_member_edit`. Add a new wired provider there too, or it
   can be named in a config but not edited from the TUI.
