@@ -44,12 +44,13 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
-    # Upper bound is deliberate. Ruff 0.16 widened its default rule set (I,
-    # RUF, PIE, S, SIM and more), which turns 97 pre-existing findings into
-    # failures in one step -- see #30. Unpinned, "ruff check . is clean" means
-    # something different on every machine and every week, and a contributor
-    # cannot tell which findings are theirs. Lift this once #30 decides
-    # whether to adopt the new defaults or declare the rule set explicitly.
+    # Upper bound is deliberate. Ruff 0.16 widened its default rule set (BLE,
+    # UP, RUF, PIE and more), which turns 70 pre-existing findings into
+    # failures in one step -- see #30, re-measured against 0.16.8 on
+    # 2026-09-22. Unpinned, "ruff check . is clean" means something different
+    # on every machine and every week, and a contributor cannot tell which
+    # findings are theirs. Lift this once #30 decides whether to adopt the new
+    # defaults or declare the rule set explicitly.
     "ruff>=0.8,<0.16",
     # Same reasoning as the ruff pin above, and the stub package is part of
     # it: mypy adds checks in minor releases, and typeshed decides what a
