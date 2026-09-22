@@ -71,11 +71,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A broken keyring no longer crashes `parliament doctor`.** The `_keyring_*`
+  helpers guarded their calls with `except Exception` so an unavailable keyring
+  would degrade to "no stored key". Keyring's Rust-backed backends fail by
+  panicking, and `pyo3_runtime.PanicException` inherits from `BaseException`,
+  not `Exception` -- so the panic escaped the guard, propagated through
+  `load_keys()` into `load_config()`, and took down `parliament doctor` and
+  anything else that loads config. Affects any environment where keyring is
+  installed but not functional: headless containers, CI runners, and installs
+  missing the backend's native dependency. The helpers now catch
+  `BaseException`, re-raising `KeyboardInterrupt` and `SystemExit`. Fixes #58.
+
 - README development setup installed the non-existent `all` extra
   (`pip install -e ".[all,dev]"`); it now installs `".[dev]"`.
-- Dev extra pins `ruff>=0.8,<0.16`. Ruff 0.16 widened its default rule set, so
-  an unpinned install reported 97 findings on unchanged code while an older one
-  reported none; see #30 for the decision on adopting the new defaults.
+- **`ruff check .` means the same thing on every machine again.** Ruff 0.16
+  widened its default rule set, so an unpinned install reported findings on
+  unchanged code while an older one reported none. The dev extra was pinned to
+  `<0.16` as a stopgap; the code is now clean under the wider defaults, so the
+  pin is lifted and `ruff>=0.8` stands. `BLE001` is ignored project-wide with
+  the reasoning recorded in `pyproject.toml`, since every one of its 18 sites
+  is a deliberate boundary guard. Verified clean under both 0.15.8 and 0.16.8.
+  Fixes #30.
 - README and AGENTS.md still documented `verdict` as the built-in default
   Hansard level; it has been `minimal` since 0.2.0. Both now also state that
   saved `.md` files are always written at `archive` level.
@@ -91,9 +107,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `parliament ask` exits 130 with "Debate cancelled." on `CancelledError`, not
   just `KeyboardInterrupt`; previously a `CancelledError` escaping
   `asyncio.run()` missed the `except Exception` handler and printed a traceback.
-
-### Fixed
-
 - `parliament ask --json` no longer hides member failures. A provider that
   drops out mid-debate is reported on stderr instead of silently shrinking the
   response arrays.

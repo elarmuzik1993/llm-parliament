@@ -12,7 +12,7 @@ import curses
 import time
 from dataclasses import dataclass, field
 from threading import RLock
-from typing import Any
+from typing import Any, Self
 
 from parliament.core.types import ProgressEvent, Synthesis
 from parliament.render import DebateRenderer
@@ -74,7 +74,7 @@ class CursesLiveRenderer(DebateRenderer):
 
     # ---- DebateRenderer ----
 
-    def __enter__(self) -> "CursesLiveRenderer":
+    def __enter__(self) -> Self:
         self._init_colors()
         return self
 

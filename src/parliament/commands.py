@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Callable
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
@@ -73,7 +73,7 @@ def dispatch(text: str, ctx: CommandContext) -> CommandResult:
         )
     try:
         return cmd.handler(args.strip(), ctx)
-    except Exception as exc:  # noqa: BLE001 - keep TUI alive on bad handler
+    except Exception as exc:  # keep the TUI alive on a bad handler
         return CommandResult(message=f"Command failed: {exc}", clear_question=False)
 
 

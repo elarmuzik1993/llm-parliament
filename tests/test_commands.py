@@ -24,12 +24,12 @@ def _members() -> list[Member]:
 
 
 def _ctx(tmp_path: Path, **overrides) -> CommandContext:
-    base = dict(
-        members=_members(),
-        speaker_override=None,
-        hansard=None,
-        save_dir=str(tmp_path),
-    )
+    base = {
+        "members": _members(),
+        "speaker_override": None,
+        "hansard": None,
+        "save_dir": str(tmp_path),
+    }
     base.update(overrides)
     return CommandContext(**base)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Diagnose color + spinner rendering in the user's actual terminal.
+r"""Diagnose color + spinner rendering in the user's actual terminal.
 
 Run this directly in a real terminal (no pipes, no redirects):
 
