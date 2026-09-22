@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import warnings
+from itertools import pairwise
 
 import pytest
 
@@ -91,7 +92,7 @@ def test_levels_are_monotonic():
     """Each level's section set must be a superset of the level below."""
     from parliament.render.hansard import _LEVEL_SECTIONS
     levels = [HansardLevel.MINIMAL, HansardLevel.VERDICT, HansardLevel.ARCHIVE, HansardLevel.FULL]
-    for lower, higher in zip(levels, levels[1:]):
+    for lower, higher in pairwise(levels):
         assert _LEVEL_SECTIONS[lower] <= _LEVEL_SECTIONS[higher], (
             f"{higher.value} must include all sections of {lower.value}"
         )

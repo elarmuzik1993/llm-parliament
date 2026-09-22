@@ -73,7 +73,7 @@ def dispatch(text: str, ctx: CommandContext) -> CommandResult:
         )
     try:
         return cmd.handler(args.strip(), ctx)
-    except Exception as exc:  # noqa: BLE001 - keep TUI alive on bad handler
+    except Exception as exc:  # keep the TUI alive on a bad handler
         return CommandResult(message=f"Command failed: {exc}", clear_question=False)
 
 

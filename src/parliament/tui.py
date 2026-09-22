@@ -386,7 +386,7 @@ def _disable_terminal_flow_control() -> None:
         attrs = termios.tcgetattr(fd)
         attrs[0] &= ~(termios.IXON | termios.IXOFF)
         termios.tcsetattr(fd, termios.TCSANOW, attrs)
-    except Exception:
+    except Exception:  # noqa: S110 - nothing to log; see comment
         # Best-effort; non-Linux or restricted TTY just keep default behavior.
         pass
 
@@ -1651,7 +1651,9 @@ def save_hansard(
     directory = Path(save_dir).expanduser()
     directory.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Deliberately naive local time (DTZ005 suppressed below): this names a
+    # file the user browses themselves, so it should match their clock, not UTC.
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # noqa: DTZ005
     slug = _slugify(hansard.bill.title or hansard.bill.content)
     path = directory / f"{timestamp}-{slug}-{hansard.id[:8]}.md"
     path.write_text(render_markdown(hansard, resolved_level), encoding="utf-8")

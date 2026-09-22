@@ -16,7 +16,7 @@ via Parliament.on_progress as work advances.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Self
 
 from parliament.core.types import ProgressEvent
 
@@ -28,7 +28,7 @@ class DebateRenderer(ABC):
     renderer needs to hold an external resource (Live, curses screen).
     """
 
-    def __enter__(self) -> DebateRenderer:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
