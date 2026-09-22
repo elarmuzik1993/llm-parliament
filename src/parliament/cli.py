@@ -328,7 +328,6 @@ def tui(config_path: Path | None, speaker: str | None, mock: bool):
 @main.group()
 def keys():
     """Manage API keys."""
-    pass
 
 
 @keys.command("set")

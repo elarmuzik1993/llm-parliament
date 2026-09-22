@@ -21,7 +21,7 @@ from parliament.tui import (
 
 
 def test_build_model_settings_roles_and_key_status(monkeypatch):
-    monkeypatch.setattr("parliament.tui.load_keys", lambda: {})
+    monkeypatch.setattr("parliament.tui.load_keys", dict)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
@@ -49,7 +49,7 @@ def test_build_model_settings_roles_and_key_status(monkeypatch):
 
 
 def test_build_model_settings_speaker_override(monkeypatch):
-    monkeypatch.setattr("parliament.tui.load_keys", lambda: {})
+    monkeypatch.setattr("parliament.tui.load_keys", dict)
 
     settings = build_model_settings(
         {

@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Callable
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 

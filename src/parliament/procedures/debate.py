@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from parliament.core.types import Bill, Member, ProgressEvent, Response
 from parliament.procedures.results import CANCELLED_MESSAGE, partition_results

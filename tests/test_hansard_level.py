@@ -5,7 +5,7 @@ import warnings
 
 import pytest
 
-from parliament.render.hansard import DEFAULT_LEVEL, HansardLevel
+from parliament.render.hansard import DEFAULT_LEVEL, HansardLevel, includes
 
 
 def test_levels_exist():
@@ -53,8 +53,6 @@ def test_parse_unknown_returns_default_with_warning():
 def test_parse_empty_string_returns_default():
     assert HansardLevel.parse("") is DEFAULT_LEVEL
 
-
-from parliament.render.hansard import includes  # noqa: E402
 
 
 def test_minimal_includes_only_question_and_recommendation():

@@ -28,7 +28,7 @@ class DebateRenderer(ABC):
     renderer needs to hold an external resource (Live, curses screen).
     """
 
-    def __enter__(self) -> "DebateRenderer":
+    def __enter__(self) -> DebateRenderer:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -43,7 +43,7 @@ class DebateRenderer(ABC):
 class SilentRenderer(DebateRenderer):
     """No-op renderer used when --show-debate is off."""
 
-    def emit(self, event: ProgressEvent) -> None:  # noqa: D401
+    def emit(self, event: ProgressEvent) -> None:
         return None
 
 
@@ -73,10 +73,10 @@ def build_renderer(
 
 __all__ = [
     "DebateRenderer",
+    "JsonDiagnosticsRenderer",
+    "RichLiveRenderer",
     "SilentRenderer",
     "build_renderer",
-    "RichLiveRenderer",
-    "JsonDiagnosticsRenderer",
 ]
 
 

@@ -30,7 +30,7 @@ class HansardLevel(str, Enum):
     FULL = "full"
 
     @classmethod
-    def parse(cls, value: str | None) -> "HansardLevel":
+    def parse(cls, value: str | None) -> HansardLevel:
         """Lenient parser: unknown or None values fall back to `DEFAULT_LEVEL`.
 
         Emits a UserWarning when an unknown non-empty string is passed so
@@ -93,7 +93,7 @@ _PANEL_STYLES: dict[str, tuple[str, str]] = {
 }
 
 
-def render_markdown(hansard: "Hansard", level: HansardLevel) -> str:
+def render_markdown(hansard: Hansard, level: HansardLevel) -> str:
     """Render a Hansard as Markdown with Obsidian/GitHub callouts.
 
     Section order: frontmatter, question H1, verdict callouts (Consensus →
@@ -152,7 +152,7 @@ def _callout(kind: str, title: str, body: str) -> str:
     return f"> [!{kind}] {title}\n{quoted}\n"
 
 
-def _render_frontmatter(hansard: "Hansard") -> str:
+def _render_frontmatter(hansard: Hansard) -> str:
     member_lines = "".join(
         f"  - {m.name} ({m.provider_name}/{m.model})\n" for m in hansard.members
     )
@@ -168,7 +168,7 @@ def _render_frontmatter(hansard: "Hansard") -> str:
     )
 
 
-def _render_footer(hansard: "Hansard") -> str:
+def _render_footer(hansard: Hansard) -> str:
     duration = hansard.duration_ms / 1000
     member_count = len(hansard.members)
     calls = member_count * 2 + 1
@@ -183,7 +183,7 @@ def _render_footer(hansard: "Hansard") -> str:
     )
 
 
-def render_terminal(hansard: "Hansard", level: HansardLevel, console) -> None:
+def render_terminal(hansard: Hansard, level: HansardLevel, console) -> None:
     """Print a Hansard to a Rich console using callout-mirroring panels.
 
     Side-effect API: writes to `console`. The level governs which sections
@@ -236,7 +236,7 @@ def render_terminal(hansard: "Hansard", level: HansardLevel, console) -> None:
         _print_terminal_footer(hansard, console)
 
 
-def _print_terminal_footer(hansard: "Hansard", console) -> None:
+def _print_terminal_footer(hansard: Hansard, console) -> None:
     from rich.table import Table
     duration = hansard.duration_ms / 1000
     member_count = len(hansard.members)

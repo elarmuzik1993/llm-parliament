@@ -74,7 +74,7 @@ class CursesLiveRenderer(DebateRenderer):
 
     # ---- DebateRenderer ----
 
-    def __enter__(self) -> "CursesLiveRenderer":
+    def __enter__(self) -> CursesLiveRenderer:
         self._init_colors()
         return self
 

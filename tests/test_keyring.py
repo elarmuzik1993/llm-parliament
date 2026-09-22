@@ -403,9 +403,8 @@ def test_keyring_helpers_still_propagate_keyboard_interrupt():
 
     kr = MagicMock()
     kr.get_password.side_effect = KeyboardInterrupt()
-    with patch.dict("sys.modules", {"keyring": kr}):
-        with pytest.raises(KeyboardInterrupt):
-            cfg_mod._keyring_get("ANTHROPIC_API_KEY")
+    with patch.dict("sys.modules", {"keyring": kr}), pytest.raises(KeyboardInterrupt):
+        cfg_mod._keyring_get("ANTHROPIC_API_KEY")
 
 
 def test_keyring_helpers_still_propagate_system_exit():
@@ -413,6 +412,5 @@ def test_keyring_helpers_still_propagate_system_exit():
 
     kr = MagicMock()
     kr.set_password.side_effect = SystemExit(1)
-    with patch.dict("sys.modules", {"keyring": kr}):
-        with pytest.raises(SystemExit):
-            cfg_mod._keyring_set("ANTHROPIC_API_KEY", "sk-ant-x")
+    with patch.dict("sys.modules", {"keyring": kr}), pytest.raises(SystemExit):
+        cfg_mod._keyring_set("ANTHROPIC_API_KEY", "sk-ant-x")
