@@ -143,6 +143,78 @@ All `resolve_*` helpers in `config.py` follow: CLI flag > env var > config YAML 
 
 ---
 
+## Scope & invariants
+
+Read this before changing anything that more than one file knows about.
+
+The recurring failure in this repo is not bad code. It is **one fact stored in
+several places, where nothing fails when the copies disagree**. Three commits
+in recent history exist only to correct documentation the code had already
+outgrown -- #49, #57, and `e860096` (stale test counts). Until this section was
+written, the **Testing** block below claimed 460 tests against a suite of 482:
+a copy nobody was obliged to update, wrong for weeks, breaking nothing.
+
+The cure is not more care. It is fewer copies, and a test on each copy that has
+to stay.
+
+**The rule:**
+
+> If a rule is worth stating in this file, it is worth a test that fails when
+> it is broken. If it cannot be tested, it is a preference -- put one comment
+> at the decision point, and nowhere else.
+
+A convention narrated across four surfaces costs four edits to reverse. That is
+what "`groq` and `mistral` stay discovery-only" cost between #43 and #48: it
+was written into this file, the README, a docstring *and* a dedicated test,
+then reversed one PR later. The test was the only copy that earned its place.
+
+### The five moving parts
+
+Each row is one fact that several places depend on. **Guarded** names the test
+that fails when the copies drift; an unguarded row is one a reviewer has to
+catch by eye, which is how a careful PR can still leave `doctor.py`'s provider
+loop and `docs/configuration.md` behind.
+
+| | The fact | Where it lives | Guarded by |
+| --- | --- | --- | --- |
+| **A** | Which providers exist, and the key each uses | `model_catalog.OPENAI_COMPATIBLE`, `config.KEY_PROVIDERS`, `providers._OPENAI_COMPATIBLE_PROVIDERS`, `providers._CLOUD_PROVIDERS`, `tui.SUPPORTED_PROVIDERS`, `doctor.PROVIDER_DISPLAY` and its hardcoded loop, `commands.CLOUD_KEY_PROVIDERS`, README, `docs/configuration.md`, this file | partly -- `test_every_wired_provider_has_a_home_for_its_key`. `CLOUD_KEY_PROVIDERS` is the only derived copy of the seven in code |
+| **B** | What a model is called | `MODEL_TIERS` (bare ids), `presets.py` constants, OpenRouter `vendor/slug`, Ollama `name:tag` | **nothing.** `get_tier` is an exact dict lookup, so every `vendor/slug` falls to `DEFAULT_TIER` and `detect_gap` can never fire for an OpenRouter parliament (#37) |
+| **C** | Which preset wins for an environment | the `if`/`return` ladder in `presets.select_preset` | partly -- `tests/test_first_run_presets.py` covers chosen cases, not the matrix |
+| **D** | Where an API key comes from | env var, `keys.env`, keyring, `providers.<name>.api_key` | partly -- precedence is stated under **Config precedence**, and tested per path rather than as a whole |
+| **E** | What is true, for a reader | README (five provider sections), `docs/configuration.md`, this file, three shipped YAMLs, `CHANGELOG.md` | only the YAMLs -- `test_shipped_configs_pin_the_built_in_default_level` |
+
+**A** and **B** are load-bearing. **E** is a consequence of A--C rather than an
+independent problem, which is why rewriting docs before the code settles is
+wasted work.
+
+### Before you add a copy
+
+- **Derive it, or test it.** A new list of provider names, model names or
+  preset rules must either be computed from an existing one, or pinned by a
+  test that fails when it disagrees with its source. `commands.CLOUD_KEY_PROVIDERS`
+  and `test_shipped_configs_pin_the_built_in_default_level` are the two shapes
+  to copy.
+- **Prefer deleting a copy to correcting it.** The test count this section
+  opens with was not updated; it was removed.
+- **A young decision goes in one comment**, at the decision point -- not into
+  this file, the README and a docstring as well, until it has survived a
+  release.
+- **Claims about behaviour are claims.** "`parliament doctor` reports each
+  wired provider", below, is true only of the providers named in that
+  module's own loop. Check a claim in the code before repeating it.
+
+### Direction
+
+The staged plan for collapsing A--E -- one derived provider registry, one
+model-identity function, preset selection as data, then the docs split -- is
+tracked on the roadmap (#15).
+
+Until the provider registry lands, **adding a vendor costs eleven edits, two of
+which CI will not catch.** Finishing the OpenRouter path (#8) is worth more
+than adding another vendor.
+
+---
+
 ## Commit & PR conventions
 
 **No AI attribution.** Never credit a model, agent or bot as a contributor. No
@@ -183,7 +255,7 @@ which governs this and overrides any harness default that adds one.
 ### Testing
 
 ```bash
-python -m pytest -q          # 460 tests expected (as of the verdict-default change)
+python -m pytest -q          # must pass before any commit
 ruff check .                 # must be clean before any commit
 mypy src/parliament          # must pass before any commit
 ```
