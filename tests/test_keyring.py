@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from parliament import cli
@@ -45,6 +46,24 @@ def _make_broken_keyring() -> MagicMock:
     kr.get_password.side_effect = RuntimeError("no keyring daemon")
     kr.set_password.side_effect = RuntimeError("no keyring daemon")
     kr.delete_password.side_effect = RuntimeError("no keyring daemon")
+    return kr
+
+
+class _FakePanic(BaseException):
+    """Stands in for pyo3_runtime.PanicException.
+
+    The real one comes from keyring's Rust backends and inherits from
+    BaseException, not Exception -- which is the whole point of #58. Faking the
+    hierarchy is enough; the tests must not need a genuinely broken keyring.
+    """
+
+
+def _make_panicking_keyring() -> MagicMock:
+    """Return a mock keyring whose backend panics rather than raising."""
+    kr = MagicMock()
+    kr.get_password.side_effect = _FakePanic("Python API call failed")
+    kr.set_password.side_effect = _FakePanic("Python API call failed")
+    kr.delete_password.side_effect = _FakePanic("Python API call failed")
     return kr
 
 
@@ -342,3 +361,58 @@ def test_cli_keys_set_reports_file(monkeypatch):
 
     assert result.exit_code == 0
     assert "keys.env" in result.output or str(cli.KEYS_FILE) in result.output
+
+
+# ---------------------------------------------------------------------------
+# A panicking backend must degrade, not propagate (#58)
+# ---------------------------------------------------------------------------
+
+def test_get_keyring_key_returns_none_when_backend_panics():
+    kr = _make_panicking_keyring()
+    with patch.dict("sys.modules", {"keyring": kr}):
+        assert get_keyring_key("ANTHROPIC_API_KEY") is None
+
+
+def test_load_keys_graceful_when_backend_panics(monkeypatch, tmp_path):
+    """The path that took down `parliament doctor`: load_config -> load_keys."""
+    import parliament.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "KEYS_FILE", tmp_path / "keys.env")
+
+    kr = _make_panicking_keyring()
+    with patch.dict("sys.modules", {"keyring": kr}):
+        keys = load_keys()
+
+    assert isinstance(keys, dict)
+
+
+def test_save_key_falls_back_to_file_when_backend_panics(monkeypatch, tmp_path):
+    import parliament.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "KEYS_FILE", tmp_path / "keys.env")
+
+    kr = _make_panicking_keyring()
+    with patch.dict("sys.modules", {"keyring": kr}):
+        result = save_key("anthropic", "sk-ant-live")
+
+    assert result == "file"
+    assert "ANTHROPIC_API_KEY=sk-ant-live" in (tmp_path / "keys.env").read_text()
+
+
+def test_keyring_helpers_still_propagate_keyboard_interrupt():
+    """Breadth is for broken backends, not for the user pressing Ctrl-C."""
+    import parliament.config as cfg_mod
+
+    kr = MagicMock()
+    kr.get_password.side_effect = KeyboardInterrupt()
+    with patch.dict("sys.modules", {"keyring": kr}):
+        with pytest.raises(KeyboardInterrupt):
+            cfg_mod._keyring_get("ANTHROPIC_API_KEY")
+
+
+def test_keyring_helpers_still_propagate_system_exit():
+    import parliament.config as cfg_mod
+
+    kr = MagicMock()
+    kr.set_password.side_effect = SystemExit(1)
+    with patch.dict("sys.modules", {"keyring": kr}):
+        with pytest.raises(SystemExit):
+            cfg_mod._keyring_set("ANTHROPIC_API_KEY", "sk-ant-x")

@@ -34,11 +34,23 @@ KEY_PROVIDERS = {
 }
 
 
+# The three helpers below catch BaseException rather than Exception, which is
+# deliberate and load-bearing. They exist so that an unavailable keyring is
+# never fatal -- callers fall back to keys.env or the environment. A backend
+# that fails by panicking does not raise an Exception: keyring's Rust-backed
+# backends raise pyo3_runtime.PanicException, which inherits from BaseException
+# directly, so `except Exception` lets it through and takes down load_config()
+# and `parliament doctor` with it (#58). "Unavailable" has to include "the
+# backend panicked", so the guard has to be wider than Exception. KeyboardInterrupt
+# and SystemExit are re-raised, since neither means the keyring is broken.
+
 def _keyring_get(env_var: str) -> str | None:
     try:
         import keyring
         return keyring.get_password(KEYRING_SERVICE, env_var)
-    except Exception:
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:
         return None
 
 
@@ -47,7 +59,9 @@ def _keyring_set(env_var: str, value: str) -> bool:
         import keyring
         keyring.set_password(KEYRING_SERVICE, env_var, value)
         return keyring.get_password(KEYRING_SERVICE, env_var) == value
-    except Exception:
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:
         return False
 
 
@@ -56,7 +70,9 @@ def _keyring_delete(env_var: str) -> bool:
         import keyring
         keyring.delete_password(KEYRING_SERVICE, env_var)
         return True
-    except Exception:
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:
         return False
 
 
