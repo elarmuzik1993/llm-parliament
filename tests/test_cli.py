@@ -218,6 +218,10 @@ def test_ask_json_outputs_machine_readable_hansard(monkeypatch):
     data = json.loads(result.output)
     assert data["bill"]["content"] == "Test?"
     assert [member["name"] for member in data["members"]] == ["Mock-A", "Mock-B", "Mock-C"]
+    models = {member["name"]: member["model"] for member in data["members"]}
+    for phase in ("first_reading", "debate"):
+        for response in data[phase]:
+            assert response["content"].startswith(f"[Mock {models[response['member_name']]}]")
     assert data["first_reading"][0]["phase"] == "first_reading"
     assert data["debate"][0]["phase"] == "debate"
     assert data["synthesis"]["recommendation"]

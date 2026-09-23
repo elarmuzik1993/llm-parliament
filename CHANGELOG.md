@@ -88,6 +88,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `parliament ask --mock --json` now records the actual model for each member.
+  Mock-B and Mock-C were labeled `mock-v1` despite using `mock-v2` and `mock-v3`.
+  Mock providers now derive their model from the member metadata.
+
 - **A broken keyring no longer crashes `parliament doctor`.** The `_keyring_*`
   helpers guarded their calls with `except Exception` so an unavailable keyring
   would degrade to "no stored key". Keyring's Rust-backed backends fail by
