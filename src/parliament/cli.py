@@ -29,7 +29,7 @@ from parliament.config import (
 )
 from parliament.core.model_tiers import detect_gap, get_tier_label
 from parliament.core.parliament import Parliament
-from parliament.providers.base import Provider
+from parliament.presets import build_mock_preset
 from parliament.render import JsonDiagnosticsRenderer, build_renderer
 from parliament.render.hansard import HansardLevel, render_terminal
 
@@ -54,11 +54,7 @@ def _mock_config() -> dict:
     return {
         "parliament": {
             "name": "Mock Parliament",
-            "members": [
-                {"name": "Mock-A", "provider": "mock", "model": "mock-v1"},
-                {"name": "Mock-B", "provider": "mock", "model": "mock-v2"},
-                {"name": "Mock-C", "provider": "mock", "model": "mock-v3"},
-            ],
+            "members": build_mock_preset().config["parliament"]["members"],
         },
         "providers": {},
     }
@@ -188,22 +184,8 @@ def ask(
 ):
     """Ask Parliament a question."""
     try:
-        if mock:
-            from parliament.core.types import Member
-            from parliament.providers.mock import MockProvider
-
-            members = [
-                Member(name="Mock-A", provider_name="mock", model="mock-v1", tier=3),
-                Member(name="Mock-B", provider_name="mock", model="mock-v2", tier=3),
-                Member(name="Mock-C", provider_name="mock", model="mock-v3", tier=3),
-            ]
-            providers: dict[str, Provider] = {
-                member.name: MockProvider(model=member.model) for member in members
-            }
-            config = {}
-        else:
-            config = load_config(config_path)
-            members, providers = build_parliament_from_config(config)
+        config = _mock_config() if mock else load_config(config_path)
+        members, providers = build_parliament_from_config(config)
 
         # Resolve Hansard detail level: CLI > env > config > default(verdict).
         # --verbose is a back-compat alias for --hansard=full, but only when
