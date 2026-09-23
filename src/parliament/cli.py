@@ -194,13 +194,11 @@ def ask(
 
             members = [
                 Member(name="Mock-A", provider_name="mock", model="mock-v1", tier=3),
-                Member(name="Mock-B", provider_name="mock", model="mock-v1", tier=3),
-                Member(name="Mock-C", provider_name="mock", model="mock-v1", tier=3),
+                Member(name="Mock-B", provider_name="mock", model="mock-v2", tier=3),
+                Member(name="Mock-C", provider_name="mock", model="mock-v3", tier=3),
             ]
             providers: dict[str, Provider] = {
-                "Mock-A": MockProvider(model="mock-v1"),
-                "Mock-B": MockProvider(model="mock-v2"),
-                "Mock-C": MockProvider(model="mock-v3"),
+                member.name: MockProvider(model=member.model) for member in members
             }
             config = {}
         else:
