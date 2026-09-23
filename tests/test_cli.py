@@ -230,9 +230,9 @@ def test_ask_json_outputs_machine_readable_hansard(monkeypatch):
 
 def _patch_one_failing_mock(monkeypatch, failing_model: str = "mock-v3"):
     """Make a single --mock member's provider raise, leaving the other two healthy."""
-    import parliament.providers.mock as mock_mod
+    import parliament.providers as providers_mod
 
-    base = mock_mod.MockProvider
+    base = providers_mod.MockProvider
 
     class OneFailingProvider(base):
         def __init__(self, model: str = "mock", **kwargs):
@@ -244,7 +244,7 @@ def _patch_one_failing_mock(monkeypatch, failing_model: str = "mock-v3"):
                 raise RuntimeError("synthetic provider outage")
             return await super().generate(*args, **kwargs)
 
-    monkeypatch.setattr(mock_mod, "MockProvider", OneFailingProvider)
+    monkeypatch.setattr(providers_mod, "MockProvider", OneFailingProvider)
 
 
 def test_ask_json_reports_dropped_member_on_stderr(monkeypatch):
