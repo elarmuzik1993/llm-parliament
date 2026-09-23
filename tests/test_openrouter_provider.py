@@ -4,7 +4,7 @@ OpenRouter speaks the OpenAI API at its own address, so it needs no provider
 class of its own: it is a row in `model_catalog.OPENAI_COMPATIBLE` plus one
 line opting that row in as a wired provider, and the client, the key and the
 doctor's key check all follow from there. These tests pin the row, the wiring,
-the deliberate asymmetry with the discovery-only `groq`/`mistral` rows, and the
+the compatible-provider registry, and the
 one property that must not regress -- that an OpenAI credential is never sent
 to another vendor (#48).
 """
@@ -49,8 +49,7 @@ def test_every_wired_provider_has_a_home_for_its_key():
     A name `create_provider` serves but `KEY_PROVIDERS` omits is one
     `parliament keys set` cannot reach and the doctor cannot report, so the two
     must agree. Checked against the wired list rather than every registry row:
-    a row on its own is discovery-only (`groq`, `mistral`) and needs no key
-    home, because no debate will ever read its variable.
+    a future discovery-only row need not be a wired provider.
     """
     from parliament.providers import _OPENAI_COMPATIBLE_PROVIDERS
 
@@ -79,13 +78,8 @@ def test_openrouter_builds_an_openai_client_at_openrouters_address(monkeypatch):
 def test_openrouter_does_not_borrow_the_openai_key(monkeypatch):
     """The #48 safety property, post-fix.
 
-    `openai_compatible_key()` in `model_catalog` deliberately falls back to
-    `OPENAI_API_KEY` for discovery, so the model picker can read Groq from the
-    same variable someone uses to configure `provider: openai + base_url`. A
-    missing `OPENROUTER_API_KEY` must not borrow that fallback to build the
-    client: `AsyncOpenAI(api_key=None)` would silently resolve `OPENAI_API_KEY`
-    itself and post a real OpenAI credential to OpenRouter. The fix is to raise
-    rather than reach the SDK with `None`.
+    A missing vendor key must not reach the SDK with `None`, because the
+    SDK itself would then silently read `OPENAI_API_KEY`.
     """
     monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-real-openai-secret")
 
@@ -125,20 +119,6 @@ def test_config_api_key_overrides_the_environment(monkeypatch):
     provider = create_provider("openrouter", MODEL, api_key="sk-or-config")
 
     assert provider._api_key == "sk-or-config"
-
-
-def test_groq_and_mistral_stay_discovery_only(monkeypatch):
-    """Wiring a vendor is deliberate, not a side effect of having a row.
-
-    #43 added the `groq` and `mistral` rows for the model picker, and the
-    README still documents that `provider: groq` in a config is an error. Only
-    `openrouter` is opted in by this change, so the other two must keep
-    raising rather than quietly starting to work.
-    """
-    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
-
-    with pytest.raises(ValueError, match="Unknown provider"):
-        create_provider("groq", "llama-3.3-70b-versatile")
 
 
 def test_openai_keeps_its_existing_behaviour(monkeypatch):

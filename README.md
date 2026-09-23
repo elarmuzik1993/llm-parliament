@@ -257,56 +257,40 @@ parliament keys remove openai
 
 ## Optional: OpenAI-compatible providers (Groq, Mistral, OpenRouter)
 
-Groq and Mistral serve the OpenAI API at their own addresses, so they need no
-new client — just a key and a `base_url`. Groq has a free tier, which makes it
-a cheap way to add a second opinion to a parliament.
-
-`parliament keys set` knows `anthropic`, `openai`, `google`, and `openrouter`,
-so store the Groq or Mistral key as the openai one — it is the openai provider
-that will use it:
+Groq and Mistral speak the OpenAI API and are available directly as `groq`
+and `mistral` providers. Store each key separately:
 
 ```bash
-parliament keys set openai gsk_...      # a Groq key
+parliament keys set groq gsk_...
+parliament keys set mistral your-mistral-key
 ```
 
-Store it as the openai key even if you would rather keep it separate:
-`GROQ_API_KEY` and `MISTRAL_API_KEY` are not read when running a debate. The
-key comes from `providers.openai.api_key`, or from `OPENAI_API_KEY` if you
-leave that out.
-
-Point the `openai` provider at their address in the top-level `providers:`
-block, the same way `ollama` is configured:
+Both providers can coexist with OpenAI and OpenRouter in the same parliament:
 
 ```yaml
 parliament:
   members:
     - name: Groq
-      provider: openai
+      provider: groq
       model: llama-3.3-70b-versatile
-
-providers:
-  openai:
-    base_url: https://api.groq.com/openai/v1
-    api_key: gsk_...        # or leave it out and export OPENAI_API_KEY
+    - name: Mistral
+      provider: mistral
+      model: mistral-large-latest
 ```
 
-A member using Mistral instead:
+They appear in the TUI provider picker and `/key`. `parliament doctor` checks
+the required keys for configured Groq and Mistral members; they do not have
+separate rows in its Providers section.
+Groq reads `GROQ_API_KEY`; Mistral reads `MISTRAL_API_KEY`. A missing vendor
+key never falls back to `OPENAI_API_KEY`, including during model discovery.
+Optional `providers.groq` and `providers.mistral` entries can override the
+`base_url` or supply an explicit `api_key`.
 
-```yaml
-providers:
-  openai:
-    base_url: https://api.mistral.ai/v1
-```
+Existing `provider: openai` configurations with a custom `base_url` still
+work, using `providers.openai.api_key` or `OPENAI_API_KEY` as before. Move to
+the named providers to keep vendor credentials and endpoints separate.
 
-`providers.<name>` is per provider, not per member, so one config picks one
-OpenAI-compatible endpoint at a time.
-
-Their models carry tiers, so a Groq `llama-3.3-70b-versatile` (tier 2) sitting
-beside a `phi3:mini` (tier 4) still raises the usual tier-gap warning.
-
-The TUI's provider picker does not offer `groq` or `mistral` as providers — set
-`provider: openai` with a `base_url`, as above. Writing `provider: groq` in the
-config is an error.
+Their models retain their tier labels and the usual tier-gap warnings.
 
 ### OpenRouter
 
@@ -334,7 +318,7 @@ the same way it does for Anthropic, OpenAI, and Google.
 ## Other OpenAI-compatible endpoints
 
 Any service speaking the OpenAI API that is not its own first-class provider
-works the way Groq and Mistral do above: point `providers.openai` at its
+can use `provider: openai`: point `providers.openai` at its
 `base_url` and give it a key. Aggregators such as one-api, self-hosted
 gateways, and small vendors that ship only an OpenAI-shaped endpoint all fall
 into this category.
