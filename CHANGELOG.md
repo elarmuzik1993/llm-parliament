@@ -15,6 +15,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mixed, single-provider and mock presets. Its model IDs resolve to the same
   tiers as their direct counterparts. Fixes #38.
 
+- **Groq and Mistral providers** — use `provider: groq` or `provider: mistral`
+  directly, with dedicated key management, TUI selection, and doctor checks
+  for configured members.
+  Fixes #48.
+
 - **`openrouter` provider** — OpenRouter speaks the OpenAI API at its own
   address, so it needs no class of its own: it reuses `OpenAIProvider` with the
   address and the `OPENROUTER_API_KEY` variable read from its
@@ -22,7 +27,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `provider: openrouter` instead of pointing `openai` at a `base_url`, and
   because `openrouter` is in `KEY_PROVIDERS`, `parliament keys set openrouter`,
   `keys list`, the TUI's `/key`, and the doctor's key check all follow with no
-  further wiring. The `groq` and `mistral` registry rows stay discovery-only.
+  further wiring. The compatible-provider registry is shared with Groq and Mistral.
   Fixes #36.
 
 - **`degraded` on `Hansard`** — `true` when the verdict was reached with fewer
@@ -47,6 +52,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   first issues, Discussions, the security policy, and the contributing guide.
 
 ### Changed
+
+- **OpenAI-compatible model discovery** no longer falls back to
+  `OPENAI_API_KEY` for other vendors. Set `GROQ_API_KEY` or `MISTRAL_API_KEY`
+  for the corresponding picker. Existing `provider: openai` configurations
+  with an explicit vendor `base_url` and key still work for debates.
 
 - **Default Hansard level is now `verdict`** (the full four-part synthesis),
   reversing the 0.2.0 change to `minimal`. The split — where the members

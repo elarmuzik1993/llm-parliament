@@ -290,40 +290,12 @@ def test_the_new_models_carry_tiers() -> None:
     assert get_tier("some-model-nobody-listed") == DEFAULT_TIER
 
 
-def test_discovery_key_falls_back_to_the_openai_variable(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Pointing the openai provider at Groq puts the Groq key in OPENAI_API_KEY,
-    # and `parliament keys set` has nowhere else to put it. Reporting "no key"
-    # to someone whose config works would be the wrong answer.
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.setenv("OPENAI_API_KEY", "gsk-in-the-openai-slot")
-    assert model_catalog.openai_compatible_key("groq") == "gsk-in-the-openai-slot"
-
-    monkeypatch.setenv("GROQ_API_KEY", "gsk-dedicated")
-    assert model_catalog.openai_compatible_key("groq") == "gsk-dedicated"
-
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    assert model_catalog.openai_compatible_key("groq") is None
+@pytest.mark.parametrize("vendor", ["openrouter", "groq", "mistral"])
+def test_discovery_uses_only_the_vendor_key(vendor: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_var = model_catalog.OPENAI_COMPATIBLE[vendor].env_var
+    monkeypatch.delenv(env_var, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-test-key")
+    assert model_catalog.openai_compatible_key(vendor) is None
+    monkeypatch.setenv(env_var, "vendor-test-key")
+    assert model_catalog.openai_compatible_key(vendor) == "vendor-test-key"
     assert model_catalog.openai_compatible_key("nope") is None
-
-
-def test_discovery_key_does_not_borrow_for_providers_with_their_own_key_home(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`openrouter` has its own row in `KEY_PROVIDERS`, so a missing
-    `OPENROUTER_API_KEY` must report "no key" rather than borrow `OPENAI_API_KEY`
-    -- the picker ought to agree with the eventual `create_provider(...)` call,
-    which refuses the same fallback (#48). Discovery-only rows (`groq`) still
-    borrow, since they have no key home to honour.
-    """
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-real-openai-secret")
-    assert model_catalog.openai_compatible_key("openrouter") is None
-
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-dedicated")
-    assert model_catalog.openai_compatible_key("openrouter") == "sk-or-dedicated"
-
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    # And `groq` (no key home) still borrows, so the previous test's contract
-    # holds for the discovery-only rows.
-    assert model_catalog.openai_compatible_key("groq") == "sk-proj-real-openai-secret"

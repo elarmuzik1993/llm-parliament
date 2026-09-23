@@ -21,9 +21,8 @@ _CLOUD_PROVIDERS: dict[str, tuple[str, str]] = {
 # `model_catalog.OPENAI_COMPATIBLE` already holds each one's address and key
 # variable -- it was added for the model picker -- so a name only needs listing
 # here to become a usable `provider:` value. A registry row is deliberately not
-# enough on its own: `groq` and `mistral` stay discovery-only, which is the
-# behaviour the README documents, so this tuple is the explicit opt-in.
-_OPENAI_COMPATIBLE_PROVIDERS = ("openrouter",)
+# enough on its own: this tuple is the explicit opt-in.
+_OPENAI_COMPATIBLE_PROVIDERS = ("openrouter", "groq", "mistral")
 
 # Every name in the tuple above shares this one client class.
 _OPENAI_PROVIDER = ("parliament.providers.openai_provider", "OpenAIProvider")
@@ -55,8 +54,7 @@ def _create_openai_compatible(provider_name: str, model: str, **kwargs) -> Provi
     from the row's own environment variable). A missing key is a hard error,
     not a silent fallback -- `AsyncOpenAI(api_key=None)` reads `OPENAI_API_KEY`
     from the process environment for us, which would post an OpenAI credential
-    to a different vendor (#48). Discovery (`openai_compatible_key()` in
-    `model_catalog`) is allowed to borrow; construction here is not.
+    to a different vendor (#48). Model discovery follows the same rule.
     """
     spec = OPENAI_COMPATIBLE.get(provider_name)
     if spec is None:

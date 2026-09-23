@@ -24,13 +24,14 @@ EXAMPLE_CONFIG = Path(__file__).parent.parent.parent / "config.example.yaml"
 KEYRING_SERVICE = "llm-parliament"
 
 # What `parliament keys set/list` and the doctor's key-status check read.
-# `openrouter` is here because it is a usable `provider:` value; the other
-# OpenAI-compatible registry rows are discovery-only and stay out (#36).
+# Every wired OpenAI-compatible vendor has its own key variable.
 KEY_PROVIDERS = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "google": "GOOGLE_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
 }
 
 

@@ -292,7 +292,7 @@ matches the SDK you have.
 
 #### OpenAI-compatible registry row (no new class needed)
 
-For any service that speaks the OpenAI API at its own address (`OpenRouter`
+For any service that speaks the OpenAI API at its own address (`OpenRouter`, `Groq`, and `Mistral`
 today). The model picker's discovery is already covered by a row in
 `model_catalog.OPENAI_COMPATIBLE`; wiring it as a usable `provider:` value is
 three steps:
@@ -303,10 +303,8 @@ three steps:
    knows the variable and `parliament doctor` reports it.
 3. Add the provider name to `_OPENAI_COMPATIBLE_PROVIDERS` in
    `providers/__init__.py` -- this is what opts the row in as a wired
-   provider. Discovery (`groq`, `mistral`) and wiring (`openrouter`) are
-   deliberately separate: a name that has a row but is not in the tuple is
-   still an error in a config, because the README documents `provider: groq`
-   that way too.
+   provider. Discovery and wiring are deliberately separate: a future name
+   that has a row but is not in the tuple is still an error in a config.
 
 `create_provider(...)` builds the client by reusing `OpenAIProvider` with the
 registry row's `base_url` and `env_var`. A missing vendor key is a hard error
