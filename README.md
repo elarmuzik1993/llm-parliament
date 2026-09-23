@@ -162,6 +162,7 @@ Detected:
   ✓ ANTHROPIC_API_KEY (configured)
   ℹ OPENAI_API_KEY (not set)
   ✓ GOOGLE_API_KEY (configured)
+  ℹ OPENROUTER_API_KEY (not set)
   ℹ Ollama: not reachable
   System RAM: 16 GB
 
@@ -176,6 +177,13 @@ Use these defaults? [Y/n]:
 Confirm with `Y` and the config is written. If no keys or Ollama are detected,
 you get a working mock preset — no setup needed to verify the install. Edit
 members later via the TUI (`parliament`) or directly in the file.
+
+With `OPENROUTER_API_KEY`, the wizard can propose three labs through one
+account. Two or three direct provider keys keep their existing presets, and
+three reachable local models that fit RAM take priority over OpenRouter.
+Otherwise OpenRouter wins over mixed, single-provider and mock presets.
+Its proposal warns that API usage may incur charges. Declining any proposal
+writes a mock preset, not the next available cloud or local preset.
 
 **[`docs/configuration.md`](docs/configuration.md)** is the complete reference:
 every key, its type, its real default, and the environment variable or CLI flag
@@ -323,7 +331,7 @@ parliament:
   members:
     - name: Claude
       provider: openrouter
-      model: anthropic/claude-sonnet-4-6
+      model: anthropic/claude-sonnet-4.6
 ```
 
 The address (`https://openrouter.ai/api/v1`) and the key variable

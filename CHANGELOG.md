@@ -10,8 +10,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **OpenRouter first-run preset** — detect `OPENROUTER_API_KEY` and propose
   three models from Anthropic, OpenAI, and Google using one account. Existing
-  full three-provider setups keep their direct preset; otherwise OpenRouter
-  takes precedence over partial cloud, mixed, local, and mock presets. Fixes #38.
+  two- and three-provider setups keep their direct presets, and three usable
+  local models take priority over OpenRouter. Otherwise OpenRouter precedes
+  mixed, single-provider and mock presets. Its model IDs resolve to the same
+  tiers as their direct counterparts. Fixes #38.
 
 - **`openrouter` provider** — OpenRouter speaks the OpenAI API at its own
   address, so it needs no class of its own: it reuses `OpenAIProvider` with the

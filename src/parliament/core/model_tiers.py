@@ -20,6 +20,10 @@ MODEL_TIERS: dict[str, int] = {
     "gpt-4o-mini": 2,
     "gemini-2.5-flash": 2,
     "gemini-2.0-flash": 2,
+    # OpenRouter preset IDs match the public catalog, including Claude's dot.
+    "anthropic/claude-sonnet-4.6": 2,
+    "openai/gpt-4o-mini": 2,
+    "google/gemini-2.5-flash": 2,
     "llama3.1:70b": 2,
     "mistral-large": 2,
     "qwen2:72b": 2,

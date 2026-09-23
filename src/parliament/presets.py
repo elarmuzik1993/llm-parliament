@@ -228,16 +228,18 @@ def select_preset(env: Any) -> Preset:
 
     if cloud == ["anthropic", "openai", "google"]:
         return _cloud_full_preset()
-    # Preserve an already diverse direct setup; otherwise the single router
-    # key supplies three labs instead of repeating a provider's models.
-    if env.openrouter_key:
-        return _cloud_openrouter_preset()
     if cloud == ["anthropic", "google"]:
         return _cloud_anthropic_google_preset()
     if cloud == ["anthropic", "openai"]:
         return _cloud_anthropic_openai_preset()
     if cloud == ["openai", "google"]:
         return _cloud_openai_google_preset()
+    # A router key must not displace multiple direct providers or a usable
+    # free local parliament. Otherwise it supplies three labs with one key.
+    if env.openrouter_key:
+        if usable_local_3:
+            return _local_preset(usable_local_3)
+        return _cloud_openrouter_preset()
     if len(cloud) == 1 and usable_local_2:
         return _mixed_preset(cloud[0], usable_local_2)
     if len(cloud) == 1:

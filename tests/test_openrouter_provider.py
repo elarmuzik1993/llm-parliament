@@ -19,7 +19,7 @@ from parliament.providers import create_provider
 from parliament.providers.openai_provider import OpenAIProvider
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-MODEL = "anthropic/claude-sonnet-4-6"
+MODEL = "anthropic/claude-sonnet-4.6"
 
 
 @pytest.fixture(autouse=True)
