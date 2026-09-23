@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **OpenRouter first-run preset** — detect `OPENROUTER_API_KEY` and propose
+  three models from Anthropic, OpenAI, and Google using one account. Existing
+  two- and three-provider setups keep their direct presets, and three usable
+  local models take priority over OpenRouter. Otherwise OpenRouter precedes
+  mixed, single-provider and mock presets. Its model IDs resolve to the same
+  tiers as their direct counterparts. Fixes #38.
+
 - **Groq and Mistral providers** — use `provider: groq` or `provider: mistral`
   directly, with dedicated key management, TUI selection, and doctor checks
   for configured members.

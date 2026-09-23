@@ -21,6 +21,7 @@ class Environment:
     ollama_reachable: bool
     ollama_models: tuple[OllamaModel, ...]
     total_ram_bytes: int | None
+    openrouter_key: bool = False
 
 
 def _system_ram_bytes() -> int | None:
@@ -38,6 +39,7 @@ def detect_environment() -> Environment:
         anthropic_key=bool(os.environ.get("ANTHROPIC_API_KEY")),
         openai_key=bool(os.environ.get("OPENAI_API_KEY")),
         google_key=bool(os.environ.get("GOOGLE_API_KEY")),
+        openrouter_key=bool(os.environ.get("OPENROUTER_API_KEY")),
         ollama_reachable=not (
             ollama.notice and "not reachable" in ollama.notice.lower()
         ),
@@ -67,6 +69,10 @@ def _print_detected(console: Console, env: Environment, preset: Preset) -> None:
     console.print(
         f"  {'✓' if env.google_key else 'ℹ'} GOOGLE_API_KEY "
         f"({'configured' if env.google_key else 'not set'})"
+    )
+    console.print(
+        f"  {'✓' if env.openrouter_key else 'ℹ'} OPENROUTER_API_KEY "
+        f"({'configured' if env.openrouter_key else 'not set'})"
     )
     if env.ollama_reachable:
         console.print(f"  ✓ Ollama: reachable ({len(env.ollama_models)} models installed)")

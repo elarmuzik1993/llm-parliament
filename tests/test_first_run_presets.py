@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from itertools import product
 
+import pytest
+
+from parliament.core.model_tiers import get_tier
 from parliament.first_run import Environment
 from parliament.model_catalog import OllamaModel
 from parliament.presets import select_preset
@@ -106,3 +110,50 @@ def test_all_cloud_keys_selects_cloud_full_with_current_google_default() -> None
         ("GPT-Mini", "openai", "gpt-4o-mini"),
         ("Gemini", "google", "gemini-2.5-flash"),
     ]
+
+
+@pytest.mark.parametrize("keys", list(product([False, True], repeat=3)))
+@pytest.mark.parametrize("local_count", [0, 2, 3])
+@pytest.mark.parametrize("router", [False, True])
+def test_openrouter_precedence_and_model_diversity(
+    keys: tuple[bool, ...], local_count: int, router: bool,
+) -> None:
+    env = replace(
+        BASE_ENV, openrouter_key=router,
+        anthropic_key=keys[0], openai_key=keys[1], google_key=keys[2],
+        ollama_reachable=bool(local_count),
+        ollama_models=tuple(OllamaModel(name, 1) for name in ["a", "b", "c"][:local_count]),
+    )
+    preset = select_preset(env)
+    cloud = [name for name, enabled in zip(["anthropic", "openai", "google"], keys)
+             if enabled]
+
+    if len(cloud) >= 2:
+        expected = "cloud-full" if len(cloud) == 3 else "cloud-" + "-".join(cloud)
+    elif local_count == 3 and (router or not cloud):
+        expected = "local-safe"
+    elif router:
+        expected = "cloud-openrouter"
+    elif cloud:
+        expected = "mixed" if local_count >= 2 else "cloud-" + cloud[0]
+    else:
+        expected = "mock-ollama-hint" if local_count else "mock"
+    assert preset.name == expected
+    if expected == "cloud-openrouter":
+        members = preset.config["parliament"]["members"]
+        assert len(members) == 3
+        assert {member["provider"] for member in members} == {"openrouter"}
+        assert {member["model"].split("/")[0] for member in members} == {
+            "anthropic", "openai", "google",
+        }
+        assert all(get_tier(member["model"]) == 2 for member in members)
+        assert preset.config["hansard"]["level"] == "verdict"
+
+
+@pytest.mark.parametrize("reachable, size", [(False, 1), (True, 8 * 1024**3)])
+def test_unusable_local_models_do_not_displace_openrouter(reachable: bool, size: int) -> None:
+    env = replace(
+        BASE_ENV, openrouter_key=True, ollama_reachable=reachable,
+        ollama_models=tuple(OllamaModel(name, size) for name in ["a", "b", "c"]),
+    )
+    assert select_preset(env).name == "cloud-openrouter"
