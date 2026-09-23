@@ -278,7 +278,9 @@ parliament:
       model: mistral-large-latest
 ```
 
-They appear in the TUI provider picker, `/key`, and `parliament doctor`.
+They appear in the TUI provider picker and `/key`. `parliament doctor` checks
+the required keys for configured Groq and Mistral members; they do not have
+separate rows in its Providers section.
 Groq reads `GROQ_API_KEY`; Mistral reads `MISTRAL_API_KEY`. A missing vendor
 key never falls back to `OPENAI_API_KEY`, including during model discovery.
 Optional `providers.groq` and `providers.mistral` entries can override the
@@ -316,7 +318,7 @@ the same way it does for Anthropic, OpenAI, and Google.
 ## Other OpenAI-compatible endpoints
 
 Any service speaking the OpenAI API that is not its own first-class provider
-works the way Groq and Mistral do above: point `providers.openai` at its
+can use `provider: openai`: point `providers.openai` at its
 `base_url` and give it a key. Aggregators such as one-api, self-hosted
 gateways, and small vendors that ship only an OpenAI-shaped endpoint all fall
 into this category.
