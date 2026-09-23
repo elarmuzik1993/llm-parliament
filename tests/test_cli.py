@@ -91,7 +91,7 @@ def test_mock_config_uses_mock_members():
 
 def test_keys_list_empty_shows_keys_file(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "KEYS_FILE", tmp_path / "keys.env")
-    monkeypatch.setattr(cli, "load_keys", lambda: {})
+    monkeypatch.setattr(cli, "load_keys", dict)
     monkeypatch.setattr(cli, "get_keyring_key", lambda _: None)
     for env_var in cli.KEY_PROVIDERS.values():
         monkeypatch.delenv(env_var, raising=False)
@@ -122,7 +122,7 @@ def test_keys_list_masks_file_keys(monkeypatch):
 
 def test_keys_list_includes_environment_keys(monkeypatch):
     secret = "sk-ant-env-abcdef"
-    monkeypatch.setattr(cli, "load_keys", lambda: {})
+    monkeypatch.setattr(cli, "load_keys", dict)
     monkeypatch.setattr(cli, "get_keyring_key", lambda _: None)
     monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

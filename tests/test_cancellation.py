@@ -49,7 +49,9 @@ class ErrorProvider(Provider):
     name = "error"
 
     async def generate(self, prompt: str, system: str | None = None) -> str:
-        raise Exception("429 RESOURCE_EXHAUSTED: quota exceeded")
+        # Generic on purpose (TRY002 suppressed below): the code under test
+        # has to cope with whatever a provider SDK raises, often bare Exception.
+        raise Exception("429 RESOURCE_EXHAUSTED: quota exceeded")  # noqa: TRY002
 
 
 class CancelOnCallProvider(Provider):

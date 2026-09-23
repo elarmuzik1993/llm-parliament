@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 from parliament.model_catalog import OPENAI_COMPATIBLE
 from parliament.providers.base import Provider
 from parliament.providers.errors import format_provider_error, is_fatal_provider_error
 from parliament.providers.mock import MockProvider
 from parliament.providers.ollama import OllamaProvider
-
-if TYPE_CHECKING:
-    pass
 
 # Lazy imports for cloud providers — only fail when actually used
 _CLOUD_PROVIDERS: dict[str, tuple[str, str]] = {
@@ -100,9 +96,9 @@ def create_provider(provider_name: str, model: str, **kwargs) -> Provider:
 
 
 __all__ = [
-    "Provider",
     "MockProvider",
     "OllamaProvider",
+    "Provider",
     "create_provider",
     "format_provider_error",
     "is_fatal_provider_error",

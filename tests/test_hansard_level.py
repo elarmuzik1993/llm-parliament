@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import warnings
+from itertools import pairwise
 
 import pytest
 
-from parliament.render.hansard import DEFAULT_LEVEL, HansardLevel
+from parliament.render.hansard import DEFAULT_LEVEL, HansardLevel, includes
 
 
 def test_levels_exist():
@@ -54,8 +55,6 @@ def test_parse_empty_string_returns_default():
     assert HansardLevel.parse("") is DEFAULT_LEVEL
 
 
-from parliament.render.hansard import includes  # noqa: E402
-
 
 def test_minimal_includes_only_question_and_recommendation():
     assert includes(HansardLevel.MINIMAL, "question")
@@ -93,7 +92,7 @@ def test_levels_are_monotonic():
     """Each level's section set must be a superset of the level below."""
     from parliament.render.hansard import _LEVEL_SECTIONS
     levels = [HansardLevel.MINIMAL, HansardLevel.VERDICT, HansardLevel.ARCHIVE, HansardLevel.FULL]
-    for lower, higher in zip(levels, levels[1:]):
+    for lower, higher in pairwise(levels):
         assert _LEVEL_SECTIONS[lower] <= _LEVEL_SECTIONS[higher], (
             f"{higher.value} must include all sections of {lower.value}"
         )

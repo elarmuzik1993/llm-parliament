@@ -83,7 +83,10 @@ def is_fatal_provider_error(exc: BaseException) -> bool:
         return True
 
     # Fatal: model not found — won't fix without a config change
-    if "404" in raw or "model not found" in raw or "does not exist" in raw:
+    if "404" in raw or "model not found" in raw or "does not exist" in raw:  # noqa: SIM103
         return True
 
+    # Collapsing this last pair into `return <condition>` would break the
+    # parallel shape of the checks above, each of which is a commented
+    # category. The repetition is what makes the categories readable.
     return False
