@@ -26,10 +26,10 @@ class _FakeStdscr:
     def refresh(self) -> None:
         pass
 
-    def addnstr(self, *args, **kwargs) -> None:  # noqa: D401, ARG002
+    def addnstr(self, *args, **kwargs) -> None:
         pass
 
-    def addstr(self, *args, **kwargs) -> None:  # noqa: D401, ARG002
+    def addstr(self, *args, **kwargs) -> None:
         pass
 
     def nodelay(self, value: bool) -> None:

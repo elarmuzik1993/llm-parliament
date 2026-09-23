@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -66,8 +66,8 @@ class ProgressEvent:
     phase: str  # "first_reading" | "debate" | "division"
     member_name: str
     kind: str  # "started" | "completed" | "failed"
-    response: "Response | None" = None  # set on FR/Debate "completed"
-    synthesis: "Synthesis | None" = None  # set on Division "completed"
+    response: Response | None = None  # set on FR/Debate "completed"
+    synthesis: Synthesis | None = None  # set on Division "completed"
     error: str | None = None  # set on "failed"
     duration_ms: int | None = None
 
@@ -83,7 +83,7 @@ class Hansard:
     synthesis: Synthesis
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+        default_factory=lambda: datetime.now(UTC).isoformat()
     )
     duration_ms: int = 0
     # True when the verdict was reached with fewer members than configured,

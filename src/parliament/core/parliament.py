@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from parliament.core.model_tiers import detect_gap, resolve_member_tier
 from parliament.core.types import Bill, Hansard, Member, ProgressEvent

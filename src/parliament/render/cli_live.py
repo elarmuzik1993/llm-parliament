@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from threading import Event, RLock, Thread
-from typing import Any
+from typing import Any, Self
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
@@ -69,7 +69,7 @@ class RichLiveRenderer(DebateRenderer):
 
     # ---- DebateRenderer lifecycle ----
 
-    def __enter__(self) -> "RichLiveRenderer":
+    def __enter__(self) -> Self:
         # Only engage Rich Live on a real TTY. On pipes / test buffers / dumb
         # terminals, Live's animation either does nothing or corrupts output.
         if self._console.is_terminal:
@@ -100,7 +100,6 @@ class RichLiveRenderer(DebateRenderer):
                 self._live.__exit__(exc_type, exc_val, exc_tb)
             finally:
                 self._live = None
-        return None
 
     # ---- Event handling ----
 

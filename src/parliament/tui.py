@@ -87,7 +87,7 @@ class SettingsScreenState:
 
     save_dir: str
     show_debate: bool
-    hansard_level: "HansardLevel"
+    hansard_level: HansardLevel
     focus: str = "save_dir"  # "save_dir" | "hansard_level" | "show_debate"
     editing: bool = False    # True while save_dir field is in text-edit mode
 
@@ -189,7 +189,7 @@ def _save_settings(
     config_path: Path,
     *,
     show_debate: bool,
-    hansard_level: "HansardLevel",
+    hansard_level: HansardLevel,
     persist: bool = True,
 ) -> dict[str, Any]:
     """Persist Settings-screen state to YAML config (skipped in mock mode).
@@ -386,7 +386,7 @@ def _disable_terminal_flow_control() -> None:
         attrs = termios.tcgetattr(fd)
         attrs[0] &= ~(termios.IXON | termios.IXOFF)
         termios.tcsetattr(fd, termios.TCSANOW, attrs)
-    except Exception:
+    except Exception:  # noqa: S110 - nothing to log; see comment
         # Best-effort; non-Linux or restricted TTY just keep default behavior.
         pass
 
@@ -1503,7 +1503,7 @@ def _draw_result(
     save_dir: str,
     height: int,
     width: int,
-    level: "HansardLevel | None" = None,
+    level: HansardLevel | None = None,
 ) -> int:
     lines = _result_lines(hansard, level, width)
     body_top = 2
@@ -1562,7 +1562,7 @@ def _draw_error(stdscr, error_message: str, height: int, width: int) -> None:
 
 def _draw_app_settings(
     stdscr,
-    state: "SettingsScreenState",
+    state: SettingsScreenState,
     height: int,
     width: int,
 ) -> None:
@@ -1640,7 +1640,7 @@ def save_hansard(
     hansard: Hansard,
     save_dir: str,
     *,
-    level: "HansardLevel | None" = None,
+    level: HansardLevel | None = None,
 ) -> Path:
     """Save a Hansard Markdown file. Defaults to ARCHIVE level regardless of display level."""
     from parliament.render.hansard import HansardLevel as _HL
@@ -1651,7 +1651,9 @@ def save_hansard(
     directory = Path(save_dir).expanduser()
     directory.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Deliberately naive local time (DTZ005 suppressed below): this names a
+    # file the user browses themselves, so it should match their clock, not UTC.
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # noqa: DTZ005
     slug = _slugify(hansard.bill.title or hansard.bill.content)
     path = directory / f"{timestamp}-{slug}-{hansard.id[:8]}.md"
     path.write_text(render_markdown(hansard, resolved_level), encoding="utf-8")
@@ -1663,7 +1665,7 @@ def _slugify(value: str) -> str:
     return slug[:48] or "parliament-response"
 
 
-def _result_lines(hansard: Hansard, level: "HansardLevel | None" = None, width: int = 80) -> list[str]:
+def _result_lines(hansard: Hansard, level: HansardLevel | None = None, width: int = 80) -> list[str]:
     """Render the TUI result screen text, gated by Hansard detail level.
 
     Same level semantics as `parliament.render.hansard.render_terminal`:

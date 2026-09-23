@@ -13,7 +13,7 @@ def fresh_home(tmp_path, monkeypatch):
     """Point ~/.parliament at a clean temp dir and reload parliament.config."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    import parliament.config as config
+    from parliament import config
 
     importlib.reload(config)
     return config, tmp_path
@@ -70,7 +70,7 @@ def test_second_run_does_not_overwrite_user_config(fresh_home):
 
 def test_explicit_path_does_not_trigger_first_run(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    import parliament.config as config
+    from parliament import config
 
     importlib.reload(config)
 
@@ -139,7 +139,7 @@ def test_user_supplied_show_debate_false_round_trips(tmp_path, monkeypatch):
     monkeypatch.setattr(__import__("pathlib").Path, "home", lambda: tmp_path)
     import importlib
 
-    import parliament.config as config
+    from parliament import config
     importlib.reload(config)
 
     custom = tmp_path / "custom.yaml"
