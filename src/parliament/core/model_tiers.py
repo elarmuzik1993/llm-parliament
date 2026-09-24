@@ -6,6 +6,8 @@ No user configuration needed — this is internal.
 
 from __future__ import annotations
 
+import re
+
 from parliament.core.types import Member
 
 # Tier 1 = frontier, Tier 4 = small
@@ -20,10 +22,6 @@ MODEL_TIERS: dict[str, int] = {
     "gpt-4o-mini": 2,
     "gemini-2.5-flash": 2,
     "gemini-2.0-flash": 2,
-    # OpenRouter preset IDs match the public catalog, including Claude's dot.
-    "anthropic/claude-sonnet-4.6": 2,
-    "openai/gpt-4o-mini": 2,
-    "google/gemini-2.5-flash": 2,
     "llama3.1:70b": 2,
     "mistral-large": 2,
     "qwen2:72b": 2,
@@ -62,9 +60,45 @@ TIER_LABELS: dict[int, str] = {
 }
 
 
+# OpenRouter routing variants: same weights, different price or routing.
+# Only these are stripped -- an Ollama tag like ``:70b`` names different weights.
+_OPENROUTER_VARIANTS = frozenset(
+    {"free", "beta", "extended", "thinking", "online", "nitro", "floor", "exacto"}
+)
+
+_VERSION_DOT = re.compile(r"(?<=\d)\.(?=\d)")
+
+
+def _slug_candidates(model: str) -> list[str]:
+    """Bare ids an OpenRouter ``vendor/slug`` may be stored under in MODEL_TIERS.
+
+    ``anthropic/claude-sonnet-4.6:free`` -> ``claude-sonnet-4.6``, then
+    ``claude-sonnet-4-6``: OpenRouter writes Claude versions with a dot where
+    Anthropic's API uses a dash. The dotted form is tried first because Gemini
+    ids carry a real dot (``gemini-2.5-pro``).
+    """
+    if "/" not in model:
+        return []
+    slug = model.rsplit("/", 1)[1]
+    base, sep, variant = slug.rpartition(":")
+    if sep and variant in _OPENROUTER_VARIANTS:
+        slug = base
+    dashed = _VERSION_DOT.sub("-", slug)
+    return [slug] if dashed == slug else [slug, dashed]
+
+
 def get_tier(model: str) -> int:
-    """Return tier for a model name. Unknown models default to tier 3."""
-    return MODEL_TIERS.get(model, DEFAULT_TIER)
+    """Return tier for a model name. Unknown models default to tier 3.
+
+    An exact match wins; otherwise an OpenRouter ``vendor/slug`` resolves to
+    the tier of the bare id it routes to, so one table serves both (#37).
+    """
+    if model in MODEL_TIERS:
+        return MODEL_TIERS[model]
+    for candidate in _slug_candidates(model):
+        if candidate in MODEL_TIERS:
+            return MODEL_TIERS[candidate]
+    return DEFAULT_TIER
 
 
 def get_tier_label(tier: int) -> str:
