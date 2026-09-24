@@ -1,11 +1,25 @@
 # LLM Parliament — Agent Guide
 
 Source of truth for project rules, architecture, and development conventions.
-`CLAUDE.md` and `GEMINI.md` point here.
+Coding agents read this file directly; there is no per-tool copy.
 
 **External Documentation:**
 - **Obsidian Vault:** [[03 Projects/LLM Parliament]]
 - **Projects HUB:** [[03 Projects/Projects HUB]]
+
+---
+
+## Current state
+
+@.agents/STATE.md
+
+## Session workflow
+
+- **Start:** read the current state above (`.agents/STATE.md`). If `git log` shows commits
+  after its last update, that work is unrecorded; check it before trusting the note.
+- **Work:** nothing is done until `bash scripts/verify.sh` passes. It runs exactly what CI runs.
+- **End:** hand off. Verify, rewrite `.agents/STATE.md` (Now, Next, Decisions, Known issues),
+  commit, and in a cloud session push the branch.
 
 ---
 
@@ -66,6 +80,8 @@ docs/
 config.example.yaml  Default template — fallback if first-run wizard fails
 scripts/
   diagnose-render.py  Render diagnostic — colors, spinner, terminal detection
+  verify.sh           The CI checks in one command; --quick runs ruff alone
+.agents/              Agent hand-off: STATE.md, bootstrap.sh (not shipped in the sdist)
 .github/
   workflows/ci.yml    CI — ruff + pytest on Linux/macOS/Windows, Python 3.11-3.13
   ISSUE_TEMPLATE/     Bug report, feature request, and the issue chooser links
@@ -259,7 +275,10 @@ which governs this and overrides any harness default that adds one.
 python -m pytest -q          # must pass before any commit
 ruff check .                 # must be clean before any commit
 mypy src/parliament          # must pass before any commit
+bash scripts/verify.sh       # all three, exactly as CI runs them
 ```
+
+`tests/test_verify_matches_ci.py` fails when `scripts/verify.sh` and `ci.yml` disagree.
 
 Dev deps (`pytest`, `pytest-asyncio`, `ruff`, `mypy`) are in `pyproject.toml` under
 `[project.optional-dependencies] dev`. Install via `pipx inject` or `pip install -e ".[dev]"`.
