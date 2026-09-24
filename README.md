@@ -612,7 +612,7 @@ This repo is meant to be navigable without reading every file:
 - **[AGENTS.md](AGENTS.md)** — the machine-readable source of truth: repository
   layout, the debate pipeline, threading model, config precedence, conventions,
   and step-by-step recipes for adding a provider or a slash command.
-  `CLAUDE.md` and `GEMINI.md` are pointers to it.
+  Agents read it directly; there is no per-tool copy.
 - **[docs/hansard-schema.md](docs/hansard-schema.md)** — the JSON schema emitted
   by `parliament ask --json`, with `jq` recipes.
 - **`--mock`** — every entry point accepts it, giving deterministic output with

@@ -78,6 +78,7 @@ exclude = [
   "AGENTS.md",
   "CLAUDE.md",
   "GEMINI.md",
+  ".agents",
 ]
 
 [tool.pytest.ini_options]
