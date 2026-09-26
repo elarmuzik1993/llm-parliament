@@ -7,6 +7,34 @@ from parliament.core.types import Member
 from parliament.providers.mock import MockProvider
 
 
+async def test_openrouter_frontier_is_speaker_and_preserves_api_ids():
+    ids = ["anthropic/claude-sonnet-4.6", "openai/gpt-4o-mini", "anthropic/claude-opus-4.6"]
+    members = [Member(name=str(i), provider_name="openrouter", model=m) for i, m in enumerate(ids)]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    parliament = Parliament(members, providers)
+    hansard = await parliament.ask("Which database?")
+    assert hansard.synthesis.speaker_name == "2"
+    assert [m.tier for m in hansard.members] == [2, 2, 1]
+    assert [m.model for m in hansard.members] == ids
+    assert [p.model for p in providers.values()] == ids
+    assert all(isinstance(m["tier"], int) for m in hansard.to_dict()["members"])
+
+
+def test_gap_warning_ignores_unknown_even_when_selecting_warning_names():
+    members = [
+        Member(name="Unknown", provider_name="openrouter", model="vendor/unlisted"),
+        Member(name="Opus", provider_name="openrouter", model="anthropic/claude-opus-4.6"),
+        Member(name="Lite", provider_name="openrouter", model="google/gemini-2.5-flash-lite"),
+    ]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    assert Parliament(members[:2], providers).check_gaps() == []
+    warnings = Parliament(members, providers).check_gaps()
+    assert len(warnings) == 1
+    assert "Opus (tier 1)" in warnings[0]
+    assert "Lite (tier 3)" in warnings[0]
+    assert "Unknown" not in warnings[0]
+
+
 @pytest.fixture
 def mock_parliament_3():
     """3-member parliament with mock providers."""

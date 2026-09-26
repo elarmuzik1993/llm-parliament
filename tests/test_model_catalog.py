@@ -282,12 +282,12 @@ def test_openai_provider_accepts_a_base_url() -> None:
 def test_the_new_models_carry_tiers() -> None:
     from parliament.core.model_tiers import DEFAULT_TIER, get_tier
 
-    assert get_tier("llama-3.3-70b-versatile") == 2
-    assert get_tier("mistral-large-latest") == 2
-    assert get_tier("mistral-small-latest") == 3
-    assert get_tier("llama-3.1-8b-instant") == 3
+    assert get_tier("llama-3.3-70b-versatile", "groq") == 2
+    assert get_tier("mistral-large-latest", "mistral") == 2
+    assert get_tier("mistral-small-latest", "mistral") == 3
+    assert get_tier("llama-3.1-8b-instant", "groq") == 3
     # Still the fallback for anything not listed.
-    assert get_tier("some-model-nobody-listed") == DEFAULT_TIER
+    assert get_tier("some-model-nobody-listed", "groq") == DEFAULT_TIER
 
 
 @pytest.mark.parametrize("vendor", ["openrouter", "groq", "mistral"])

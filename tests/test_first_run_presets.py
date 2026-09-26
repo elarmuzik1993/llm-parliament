@@ -7,7 +7,7 @@ from itertools import product
 
 import pytest
 
-from parliament.core.model_tiers import get_tier
+from parliament.core.model_tiers import get_tier, has_known_tier
 from parliament.first_run import Environment
 from parliament.model_catalog import OllamaModel
 from parliament.presets import select_preset
@@ -146,7 +146,8 @@ def test_openrouter_precedence_and_model_diversity(
         assert {member["model"].split("/")[0] for member in members} == {
             "anthropic", "openai", "google",
         }
-        assert all(get_tier(member["model"]) == 2 for member in members)
+        assert all(get_tier(member["model"], member["provider"]) == 2 for member in members)
+        assert all(has_known_tier(member["model"], member["provider"]) for member in members)
         assert preset.config["hansard"]["level"] == "verdict"
 
 

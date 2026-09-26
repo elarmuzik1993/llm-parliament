@@ -68,6 +68,25 @@ def test_build_model_settings_speaker_override(monkeypatch):
     assert by_name["Claude"].role == "Member"
 
 
+def test_openrouter_dashboard_and_editor_resolve_provider_scoped_tiers(monkeypatch):
+    monkeypatch.setattr("parliament.tui.load_keys", dict)
+    config = {"parliament": {"members": [
+        {"name": "Sonnet", "provider": "openrouter", "model": "anthropic/claude-sonnet-4.6"},
+        {"name": "Opus", "provider": "openrouter", "model": "anthropic/claude-opus-4.6"},
+    ]}}
+    settings = build_model_settings(config)
+    assert [s.member.tier for s in settings] == [2, 1]
+    assert settings[1].role == "Speaker / member"
+    editor = MemberEditorState(member_index=0, draft={
+        "name": "GPT", "provider": "openrouter", "model": "openai/gpt-4o", "base_url": "",
+    })
+    preview = tui_mod._preview_members(config, editor)
+    assert [m.tier for m in preview] == [1, 1]
+    assert preview[0].model == "openai/gpt-4o"
+    editor.draft["provider"] = "openai"
+    assert tui_mod._preview_members(config, editor)[0].tier == 3
+
+
 def test_app_settings_round_trip(monkeypatch, tmp_path):
     settings_file = tmp_path / "settings.json"
     monkeypatch.setattr("parliament.tui.SETTINGS_FILE", settings_file)
