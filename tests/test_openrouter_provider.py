@@ -22,6 +22,18 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MODEL = "anthropic/claude-sonnet-4.6"
 
 
+def test_config_resolves_tiers_without_rewriting_api_model(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    model = "anthropic/claude-opus-4.6"
+    config = {"parliament": {"members": [
+        {"name": "Opus", "provider": "openrouter", "model": model},
+    ]}}
+    members, providers = build_parliament_from_config(config)
+    assert members[0].tier == 1
+    assert members[0].model == providers["Opus"].model == model
+    assert config["parliament"]["members"][0]["model"] == model
+
+
 @pytest.fixture(autouse=True)
 def _no_ambient_keys(monkeypatch):
     """No inherited keys -- each test sets exactly what it means to test."""

@@ -6,6 +6,8 @@ No user configuration needed — this is internal.
 
 from __future__ import annotations
 
+import re
+
 from parliament.core.types import Member
 
 # Tier 1 = frontier, Tier 4 = small
@@ -20,10 +22,6 @@ MODEL_TIERS: dict[str, int] = {
     "gpt-4o-mini": 2,
     "gemini-2.5-flash": 2,
     "gemini-2.0-flash": 2,
-    # OpenRouter preset IDs match the public catalog, including Claude's dot.
-    "anthropic/claude-sonnet-4.6": 2,
-    "openai/gpt-4o-mini": 2,
-    "google/gemini-2.5-flash": 2,
     "llama3.1:70b": 2,
     "mistral-large": 2,
     "qwen2:72b": 2,
@@ -54,6 +52,11 @@ MODEL_TIERS: dict[str, int] = {
 
 DEFAULT_TIER = 3
 
+# Exceptions after provider-specific normalization; tiers stay in MODEL_TIERS.
+MODEL_ALIASES: dict[str, dict[str, str]] = {
+    "openrouter": {"llama-3.3-70b-instruct": "llama-3.3-70b-versatile"},
+}
+
 TIER_LABELS: dict[int, str] = {
     1: "frontier",
     2: "strong",
@@ -62,9 +65,23 @@ TIER_LABELS: dict[int, str] = {
 }
 
 
-def get_tier(model: str) -> int:
+def canonical_model_id(model: str, provider: str) -> str:
+    """Resolve an internal tier identity without changing the API model ID."""
+    if provider == "openrouter":
+        model = model.split("/", 1)[-1].split(":", 1)[0]
+        if model.startswith("claude-"):
+            model = re.sub(r"(?<=\d)\.(?=\d)", "-", model)
+    return MODEL_ALIASES.get(provider, {}).get(model, model)
+
+
+def has_known_tier(model: str, provider: str) -> bool:
+    """Distinguish classified tier-3 models from the unknown-model fallback."""
+    return canonical_model_id(model, provider) in MODEL_TIERS
+
+
+def get_tier(model: str, provider: str) -> int:
     """Return tier for a model name. Unknown models default to tier 3."""
-    return MODEL_TIERS.get(model, DEFAULT_TIER)
+    return MODEL_TIERS.get(canonical_model_id(model, provider), DEFAULT_TIER)
 
 
 def get_tier_label(tier: int) -> str:
@@ -72,14 +89,14 @@ def get_tier_label(tier: int) -> str:
 
 
 def detect_gap(members: list[Member]) -> bool:
-    """True when tier gap between any two members exceeds 1."""
-    if len(members) < 2:
+    """True when the tier gap between classified members exceeds 1."""
+    tiers = [m.tier for m in members if has_known_tier(m.model, m.provider_name)]
+    if len(tiers) < 2:
         return False
-    tiers = [m.tier for m in members]
     return max(tiers) - min(tiers) > 1
 
 
 def resolve_member_tier(member: Member) -> Member:
-    """Return a copy of the member with tier resolved from MODEL_TIERS."""
-    member.tier = get_tier(member.model)
+    """Resolve a member's tier in place, preserving its API model ID."""
+    member.tier = get_tier(member.model, member.provider_name)
     return member

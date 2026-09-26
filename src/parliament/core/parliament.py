@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from parliament.core.model_tiers import detect_gap, resolve_member_tier
+from parliament.core.model_tiers import detect_gap, has_known_tier, resolve_member_tier
 from parliament.core.types import Bill, Hansard, Member, ProgressEvent
 from parliament.procedures.debate import run_debate
 from parliament.procedures.division import run_division
@@ -178,8 +178,9 @@ class Parliament:
         """Return warning strings if tier gaps exist. Never blocks."""
         warnings = []
         if detect_gap(self.members):
-            weakest = max(self.members, key=lambda m: m.tier)
-            strongest = min(self.members, key=lambda m: m.tier)
+            known = [m for m in self.members if has_known_tier(m.model, m.provider_name)]
+            weakest = max(known, key=lambda m: m.tier)
+            strongest = min(known, key=lambda m: m.tier)
             warnings.append(
                 f"Large capability gap between {strongest.name} (tier {strongest.tier}) "
                 f"and {weakest.name} (tier {weakest.tier}). "

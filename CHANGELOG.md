@@ -88,6 +88,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- OpenRouter tier lookup now normalizes vendor prefixes, variants and Claude
+  version spelling using the provider context. Known frontier models can be
+  selected as Speaker without rewriting their config or API model IDs.
+  Capability-gap warnings exclude unclassified models while retaining their
+  numeric fallback tier. Addresses the tier portion of #37.
+
 - **`parliament ask --mock` now records the actual model for each member.**
   Mock-B and Mock-C were labeled `mock-v1` despite using `mock-v2` and `mock-v3`.
   The `--mock` paths now build their members from the one mock preset, through
