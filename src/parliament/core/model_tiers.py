@@ -6,6 +6,8 @@ No user configuration needed — this is internal.
 
 from __future__ import annotations
 
+import re
+
 from parliament.core.types import Member
 
 # Tier 1 = frontier, Tier 4 = small
@@ -20,10 +22,6 @@ MODEL_TIERS: dict[str, int] = {
     "gpt-4o-mini": 2,
     "gemini-2.5-flash": 2,
     "gemini-2.0-flash": 2,
-    # OpenRouter preset IDs match the public catalog, including Claude's dot.
-    "anthropic/claude-sonnet-4.6": 2,
-    "openai/gpt-4o-mini": 2,
-    "google/gemini-2.5-flash": 2,
     "llama3.1:70b": 2,
     "mistral-large": 2,
     "qwen2:72b": 2,
@@ -54,6 +52,25 @@ MODEL_TIERS: dict[str, int] = {
 
 DEFAULT_TIER = 3
 
+# OpenRouter spells models as `vendor/slug[:variant]`, with Claude's version
+# dotted and many slugs carrying `-instruct`, `-it` or a `-NNN` revision.
+# canonical_model_id() folds those onto the bare ids above for the tier lookup
+# only: the configured id, and the id sent to the API, are never rewritten.
+# MODEL_ALIASES covers the slugs that still differ after that folding.
+# Provider-scoped on purpose: `user/model:tag` is a real Ollama name.
+_OPENROUTER_SUFFIX = re.compile(r"(-instruct|-it|-\d{3})$")
+_VERSION_DOT = re.compile(r"(?<=\d)\.(?=\d)")
+
+MODEL_ALIASES: dict[str, dict[str, str]] = {
+    "openrouter": {
+        "llama-3.3-70b": "llama-3.3-70b-versatile",
+        "llama-3.1-70b": "llama3.1:70b",
+        "llama-3.1-8b": "llama-3.1-8b-instant",
+        "mistral-7b": "mistral:7b",
+        "gemma-2-9b": "gemma2:9b",
+    },
+}
+
 TIER_LABELS: dict[int, str] = {
     1: "frontier",
     2: "strong",
@@ -62,24 +79,51 @@ TIER_LABELS: dict[int, str] = {
 }
 
 
-def get_tier(model: str) -> int:
+def canonical_model_id(model: str, provider: str) -> str:
+    """The id to look up in MODEL_TIERS. Never use it to call an API."""
+    if provider == "openrouter":
+        model = model.split("/", 1)[-1].split(":", 1)[0]
+        model = _OPENROUTER_SUFFIX.sub("", model)
+        if model.startswith("claude-"):
+            model = _VERSION_DOT.sub("-", model)
+    return MODEL_ALIASES.get(provider, {}).get(model, model)
+
+
+def has_known_tier(model: str, provider: str) -> bool:
+    """False for an OpenRouter model MODEL_TIERS cannot place.
+
+    OpenRouter lists hundreds of models, so an unplaced one is routine and its
+    default tier 3 is a guess; it must not manufacture a gap warning. Every
+    other provider keeps counting its default tier, as before.
+    """
+    if provider != "openrouter":
+        return True
+    return canonical_model_id(model, provider) in MODEL_TIERS
+
+
+def get_tier(model: str, provider: str) -> int:
     """Return tier for a model name. Unknown models default to tier 3."""
-    return MODEL_TIERS.get(model, DEFAULT_TIER)
+    return MODEL_TIERS.get(canonical_model_id(model, provider), DEFAULT_TIER)
 
 
 def get_tier_label(tier: int) -> str:
     return TIER_LABELS.get(tier, "unknown")
 
 
+def tiered_members(members: list[Member]) -> list[Member]:
+    """The members whose tier is a classification rather than a default."""
+    return [m for m in members if has_known_tier(m.model, m.provider_name)]
+
+
 def detect_gap(members: list[Member]) -> bool:
-    """True when tier gap between any two members exceeds 1."""
-    if len(members) < 2:
+    """True when tier gap between any two classified members exceeds 1."""
+    tiers = [m.tier for m in tiered_members(members)]
+    if len(tiers) < 2:
         return False
-    tiers = [m.tier for m in members]
     return max(tiers) - min(tiers) > 1
 
 
 def resolve_member_tier(member: Member) -> Member:
-    """Return a copy of the member with tier resolved from MODEL_TIERS."""
-    member.tier = get_tier(member.model)
+    """Set the member's tier from MODEL_TIERS, in place, and return it."""
+    member.tier = get_tier(member.model, member.provider_name)
     return member
