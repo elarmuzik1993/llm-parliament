@@ -146,7 +146,7 @@ def test_openrouter_precedence_and_model_diversity(
         assert {member["model"].split("/")[0] for member in members} == {
             "anthropic", "openai", "google",
         }
-        assert all(get_tier(member["model"]) == 2 for member in members)
+        assert all(get_tier(member["model"], member["provider"]) == 2 for member in members)
         assert preset.config["hansard"]["level"] == "verdict"
 
 

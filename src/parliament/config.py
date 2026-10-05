@@ -321,7 +321,7 @@ def build_parliament_from_config(
         name = mc["name"]
         provider_name = mc["provider"]
         model = mc["model"]
-        tier = get_tier(model)
+        tier = get_tier(model, provider_name)
 
         member = Member(name=name, provider_name=provider_name, model=model, tier=tier)
         members.append(member)

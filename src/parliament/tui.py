@@ -263,7 +263,7 @@ def build_model_settings(
             name=mc["name"],
             provider_name=mc["provider"],
             model=mc["model"],
-            tier=get_tier(mc["model"]),
+            tier=get_tier(mc["model"], mc["provider"]),
         )
         for mc in member_configs
     ]
@@ -1132,7 +1132,7 @@ def _preview_members(config: dict[str, Any], editor: MemberEditorState) -> list[
                     name=draft["name"],
                     provider_name=draft["provider"],
                     model=draft["model"],
-                    tier=get_tier(draft["model"]),
+                    tier=get_tier(draft["model"], draft["provider"]),
                 )
             )
         else:
@@ -1141,7 +1141,7 @@ def _preview_members(config: dict[str, Any], editor: MemberEditorState) -> list[
                     name=str(raw["name"]),
                     provider_name=str(raw["provider"]),
                     model=str(raw["model"]),
-                    tier=get_tier(str(raw["model"])),
+                    tier=get_tier(str(raw["model"]), str(raw["provider"])),
                 )
             )
     return members

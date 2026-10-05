@@ -63,7 +63,13 @@ CLI flag  >  environment variable  >  config.yaml  >  built-in default
 | `parliament.members[].model` | string | **required** | Also decides the member's tier — see [tiers](#tiers). |
 
 A member's `tier` is **not** configurable: it is resolved from the model name
-through `MODEL_TIERS`, and anything unlisted becomes tier 3.
+through `MODEL_TIERS`, and anything unlisted becomes tier 3. For `provider:
+openrouter` the lookup first strips the `vendor/` prefix and the `:variant`;
+unless that id is listed as-is, it then strips an `-instruct` / `-it` / `-NNN`
+suffix, turns Claude's dotted version into hyphens, and applies the few aliases
+in `MODEL_ALIASES` (`canonical_model_id` in `core/model_tiers.py`). So
+`google/gemini-2.0-flash-001:free` resolves like `gemini-2.0-flash`. The
+configured id is sent to the API unchanged.
 
 ## `providers`
 
@@ -187,3 +193,5 @@ maps model name to tier; unknown models get `DEFAULT_TIER`, which is 3.
 | 4 | small |
 
 `detect_gap` warns when the spread between any two members exceeds one tier.
+An OpenRouter model that `MODEL_TIERS` cannot place still counts as tier 3 for
+Speaker selection, but is left out of the warning.

@@ -88,6 +88,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **OpenRouter models now resolve to their real tier.** `get_tier` takes the
+  provider and, for `openrouter`, folds `vendor/slug:variant`, `-instruct`,
+  `-it` and `-NNN` suffixes and Claude's dotted versions onto the bare ids in
+  `MODEL_TIERS`, so a frontier model can be Speaker and trigger the gap
+  warning. The id sent to the API is unchanged. An OpenRouter model that is
+  still unlisted keeps tier 3 but is left out of gap warnings. Addresses the
+  tier part of #37.
+
 - **`parliament ask --mock` now records the actual model for each member.**
   Mock-B and Mock-C were labeled `mock-v1` despite using `mock-v2` and `mock-v3`.
   The `--mock` paths now build their members from the one mock preset, through
