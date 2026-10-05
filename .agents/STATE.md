@@ -34,3 +34,4 @@ _Updated 2026-10-05_
 - On Windows, `bash scripts/verify.sh` picks the system `python` over the repo `.venv` and
   reports "dev dependencies missing". Workaround: `PATH="$PWD/.venv/Scripts:$PATH" bash
   scripts/verify.sh`, or activate the venv first.
+- The remote branch `origin/chore/agent-workflow` still exists although #63 merged it.

@@ -75,6 +75,7 @@ def test_gap_single_member():
     ("meta-llama/llama-3.1-8b-instruct", 3),
     ("mistralai/mistral-7b-instruct", 3),
     ("google/gemma-2-9b-it", 3),
+    ("qwen/qwen-2.5-72b-instruct", 2),
 ])
 @pytest.mark.parametrize("variant", ["", ":free", ":nitro"])
 def test_openrouter_ids_resolve_with_suffixes_and_variants(model, tier, variant):

@@ -83,6 +83,9 @@ def canonical_model_id(model: str, provider: str) -> str:
     """The id to look up in MODEL_TIERS. Never use it to call an API."""
     if provider == "openrouter":
         model = model.split("/", 1)[-1].split(":", 1)[0]
+        # An exact entry wins: `qwen-2.5-72b-instruct` is listed as-is.
+        if model in MODEL_TIERS:
+            return model
         model = _OPENROUTER_SUFFIX.sub("", model)
         if model.startswith("claude-"):
             model = _VERSION_DOT.sub("-", model)
