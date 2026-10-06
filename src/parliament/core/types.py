@@ -4,8 +4,22 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import UTC, datetime
+from typing import Any
+
+
+def _public_value(value: Any) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            f.name: _public_value(getattr(value, f.name))
+            for f in fields(value) if f.metadata.get("serialize", True)
+        }
+    if isinstance(value, (list, tuple)):
+        return [_public_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _public_value(item) for key, item in value.items()}
+    return value
 
 
 @dataclass
@@ -27,7 +41,19 @@ class Member:
     name: str
     provider_name: str  # "ollama", "anthropic", "openai", "google", "mock"
     model: str
-    tier: int = 3  # resolved from MODEL_TIERS, default = capable
+    tier: int = 3  # resolved from MODEL_TIERS; unlisted models assume tier 3
+    # Runtime endpoint context survives copies but is excluded from Hansard JSON.
+    base_url: str | None = field(
+        default=None, repr=False, compare=False, metadata={"serialize": False},
+    )
+
+    @property
+    def tier_base_url(self) -> str | None:
+        return self.base_url
+
+    @tier_base_url.setter
+    def tier_base_url(self, value: str | None) -> None:
+        self.base_url = value
 
     def __str__(self) -> str:
         return f"{self.name} ({self.provider_name}/{self.model})"
@@ -91,9 +117,10 @@ class Hansard:
     # is intended behaviour, but a consumer has to be able to tell a
     # three-member verdict from a two-member one — see #34.
     degraded: bool = False
+    unrated_members: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        return _public_value(self)
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent)
@@ -111,4 +138,5 @@ class Hansard:
             duration_ms=data["duration_ms"],
             # Absent in Hansards written before the field existed.
             degraded=data.get("degraded", False),
+            unrated_members=data.get("unrated_members", []),
         )

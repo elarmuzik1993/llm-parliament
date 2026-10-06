@@ -24,6 +24,25 @@ parliament ask "Should we split this service?" --mock --json
 | `created_at` | `string` | ISO-8601 timestamp for when the session was created. |
 | `duration_ms` | `number` | Total wall-clock duration in milliseconds. |
 | `degraded` | `boolean` | `true` when the verdict came from fewer members than configured, because one or more members failed with a provider error. |
+| `unrated_members` | `string[]` | Names of configured members without an assessed capability rating. Their tier 3 is a Speaker-selection assumption. |
+
+### `unrated_members`
+
+New sessions explicitly report every unassessed real model, including members
+that later fail or drop out. This flag is independent of `degraded`: complete
+participation does not establish that model capabilities were assessed. Join
+these names to `members[].name` to obtain provider and model IDs. Explicit
+mock tiers are synthetic ratings and are not flagged as unrated.
+
+```json
+{"unrated_members": ["Mystery"]}
+```
+
+Known members may also have a large capability gap while unrated members are
+present; neither warning clears the other. An empty array means all configured
+members had ratings. Older records omit this field; the reader defaults it to
+an empty list for compatibility, but absence in old JSON is not proof of rating
+coverage. Endpoint context is runtime-only and excluded from member JSON.
 
 ### `degraded`
 
@@ -61,7 +80,7 @@ cancelled call can never be mistaken for a confident one.
 | `name` | `string` | Display name used in debate output. |
 | `provider_name` | `string` | Provider key, such as `ollama`, `anthropic`, `openai`, `google`, or `mock`. |
 | `model` | `string` | Provider model identifier. |
-| `tier` | `number` | Model capability tier resolved from the model catalog. **Lower is stronger** — the Speaker is chosen from the lowest tier present. |
+| `tier` | `number` | Assessed capability tier, or assumed tier 3 for names in `unrated_members`. **Lower is stronger** — the Speaker is chosen from the lowest tier present. |
 
 ## `Response`
 
@@ -153,7 +172,8 @@ jq -e '(.members | length) == (.first_reading | length)' hansard.json >/dev/null
   "id": "b0a5f3b0-1111-4222-8333-444455556666",
   "created_at": "2026-01-01T12:00:00+00:00",
   "duration_ms": 1234,
-  "degraded": false
+  "degraded": false,
+  "unrated_members": []
 }
 ```
 

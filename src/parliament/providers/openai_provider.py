@@ -25,6 +25,10 @@ class OpenAIProvider(Provider):
         self._timeout = timeout
         self._client = None
 
+    @property
+    def base_url(self) -> str | None:
+        return self._base_url
+
     def _get_client(self):
         if self._client is None:
             from openai import AsyncOpenAI

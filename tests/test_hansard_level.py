@@ -9,6 +9,25 @@ import pytest
 from parliament.render.hansard import DEFAULT_LEVEL, HansardLevel, includes
 
 
+@pytest.mark.parametrize("level", list(HansardLevel))
+def test_unrated_warning_survives_every_display_level(make_hansard, level):
+    from parliament.render.hansard import render_markdown
+    from parliament.tui import _result_lines
+
+    hansard = make_hansard()
+    hansard.unrated_members = [hansard.members[0].name]
+    markdown = render_markdown(hansard, level)
+    lines = _result_lines(hansard, level, width=40)
+    tui_text = " ".join(" ".join(lines).split())
+    for text in (markdown, tui_text):
+        assert "Unrated members: Alpha (unrated, assumed tier 3)" in text
+        assert "Speaker selection assumes tier 3" in text
+    warning_start = lines.index("RATING WARNING")
+    warning_lines = lines[warning_start + 1:]
+    warning_end = warning_lines.index("")
+    assert all(len(line) <= 40 for line in warning_lines[:warning_end])
+
+
 def test_levels_exist():
     assert HansardLevel.MINIMAL.value == "minimal"
     assert HansardLevel.VERDICT.value == "verdict"

@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ from parliament.config import (
     PARLIAMENT_DIR,
     USER_CONFIG,
     api_key_status,
+    build_members_from_config,
     build_parliament_from_config,
     load_keys,
     resolve_hansard_level,
@@ -30,7 +32,7 @@ from parliament.config import (
     save_config,
     save_key,
 )
-from parliament.core.model_tiers import get_tier, get_tier_label
+from parliament.core.model_tiers import get_member_tier_label, unrated_warning
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
 from parliament.model_catalog import picker_data_for
@@ -257,16 +259,7 @@ def build_model_settings(
     """Build settings rows from config without creating provider clients."""
     load_keys()
     provider_configs = config.get("providers", {})
-    member_configs = config["parliament"]["members"]
-    members = [
-        Member(
-            name=mc["name"],
-            provider_name=mc["provider"],
-            model=mc["model"],
-            tier=get_tier(mc["model"], mc["provider"]),
-        )
-        for mc in member_configs
-    ]
+    members = build_members_from_config(config)
     speaker_name = _speaker_name(members, speaker_override)
 
     return [
@@ -1084,7 +1077,7 @@ def _draw_member_editor(
     ]
     derived_rows = [
         ("Name", draft["name"] or "(set by model)"),
-        ("Tier", get_tier_label(preview_member.tier)),
+        ("Tier", get_member_tier_label(preview_member)),
         ("Role", _member_role(preview_member, speaker_name)),
         ("API key", api_key_status(draft["provider"])),
     ]
@@ -1122,29 +1115,9 @@ def _draw_member_editor(
 
 
 def _preview_members(config: dict[str, Any], editor: MemberEditorState) -> list[Member]:
-    members: list[Member] = []
-    raw_members = config["parliament"]["members"]
-    for idx, raw in enumerate(raw_members):
-        if idx == editor.member_index:
-            draft = editor.draft
-            members.append(
-                Member(
-                    name=draft["name"],
-                    provider_name=draft["provider"],
-                    model=draft["model"],
-                    tier=get_tier(draft["model"], draft["provider"]),
-                )
-            )
-        else:
-            members.append(
-                Member(
-                    name=str(raw["name"]),
-                    provider_name=str(raw["provider"]),
-                    model=str(raw["model"]),
-                    tier=get_tier(str(raw["model"]), str(raw["provider"])),
-                )
-            )
-    return members
+    preview_config = deepcopy(config)
+    _apply_member_edit(preview_config, editor.member_index, _normalize_member_draft(editor.draft))
+    return build_members_from_config(preview_config)
 
 
 def _autoname_members(members_list: list[dict]) -> None:
@@ -1317,7 +1290,7 @@ def _draw_dashboard(
         member = setting.member
         text = (
             f"{marker} {member.name:<20} {member.provider_name:<10} "
-            f"{member.model:<24} {get_tier_label(member.tier):<8}"
+            f"{member.model:<24} {get_member_tier_label(member):<8}"
         )
         attr = curses.A_REVERSE if idx == selected and focus == "members" else curses.A_NORMAL
         _add_line(stdscr, row, 0, text, attr, list_width)
@@ -1684,6 +1657,8 @@ def _result_lines(hansard: Hansard, level: HansardLevel | None = None, width: in
     calls = len(hansard.members) * 2 + 1
     q = f"Question: {hansard.bill.content}"
     lines = [*_wrap_text(q, width), ""]
+    if hansard.unrated_members:
+        lines.extend(["RATING WARNING", *_wrap_text(unrated_warning(hansard.unrated_members), width), ""])
 
     for section_key, heading, value in (
         ("consensus",      "CONSENSUS",      synthesis.consensus),
@@ -1730,7 +1705,7 @@ def _settings_rows(setting: ModelSettings) -> list[tuple[str, str]]:
         ("Name", member.name),
         ("Provider", member.provider_name),
         ("Model", member.model),
-        ("Tier", get_tier_label(member.tier)),
+        ("Tier", get_member_tier_label(member)),
         ("Role", setting.role),
         ("API key", setting.api_key_status),
         ("Base URL", setting.base_url),

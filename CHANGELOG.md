@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Capability assessments across providers** — distinguish assessed large gaps,
+  comparable rated members and missing ratings. Unassessed models are reported
+  explicitly in warnings and Hansard JSON's `unrated_members`, rather than
+  manufacturing a rated gap or silently disappearing. Fallback tier 3 remains
+  a Speaker-selection assumption; explicit mock tiers remain synthetic ratings.
+- **Unassessed OpenRouter variants** — unfamiliar tuning and revision IDs remain
+  unassessed rather than inheriting a known model's capability rating.
+
 ### Added
 
 - **OpenRouter first-run preset** — detect `OPENROUTER_API_KEY` and propose
@@ -88,13 +98,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **OpenRouter models now resolve to their real tier.** `get_tier` takes the
-  provider and, for `openrouter`, folds `vendor/slug:variant`, `-instruct`,
-  `-it` and `-NNN` suffixes and Claude's dotted versions onto the bare ids in
-  `MODEL_TIERS`, so a frontier model can be Speaker and trigger the gap
-  warning. The id sent to the API is unchanged. An OpenRouter model that is
-  still unlisted keeps tier 3 but is left out of gap warnings. Addresses the
-  tier part of #37.
+- **Member endpoint copies** — dataclass replacement retains endpoint context;
+  the endpoint is excluded from equality, repr and Hansard serialization.
+- **OpenRouter endpoint tier context** — `provider: openai` with OpenRouter's
+  registered endpoint receives the same tiers as `provider: openrouter` in
+  configuration, TUI previews and runtime Speaker selection.
+- **Capability-gap comparison tiers** — detection, runtime warnings and CLI
+  output use one calculation. Known model ratings are resolved from the catalogue,
+  even when a directly constructed member still has its default tier 3.
+- **OpenRouter models now resolve to their real tier.** Recognized models receive
+  their catalogue capability ratings while API IDs remain unchanged. Unassessed
+  models retain fallback tier 3. Addresses the tier part of #37.
 
 - **`parliament ask --mock` now records the actual model for each member.**
   Mock-B and Mock-C were labeled `mock-v1` despite using `mock-v2` and `mock-v3`.

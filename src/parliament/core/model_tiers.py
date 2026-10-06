@@ -7,8 +7,11 @@ No user configuration needed — this is internal.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from parliament.core.types import Member
+from parliament.model_catalog import OPENAI_COMPATIBLE
 
 # Tier 1 = frontier, Tier 4 = small
 MODEL_TIERS: dict[str, int] = {
@@ -52,22 +55,19 @@ MODEL_TIERS: dict[str, int] = {
 
 DEFAULT_TIER = 3
 
-# OpenRouter spells models as `vendor/slug[:variant]`, with Claude's version
-# dotted and many slugs carrying `-instruct`, `-it` or a `-NNN` revision.
-# canonical_model_id() folds those onto the bare ids above for the tier lookup
-# only: the configured id, and the id sent to the API, are never rewritten.
-# MODEL_ALIASES covers the slugs that still differ after that folding.
-# Provider-scoped on purpose: `user/model:tag` is a real Ollama name.
-_OPENROUTER_SUFFIX = re.compile(r"(-instruct|-it|-\d{3})$")
-_VERSION_DOT = re.compile(r"(?<=\d)\.(?=\d)")
-
 MODEL_ALIASES: dict[str, dict[str, str]] = {
     "openrouter": {
         "llama-3.3-70b": "llama-3.3-70b-versatile",
         "llama-3.1-70b": "llama3.1:70b",
-        "llama-3.1-8b": "llama-3.1-8b-instant",
+        "llama-3.1-8b": "llama3.1:8b",
         "mistral-7b": "mistral:7b",
         "gemma-2-9b": "gemma2:9b",
+        "gemini-2.0-flash-001": "gemini-2.0-flash",
+        "llama-3.1-70b-instruct": "llama3.1:70b",
+        "llama-3.1-8b-instruct": "llama3.1:8b",
+        "llama-3.3-70b-instruct": "llama-3.3-70b-versatile",
+        "mistral-7b-instruct": "mistral:7b",
+        "gemma-2-9b-it": "gemma2:9b",
     },
 }
 
@@ -79,54 +79,139 @@ TIER_LABELS: dict[int, str] = {
 }
 
 
-def canonical_model_id(model: str, provider: str) -> str:
-    """The id to look up in MODEL_TIERS. Never use it to call an API."""
+def _endpoint_identity(base_url: str) -> tuple[str, str, int | None, str] | None:
+    try:
+        url = urlsplit(base_url)
+        if not url.hostname or url.username or url.password or url.query or url.fragment:
+            return None
+        port = url.port
+        if port is None:
+            port = {"https": 443, "http": 80}.get(url.scheme)
+        return url.scheme, url.hostname, port, url.path.rstrip("/")
+    except ValueError:
+        return None
+
+
+def canonical_model_id(model: str, provider: str, base_url: str | None = None) -> str:
+    """Resolve an internal tier identity without changing the API model ID."""
+    if provider == "openai" and base_url:
+        endpoint = _endpoint_identity(base_url)
+        if endpoint is not None:
+            for name, spec in OPENAI_COMPATIBLE.items():
+                if endpoint == _endpoint_identity(spec.base_url):
+                    provider = name
+                    break
     if provider == "openrouter":
+        # Only OpenRouter tier identities omit vendor/ and :variant and change
+        # Claude version dots to dashes. Tuning/version suffixes require explicit
+        # aliases; stripping them globally could give unfamiliar models a rating.
         model = model.split("/", 1)[-1].split(":", 1)[0]
-        # An exact entry wins: `qwen-2.5-72b-instruct` is listed as-is.
         if model in MODEL_TIERS:
             return model
-        model = _OPENROUTER_SUFFIX.sub("", model)
         if model.startswith("claude-"):
-            model = _VERSION_DOT.sub("-", model)
+            model = re.sub(r"(?<=\d)\.(?=\d)", "-", model)
     return MODEL_ALIASES.get(provider, {}).get(model, model)
 
 
-def has_known_tier(model: str, provider: str) -> bool:
-    """False for an OpenRouter model MODEL_TIERS cannot place.
-
-    OpenRouter lists hundreds of models, so an unplaced one is routine and its
-    default tier 3 is a guess; it must not manufacture a gap warning. Every
-    other provider keeps counting its default tier, as before.
-    """
-    if provider != "openrouter":
-        return True
-    return canonical_model_id(model, provider) in MODEL_TIERS
+def has_known_tier(model: str, provider: str, base_url: str | None = None) -> bool:
+    """Distinguish classified tier-3 models from the unknown-model fallback."""
+    return canonical_model_id(model, provider, base_url) in MODEL_TIERS
 
 
-def get_tier(model: str, provider: str) -> int:
+def get_tier(model: str, provider: str, base_url: str | None = None) -> int:
     """Return tier for a model name. Unknown models default to tier 3."""
-    return MODEL_TIERS.get(canonical_model_id(model, provider), DEFAULT_TIER)
+    return MODEL_TIERS.get(canonical_model_id(model, provider, base_url), DEFAULT_TIER)
 
 
 def get_tier_label(tier: int) -> str:
     return TIER_LABELS.get(tier, "unknown")
 
 
-def tiered_members(members: list[Member]) -> list[Member]:
-    """The members whose tier is a classification rather than a default."""
-    return [m for m in members if has_known_tier(m.model, m.provider_name)]
+def get_member_tier_label(member: Member) -> str:
+    if member.provider_name == "mock":
+        return get_tier_label(member.tier)
+    if not has_known_tier(member.model, member.provider_name, member.tier_base_url):
+        return f"unrated (assumed tier {DEFAULT_TIER})"
+    return get_tier_label(get_tier(member.model, member.provider_name, member.tier_base_url))
+
+
+def unrated_warning(names: list[str]) -> str:
+    labels = ", ".join(f"{name} (unrated, assumed tier {DEFAULT_TIER})" for name in names)
+    return (
+        f"Unrated members: {labels}. Capability comparison is incomplete; "
+        f"Speaker selection assumes tier {DEFAULT_TIER} for these models."
+    )
+
+
+@dataclass(frozen=True)
+class TierGap:
+    strongest: Member
+    strongest_tier: int
+    weakest: Member
+    weakest_tier: int
+
+    def warning(self) -> str:
+        return (
+            f"Large capability gap between {self.strongest.name} (tier {self.strongest_tier}) "
+            f"and {self.weakest.name} (tier {self.weakest_tier}). "
+            "Debate quality is limited by the weakest member."
+        )
+
+
+@dataclass(frozen=True)
+class TierAssessment:
+    gap: TierGap | None
+    unrated_members: tuple[Member, ...]
+    rated_count: int
+
+    @property
+    def comparable(self) -> bool:
+        return self.rated_count >= 2 and self.gap is None and not self.unrated_members
+
+    def warnings(self) -> list[str]:
+        warnings = [self.gap.warning()] if self.gap is not None else []
+        if self.unrated_members:
+            warnings.append(unrated_warning([m.name for m in self.unrated_members]))
+        return warnings
+
+
+def calculate_gap(members: list[Member]) -> TierAssessment:
+    """Report assessed gaps and missing ratings without changing members."""
+    comparisons: list[tuple[Member, int]] = []
+    unrated: list[Member] = []
+    for member in members:
+        # Mock tiers are supplied synthetic ratings, not unknown-model defaults.
+        if member.provider_name == "mock":
+            tier = member.tier
+        else:
+            model = canonical_model_id(member.model, member.provider_name, member.tier_base_url)
+            known_tier = MODEL_TIERS.get(model)
+            if known_tier is None:
+                unrated.append(member)
+                continue
+            tier = known_tier
+        comparisons.append((member, tier))
+    gap = None
+    if len(comparisons) >= 2:
+        strongest, strongest_tier = min(comparisons, key=lambda comparison: comparison[1])
+        weakest, weakest_tier = max(comparisons, key=lambda comparison: comparison[1])
+        if weakest_tier - strongest_tier > 1:
+            gap = TierGap(strongest, strongest_tier, weakest, weakest_tier)
+    return TierAssessment(gap, tuple(unrated), len(comparisons))
 
 
 def detect_gap(members: list[Member]) -> bool:
-    """True when tier gap between any two classified members exceeds 1."""
-    tiers = [m.tier for m in tiered_members(members)]
-    if len(tiers) < 2:
-        return False
-    return max(tiers) - min(tiers) > 1
+    """Return whether assessed members have a gap greater than one tier.
+
+    False does not establish comparability: use calculate_gap() to inspect
+    missing ratings and warnings as well.
+    """
+    return calculate_gap(members).gap is not None
 
 
 def resolve_member_tier(member: Member) -> Member:
-    """Set the member's tier from MODEL_TIERS, in place, and return it."""
-    member.tier = get_tier(member.model, member.provider_name)
+    """Resolve a member's tier in place, preserving its API model ID."""
+    # Preserve synthetic mock ratings supplied by tests and programmatic callers.
+    if member.provider_name != "mock":
+        member.tier = get_tier(member.model, member.provider_name, member.tier_base_url)
     return member

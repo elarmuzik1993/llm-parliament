@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from parliament.core.model_tiers import detect_gap, resolve_member_tier, tiered_members
+from parliament.core.model_tiers import calculate_gap, resolve_member_tier
 from parliament.core.types import Bill, Hansard, Member, ProgressEvent
 from parliament.procedures.debate import run_debate
 from parliament.procedures.division import run_division
@@ -73,7 +73,7 @@ class Parliament:
         if len(members) > 3:
             raise ValueError("Parliament supports at most 3 members")
 
-        self.members = [resolve_member_tier(m) for m in members]
+        self.members = list(members)
         self.providers = providers
         self.on_progress = on_progress or _noop_progress
         self.speaker_override = speaker_override
@@ -82,6 +82,10 @@ class Parliament:
         for m in self.members:
             if m.name not in self.providers:
                 raise ValueError(f"No provider registered for member '{m.name}'")
+            base_url = self.providers[m.name].base_url
+            if base_url is not None:
+                m.tier_base_url = base_url
+            resolve_member_tier(m)
 
     async def ask(
         self,
@@ -172,18 +176,9 @@ class Parliament:
             synthesis=synthesis,
             duration_ms=duration_ms,
             degraded=degraded,
+            unrated_members=[m.name for m in calculate_gap(self.members).unrated_members],
         )
 
     def check_gaps(self) -> list[str]:
-        """Return warning strings if tier gaps exist. Never blocks."""
-        warnings = []
-        if detect_gap(self.members):
-            ranked = tiered_members(self.members)
-            weakest = max(ranked, key=lambda m: m.tier)
-            strongest = min(ranked, key=lambda m: m.tier)
-            warnings.append(
-                f"Large capability gap between {strongest.name} (tier {strongest.tier}) "
-                f"and {weakest.name} (tier {weakest.tier}). "
-                f"Debate quality is limited by the weakest member."
-            )
-        return warnings
+        """Report assessed gaps and missing ratings. Never blocks."""
+        return calculate_gap(self.members).warnings()

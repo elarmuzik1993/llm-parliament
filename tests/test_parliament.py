@@ -2,6 +2,7 @@
 
 import pytest
 
+from parliament.config import KEY_PROVIDERS
 from parliament.core.parliament import Parliament, select_speaker
 from parliament.core.types import Member
 from parliament.providers.mock import MockProvider
@@ -24,8 +25,9 @@ def test_gap_warning_names_only_classified_openrouter_members():
         Member(name="Gemma", provider_name="openrouter", model="google/gemma-2-9b-it"),
     ]
     providers = {m.name: MockProvider(model=m.model) for m in members}
-    assert Parliament(members[:2], providers).check_gaps() == []
-    (warning,) = Parliament(members, providers).check_gaps()
+    assert "Unknown (unrated, assumed tier 3)" in Parliament(members[:2], providers).check_gaps()[0]
+    warning, rating_warning = Parliament(members, providers).check_gaps()
+    assert "Unknown (unrated, assumed tier 3)" in rating_warning
     assert "Opus (tier 1)" in warning and "Gemma (tier 3)" in warning
     assert "Unknown" not in warning
 
@@ -168,3 +170,96 @@ def test_speaker_rotation_among_equal():
 
     speaker3, _ = select_speaker(members, providers, last_speaker="B")
     assert speaker3.name == "A"
+
+
+@pytest.mark.parametrize("provider", ["ollama", *KEY_PROVIDERS])
+def test_gap_warnings_exclude_fallback_ratings_for_every_provider(provider):
+    members = [
+        Member(name="Unknown", provider_name=provider, model="unassessed-model"),
+        Member(name="GPT", provider_name="openai", model="gpt-4o"),
+        Member(name="Llama", provider_name="ollama", model="llama3.1"),
+    ]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    parliament = Parliament(members[:2], providers)
+    assert [m.tier for m in parliament.members] == [3, 1]
+    assert "Unknown (unrated, assumed tier 3)" in parliament.check_gaps()[0]
+
+    warnings = Parliament(members, providers).check_gaps()
+    assert len(warnings) == 2
+    assert "Unknown (unrated, assumed tier 3)" in warnings[1]
+    assert "GPT (tier 1)" in warnings[0]
+    assert "Llama (tier 3)" in warnings[0]
+    assert "Unknown" not in warnings[0]
+
+
+def test_unknown_model_remains_eligible_for_speaker_with_fallback_tier():
+    members = [
+        Member(name="Unknown", provider_name="ollama", model="unassessed-model"),
+        Member(name="Tiny", provider_name="ollama", model="tinyllama"),
+    ]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    parliament = Parliament(members, providers)
+    assert [m.tier for m in parliament.members] == [3, 4]
+    assert "Unknown (unrated, assumed tier 3)" in parliament.check_gaps()[0]
+    assert select_speaker(parliament.members, providers)[0].name == "Unknown"
+
+
+def test_gap_warning_uses_comparison_tiers_even_if_member_tiers_are_stale():
+    members = [Member("GPT", "openai", "gpt-4o"), Member("Tiny", "ollama", "tinyllama")]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    parliament = Parliament(members, providers)
+    for member in members:
+        member.tier = 3
+    assert parliament.check_gaps() == [
+        (
+            "Large capability gap between GPT (tier 1) and Tiny (tier 4). "
+            "Debate quality is limited by the weakest member."
+        )
+    ]
+
+
+def test_runtime_gap_warning_preserves_explicit_mock_tiers():
+    members = [Member("Strong", "mock", "m", tier=1), Member("Weak", "mock", "m", tier=4)]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    parliament = Parliament(members, providers)
+    assert [m.tier for m in parliament.members] == [1, 4]
+    assert "Strong (tier 1) and Weak (tier 4)" in parliament.check_gaps()[0]
+
+
+def test_runtime_reads_endpoint_from_programmatically_created_providers():
+    from parliament.providers.openai_provider import OpenAIProvider
+
+    members = [
+        Member(name="Gemma", provider_name="openai", model="google/gemma-2-9b-it"),
+        Member(name="Opus", provider_name="openai", model="anthropic/claude-opus-4.6"),
+    ]
+    providers = {
+        m.name: OpenAIProvider(model=m.model, base_url="https://openrouter.ai/api/v1")
+        for m in members
+    }
+    parliament = Parliament(members, providers)
+    assert [m.tier for m in parliament.members] == [3, 1]
+    assert select_speaker(parliament.members, providers)[0].name == "Opus"
+    assert len(parliament.check_gaps()) == 1
+
+
+async def test_hansard_reports_unrated_members_and_assumed_speaker():
+    members = [Member("Mystery", "ollama", "unassessed"), Member("Tiny", "ollama", "tinyllama")]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    hansard = await Parliament(members, providers).ask("Q")
+    assert hansard.synthesis.speaker_name == "Mystery"
+    assert hansard.to_dict()["unrated_members"] == ["Mystery"]
+
+
+async def test_unrated_flag_is_not_cleared_when_member_drops_out():
+    class FailingProvider(MockProvider):
+        async def generate(self, prompt, system=None):
+            raise RuntimeError("outage")
+
+    members = [Member("Mystery", "ollama", "unassessed"),
+               Member("GPT", "openai", "gpt-4o"), Member("Tiny", "ollama", "tinyllama")]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    providers["Mystery"] = FailingProvider()
+    hansard = await Parliament(members, providers).ask("Q")
+    assert hansard.degraded
+    assert hansard.unrated_members == ["Mystery"]

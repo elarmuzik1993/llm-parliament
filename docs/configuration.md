@@ -62,14 +62,9 @@ CLI flag  >  environment variable  >  config.yaml  >  built-in default
 | `parliament.members[].provider` | string | **required** | One of `ollama`, `anthropic`, `openai`, `google`, `openrouter`, `groq`, `mistral`, `mock`. |
 | `parliament.members[].model` | string | **required** | Also decides the member's tier — see [tiers](#tiers). |
 
-A member's `tier` is **not** configurable: it is resolved from the model name
-through `MODEL_TIERS`, and anything unlisted becomes tier 3. For `provider:
-openrouter` the lookup first strips the `vendor/` prefix and the `:variant`;
-unless that id is listed as-is, it then strips an `-instruct` / `-it` / `-NNN`
-suffix, turns Claude's dotted version into hyphens, and applies the few aliases
-in `MODEL_ALIASES` (`canonical_model_id` in `core/model_tiers.py`). So
-`google/gemini-2.0-flash-001:free` resolves like `gemini-2.0-flash`. The
-configured id is sent to the API unchanged.
+A member's `tier` is **not** configurable: it is resolved from the model ID,
+provider and endpoint context. See [tiers](#tiers) for unknown-model defaults
+and capability-gap warnings.
 
 ## `providers`
 
@@ -183,7 +178,11 @@ the TUI, edit the file:
 
 Tiers drive Speaker assignment and the gap warning, and are internal — there is
 no config key for them. `MODEL_TIERS` in `src/parliament/core/model_tiers.py`
-maps model name to tier; unknown models get `DEFAULT_TIER`, which is 3.
+maps canonical model IDs to capability ratings. Tier lookup uses the provider
+and endpoint context without changing the model ID sent to the API. For
+example, `anthropic/claude-opus-4.6` resolves to tier 1 both with
+`provider: openrouter` and with `provider: openai` pointing at
+`https://openrouter.ai/api/v1`.
 
 | Tier | Label |
 | --- | --- |
@@ -192,6 +191,34 @@ maps model name to tier; unknown models get `DEFAULT_TIER`, which is 3.
 | 3 | capable |
 | 4 | small |
 
-`detect_gap` warns when the spread between any two members exceeds one tier.
-An OpenRouter model that `MODEL_TIERS` cannot place still counts as tier 3 for
-Speaker selection, but is left out of the warning.
+Unknown models receive `DEFAULT_TIER`, which is 3. This fallback is a default,
+not an assessed capability rating: an unlisted model could be frontier-level
+or much weaker. CLI/TUI labels show `unrated (assumed tier 3)`, and warnings
+explain that Speaker selection uses this assumption. These models remain
+eligible for automatic Speaker selection using that fallback tier.
+
+Capability-gap warnings compare **only models with known ratings, for every
+provider**, including Ollama and Anthropic. Unknown models do
+not participate in the rated gap calculation, even when their fallback tier
+differs from a known model's tier. They instead produce an explicit missing-rating
+warning, including when every model is unrated. A spread greater than one tier
+between assessed members produces a separate gap warning. Both warnings may
+appear together; absence of a rated gap never clears a missing-rating flag.
+
+For example, GPT-4o (tier 1) and an unknown Ollama model (fallback tier 3)
+produce a missing-rating warning rather than a rated gap warning. GPT-4o and
+known `llama3.1` (tier 3) produce a gap warning; an unknown third member adds
+a missing-rating warning. With at least two assessed members, no unknowns and
+no large gap, the assessment reports comparable members. Fewer than two assessed
+members do not establish comparability.
+
+Hansard JSON records unassessed configured member names in `unrated_members`.
+These flags remain if a member subsequently fails. TUI results and saved Markdown
+also display the rating warning at every detail level. See the
+[Hansard schema](hansard-schema.md#unrated_members) for compatibility details.
+
+Programmatically constructed mock members are an exception: their supplied
+tiers are synthetic ratings used for testing and are preserved in gap
+comparisons and runtime tier resolution. Known real models' comparison tiers
+are resolved from the catalogue even if a directly constructed `Member` still
+has its default `tier=3`.

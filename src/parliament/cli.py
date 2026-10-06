@@ -27,7 +27,7 @@ from parliament.config import (
     resolve_show_debate,
     save_key,
 )
-from parliament.core.model_tiers import detect_gap, get_tier_label
+from parliament.core.model_tiers import calculate_gap, get_member_tier_label
 from parliament.core.parliament import Parliament
 from parliament.presets import build_mock_preset
 from parliament.render import JsonDiagnosticsRenderer, build_renderer
@@ -272,12 +272,12 @@ def members(config_path: Path | None):
     table.add_column("Tier")
 
     for m in member_list:
-        table.add_row(m.name, m.provider_name, m.model, get_tier_label(m.tier))
+        table.add_row(m.name, m.provider_name, m.model, get_member_tier_label(m))
 
     console.print(table)
 
-    if detect_gap(member_list):
-        console.print("[yellow]Warning: large capability gap between members[/yellow]")
+    for warning in calculate_gap(member_list).warnings():
+        console.print(f"[yellow]Warning: {warning}[/yellow]")
 
 
 @main.command()

@@ -15,6 +15,11 @@ class Provider(ABC):
     name: str  # "ollama", "anthropic", "openai", "google", "mock"
     model: str
 
+    @property
+    def base_url(self) -> str | None:
+        """Configured endpoint, when exposed by the provider implementation."""
+        return None
+
     @abstractmethod
     async def generate(self, prompt: str, system: str | None = None) -> str:
         """Send a prompt, return the model's text response."""
