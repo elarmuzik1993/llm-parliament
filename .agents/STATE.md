@@ -9,28 +9,34 @@ _Updated 2026-10-06_
   as-is wins before suffix folding. Configured and API ids are never rewritten. An unplaced
   OpenRouter model keeps tier 3 but stays out of gap warnings.
 - First-run wizard offers a `cloud-openrouter` preset (#56) when `OPENROUTER_API_KEY` is set.
-- PR #66 (kun-ren, endpoint-aware tiers) is open with a review comment asking for changes; waiting
-  on the contributor. Its endpoint work is wanted. Its all-provider gap exclusion is not, as written.
+- PR #66 (kun-ren, endpoint-aware tiers) has a review comment asking for changes. Its endpoint
+  work is wanted. Its all-provider gap exclusion is not, as written. Rechecked on its head
+  `80afc06`: pytest 700 pass, mypy clean, ruff fails only on `ISC004`; an opus-4-6 member plus
+  an unrated Ollama one returns no gap there, which is the blocking point.
 - Design issue #67 tracks the tier-rating rework (see Decisions).
 
 ## Next
-1. Follow up on PR #66: ruff `ISC004` at `tests/test_parliament.py:212` must be fixed; merge the
+1. Replace the #66 review comment with the edited draft the user holds (2026-10-06): it drops
+   the AI footer, accepts the suffix-folding change, narrows the mock-comment ask to
+   `resolve_member_tier`, links #67 instead of the long-term section, and notes that
+   `Member.tier_base_url` is not a dataclass field (`dataclasses.replace` drops it).
+2. Follow up on PR #66: ruff `ISC004` at `tests/test_parliament.py:212` must be fixed; merge the
    endpoint work once the unrated-model handling is settled (three-state result below), or split it.
    Then update the gap-exclusion decision below to match what lands.
    Review PR #51 (`docs/escalation-gate-plan`), a validation plan doc, one file. Its base is
    behind `main`.
-2. Small follow-ups from the #56 review:
+3. Small follow-ups from the #56 review:
    - AGENTS.md row **C**: `tests/test_first_run_presets.py` now covers the full key x router x
      local matrix, so "not the matrix" is stale.
    - `presets._cloud_openrouter_preset` hardcodes its ids; derive `openai/` and `google/` ones
      from `GPT_4O_MINI` / `GEMINI_FLASH` so they follow the direct presets.
-3. #67, in order: three-state gap result plus `unrated_members` in the Hansard JSON (and
+4. #67, in order: three-state gap result plus `unrated_members` in the Hansard JSON (and
    `docs/hansard-schema.md`); a per-member `tier:` override; Ollama size as a rating source;
    family rules last. Settle the open questions in #67 first.
-4. OpenRouter series: the #37 shortlist and free-model tier entries, then #39 (docs and
+5. OpenRouter series: the #37 shortlist and free-model tier entries, then #39 (docs and
    doctor). Recheck availability and pricing of any model before listing it.
-5. Close the tier gaps below if they matter; #67 covers most of them.
-6. Roadmap and wider plans: #15.
+6. Close the tier gaps below if they matter; #67 covers most of them.
+7. Roadmap and wider plans: #15.
 
 ## Decisions
 - No per-tool agent files: coding agents read `AGENTS.md` directly; agent state lives in
@@ -44,7 +50,7 @@ _Updated 2026-10-06_
   `MODEL_TIERS` is small and already stale (it stops at the 4.6 Claude models and `gpt-4o`), so
   unrated is common. A live leaderboard feed and price-as-capability are ruled out.
 - Suffix folding (`-instruct`, `-it`, `-NNN`) vs explicit aliases, as #66 proposes: acceptable
-  only if unrated models are reported openly. Contributor asked to confirm it is deliberate.
+  only if unrated models are reported openly. The PR already states it is deliberate.
 
 ## Known issues
 - Tier gaps: `provider: openai` with an OpenRouter `base_url` gets no folding; unplaced
@@ -55,5 +61,8 @@ _Updated 2026-10-06_
 - On Windows, `bash scripts/verify.sh` picks the system `python` over the repo `.venv` and
   reports "dev dependencies missing". Workaround: `PATH="$PWD/.venv/Scripts:$PATH" bash
   scripts/verify.sh`, or activate the venv first.
+- In cloud containers, verify.sh's `python -m mypy` fails on numpy's stub in system
+  site-packages (`type` statement, Python 3.12+). Not a repo fault: the pipx `mypy src/parliament`
+  passes, as do ruff and pytest.
 - Stale remote branches: `chore/agent-workflow`, `fix/openrouter-tier-resolution`, and three
   `claude/...` branches. Delete once confirmed unneeded.
