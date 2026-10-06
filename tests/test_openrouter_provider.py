@@ -22,7 +22,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MODEL = "anthropic/claude-sonnet-4.6"
 
 
-def test_config_resolves_tier_without_rewriting_the_api_model(monkeypatch):
+def test_config_resolves_tiers_without_rewriting_api_model(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
     model = "anthropic/claude-opus-4.6"
     config = {"parliament": {"members": [
@@ -31,6 +31,50 @@ def test_config_resolves_tier_without_rewriting_the_api_model(monkeypatch):
     members, providers = build_parliament_from_config(config)
     assert members[0].tier == 1
     assert members[0].model == providers["Opus"].model == model
+    assert config["parliament"]["members"][0]["model"] == model
+
+
+@pytest.mark.parametrize("provider_name", ["openrouter", "openai"])
+async def test_openrouter_config_tiers_survive_runtime_recalculation(provider_name, monkeypatch):
+    from copy import deepcopy
+
+    from parliament.core.model_tiers import detect_gap
+    from parliament.core.parliament import Parliament
+    from parliament.core.types import Hansard
+    from parliament.providers.mock import MockProvider
+
+    async def mock_generate(self, prompt, system=None):
+        return await MockProvider(model=self.model).generate(prompt, system)
+
+    monkeypatch.setattr(OpenAIProvider, "generate", mock_generate)
+    config = {
+        "parliament": {"members": [
+            {"name": "Gemma", "provider": provider_name, "model": "google/gemma-2-9b-it:free"},
+            {"name": "Opus", "provider": provider_name, "model": "anthropic/claude-opus-4.6"},
+        ]},
+        "providers": {provider_name: {"base_url": OPENROUTER_BASE_URL, "api_key": "test-key"}},
+    }
+    original = deepcopy(config)
+    members, providers = build_parliament_from_config(config)
+    assert [m.tier for m in members] == [3, 1]
+    assert detect_gap(members)
+    for member in members:
+        member.tier = 4  # runtime must recompute with the retained endpoint
+    parliament = Parliament(members, providers)
+    assert [m.tier for m in parliament.members] == [3, 1]
+    warnings = parliament.check_gaps()
+    assert len(warnings) == 1
+    assert "Opus (tier 1)" in warnings[0] and "Gemma (tier 3)" in warnings[0]
+    hansard = await parliament.ask("Which database?")
+    assert hansard.synthesis.speaker_name == "Opus"
+    data = hansard.to_dict()
+    assert data["members"] == [
+        {**{k: v for k, v in m.items() if k != "provider"}, "provider_name": provider_name, "tier": t}
+        for m, t in zip(config["parliament"]["members"], [3, 1])
+    ]
+    assert Hansard.from_dict(data).members == hansard.members
+    assert [p.model for p in providers.values()] == [m.model for m in members]
+    assert config == original
 
 
 @pytest.fixture(autouse=True)

@@ -89,6 +89,35 @@ def test_mock_config_uses_mock_members():
     assert [member["name"] for member in members] == ["Mock-A", "Mock-B", "Mock-C"]
 
 
+def test_members_warning_uses_resolved_comparison_tiers(monkeypatch):
+    from parliament.core.types import Member
+
+    members = [
+        Member("Unknown", "ollama", "unassessed", tier=4),
+        Member("GPT", "openai", "gpt-4o"),
+        Member("Tiny", "ollama", "tinyllama", tier=1),
+    ]
+    monkeypatch.setattr(cli, "load_config", lambda _: {})
+    monkeypatch.setattr(cli, "build_parliament_from_config", lambda _: (members, {}))
+    result = CliRunner().invoke(cli.main, ["members"])
+    assert result.exit_code == 0, result.output
+    warning = result.output.split("Warning: ", 1)[1]
+    assert "GPT (tier 1)" in warning
+    assert "Tiny (tier 4)" in warning
+    assert "Unknown" not in warning
+
+
+def test_members_does_not_warn_for_unknown_fallback_tier(monkeypatch):
+    from parliament.core.types import Member
+
+    members = [Member("GPT", "openai", "gpt-4o"), Member("Unknown", "ollama", "unassessed")]
+    monkeypatch.setattr(cli, "load_config", lambda _: {})
+    monkeypatch.setattr(cli, "build_parliament_from_config", lambda _: (members, {}))
+    result = CliRunner().invoke(cli.main, ["members"])
+    assert result.exit_code == 0, result.output
+    assert "Warning:" not in result.output
+
+
 def test_keys_list_empty_shows_keys_file(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "KEYS_FILE", tmp_path / "keys.env")
     monkeypatch.setattr(cli, "load_keys", dict)

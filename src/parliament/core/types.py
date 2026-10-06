@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import InitVar, asdict, dataclass, field
 from datetime import UTC, datetime
 
 
@@ -28,6 +28,12 @@ class Member:
     provider_name: str  # "ollama", "anthropic", "openai", "google", "mock"
     model: str
     tier: int = 3  # resolved from MODEL_TIERS, default = capable
+    base_url: InitVar[str | None] = None
+
+    def __post_init__(self, base_url: str | None) -> None:
+        # Endpoint context is runtime-only; dataclass serialization keeps the
+        # existing Hansard member schema and never writes endpoint credentials.
+        self.tier_base_url = base_url
 
     def __str__(self) -> str:
         return f"{self.name} ({self.provider_name}/{self.model})"

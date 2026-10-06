@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from parliament.core.model_tiers import get_tier
+from parliament.core.model_tiers import resolve_member_tier
 from parliament.core.types import Member
 from parliament.providers import create_provider
 from parliament.providers.base import Provider
@@ -308,29 +308,35 @@ def save_config(config: dict[str, Any], config_path: Path) -> None:
     tmp_path.replace(config_path)
 
 
+def build_members_from_config(config: dict[str, Any]) -> list[Member]:
+    """Resolve members and their endpoint context without creating clients."""
+    provider_configs = config.get("providers", {})
+    return [
+        resolve_member_tier(Member(
+            name=mc["name"],
+            provider_name=mc["provider"],
+            model=mc["model"],
+            base_url=provider_configs.get(mc["provider"], {}).get("base_url"),
+        ))
+        for mc in config["parliament"]["members"]
+    ]
+
+
 def build_parliament_from_config(
     config: dict[str, Any],
 ) -> tuple[list[Member], dict[str, Provider]]:
     """Parse config dict into Members and Providers ready for Parliament."""
-    members = []
+    members = build_members_from_config(config)
     providers = {}
 
     provider_configs = config.get("providers", {})
 
-    for mc in config["parliament"]["members"]:
-        name = mc["name"]
-        provider_name = mc["provider"]
-        model = mc["model"]
-        tier = get_tier(model, provider_name)
-
-        member = Member(name=name, provider_name=provider_name, model=model, tier=tier)
-        members.append(member)
-
+    for member in members:
         # Build provider with any extra config (base_url, api_key, etc.)
         extra = {}
-        if provider_name in provider_configs:
-            extra = {k: v for k, v in provider_configs[provider_name].items()}
+        if member.provider_name in provider_configs:
+            extra = dict(provider_configs[member.provider_name])
 
-        providers[name] = create_provider(provider_name, model, **extra)
+        providers[member.name] = create_provider(member.provider_name, member.model, **extra)
 
     return members, providers

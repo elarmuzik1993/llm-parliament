@@ -62,14 +62,9 @@ CLI flag  >  environment variable  >  config.yaml  >  built-in default
 | `parliament.members[].provider` | string | **required** | One of `ollama`, `anthropic`, `openai`, `google`, `openrouter`, `groq`, `mistral`, `mock`. |
 | `parliament.members[].model` | string | **required** | Also decides the member's tier — see [tiers](#tiers). |
 
-A member's `tier` is **not** configurable: it is resolved from the model name
-through `MODEL_TIERS`, and anything unlisted becomes tier 3. For `provider:
-openrouter` the lookup first strips the `vendor/` prefix and the `:variant`;
-unless that id is listed as-is, it then strips an `-instruct` / `-it` / `-NNN`
-suffix, turns Claude's dotted version into hyphens, and applies the few aliases
-in `MODEL_ALIASES` (`canonical_model_id` in `core/model_tiers.py`). So
-`google/gemini-2.0-flash-001:free` resolves like `gemini-2.0-flash`. The
-configured id is sent to the API unchanged.
+A member's `tier` is **not** configurable: it is resolved from the model ID,
+provider and endpoint context. See [tiers](#tiers) for unknown-model defaults
+and capability-gap warnings.
 
 ## `providers`
 
@@ -183,7 +178,11 @@ the TUI, edit the file:
 
 Tiers drive Speaker assignment and the gap warning, and are internal — there is
 no config key for them. `MODEL_TIERS` in `src/parliament/core/model_tiers.py`
-maps model name to tier; unknown models get `DEFAULT_TIER`, which is 3.
+maps canonical model IDs to capability ratings. Tier lookup uses the provider
+and endpoint context without changing the model ID sent to the API. For
+example, `anthropic/claude-opus-4.6` resolves to tier 1 both with
+`provider: openrouter` and with `provider: openai` pointing at
+`https://openrouter.ai/api/v1`.
 
 | Tier | Label |
 | --- | --- |
@@ -192,6 +191,25 @@ maps model name to tier; unknown models get `DEFAULT_TIER`, which is 3.
 | 3 | capable |
 | 4 | small |
 
-`detect_gap` warns when the spread between any two members exceeds one tier.
-An OpenRouter model that `MODEL_TIERS` cannot place still counts as tier 3 for
-Speaker selection, but is left out of the warning.
+Unknown models receive `DEFAULT_TIER`, which is 3. This fallback is a default,
+not an assessed capability rating: an unlisted model could be frontier-level
+or much weaker. It retains the numeric tier and its display label, and remains
+eligible for automatic Speaker selection using that fallback tier.
+
+Capability-gap warnings compare **only models with known ratings, for every
+provider**, including Ollama and Anthropic. Unknown models do
+not participate in this comparison, even when their fallback tier differs from
+a known model's tier. With fewer than two known models, no capability-gap
+warning is produced. Otherwise, a spread greater than one tier produces a
+warning naming the strongest and weakest known members.
+
+For example, GPT-4o (tier 1) and an unknown Ollama model (fallback tier 3)
+produce no gap warning. GPT-4o and known `llama3.1` (tier 3) do produce one,
+including when an unknown third member is present. This changes the previous
+behavior, which included unknown models' fallback tiers in gap comparisons.
+
+Programmatically constructed mock members are an exception: their supplied
+tiers are synthetic ratings used for testing and are preserved in gap
+comparisons and runtime tier resolution. Known real models' comparison tiers
+are resolved from the catalogue even if a directly constructed `Member` still
+has its default `tier=3`.

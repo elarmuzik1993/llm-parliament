@@ -2,7 +2,9 @@
 
 import curses
 import json
+from copy import deepcopy
 
+import pytest
 import yaml
 
 from parliament import tui as tui_mod
@@ -66,6 +68,57 @@ def test_build_model_settings_speaker_override(monkeypatch):
     by_name = {setting.member.name: setting for setting in settings}
     assert by_name["Llama"].role == "Speaker / member"
     assert by_name["Claude"].role == "Member"
+
+
+def test_openrouter_dashboard_and_editor_resolve_provider_scoped_tiers(monkeypatch):
+    monkeypatch.setattr("parliament.tui.load_keys", dict)
+    config = {"parliament": {"members": [
+        {"name": "Sonnet", "provider": "openrouter", "model": "anthropic/claude-sonnet-4.6"},
+        {"name": "Opus", "provider": "openrouter", "model": "anthropic/claude-opus-4.6"},
+    ]}}
+    settings = build_model_settings(config)
+    assert [s.member.tier for s in settings] == [2, 1]
+    assert settings[1].role == "Speaker / member"
+    editor = MemberEditorState(member_index=0, draft={
+        "name": "GPT", "provider": "openrouter", "model": "openai/gpt-4o", "base_url": "",
+    })
+    preview = tui_mod._preview_members(config, editor)
+    assert [m.tier for m in preview] == [1, 1]
+    assert preview[0].model == "openai/gpt-4o"
+    editor.draft["provider"] = "openai"
+    assert tui_mod._preview_members(config, editor)[0].tier == 3
+
+
+@pytest.mark.parametrize("base_url", [
+    "https://openrouter.ai/api/v1/",
+    "https://gateway.internal/v1",
+])
+def test_openai_endpoint_tui_preview_matches_saved_settings(base_url, monkeypatch):
+    monkeypatch.setattr("parliament.tui.load_keys", dict)
+    config = {"parliament": {"members": [
+        {"name": "Sonnet", "provider": "openai", "model": "anthropic/claude-sonnet-4.6"},
+        {"name": "Opus", "provider": "openai", "model": "anthropic/claude-opus-4.6"},
+        {"name": "Llama", "provider": "ollama", "model": "llama3.1:70b"},
+    ]}, "providers": {"openai": {"base_url": "https://api.openai.com/v1"}}}
+    original = deepcopy(config)
+    assert [s.member.tier for s in build_model_settings(config)] == [3, 3, 2]
+    editor = MemberEditorState(member_index=0, draft={
+        "name": "Sonnet", "provider": "openai", "model": "anthropic/claude-sonnet-4.6",
+        "base_url": base_url,
+    })
+    preview = tui_mod._preview_members(config, editor)
+    expected = [2, 1, 2] if base_url.startswith("https://openrouter.ai/") else [3, 3, 2]
+    assert [m.tier for m in preview] == expected
+    assert config == original
+    tui_mod._apply_member_edit(config, editor.member_index, editor.draft)
+    settings = build_model_settings(config)
+    assert [s.member for s in settings] == preview
+    assert [s.member.tier_base_url for s in settings] == [m.tier_base_url for m in preview]
+    assert settings[1 if expected[1] == 1 else 2].role == "Speaker / member"
+    other_editor = MemberEditorState(member_index=2, draft={
+        "name": "Llama", "provider": "ollama", "model": "llama3.1:8b", "base_url": "",
+    })
+    assert [m.tier for m in tui_mod._preview_members(config, other_editor)] == expected[:2] + [3]
 
 
 def test_app_settings_round_trip(monkeypatch, tmp_path):
