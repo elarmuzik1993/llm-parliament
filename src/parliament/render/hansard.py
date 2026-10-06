@@ -17,6 +17,8 @@ import warnings
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from parliament.core.model_tiers import unrated_warning
+
 if TYPE_CHECKING:
     from parliament.core.types import Hansard
 
@@ -112,6 +114,9 @@ def render_markdown(hansard: Hansard, level: HansardLevel) -> str:
         parts.append("")
 
     s = hansard.synthesis
+
+    if hansard.unrated_members:
+        parts.append(_callout("warning", "Model ratings", unrated_warning(hansard.unrated_members)))
 
     if includes(level, "consensus") and s.consensus.strip():
         parts.append(_callout("info", "Consensus", s.consensus))

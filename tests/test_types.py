@@ -1,6 +1,7 @@
 """Test core types — serialization round-trips, construction."""
 
 import json
+from dataclasses import replace
 
 from parliament.core.types import Bill, Hansard, Member, Response, Synthesis
 
@@ -79,3 +80,30 @@ def test_hansard_json_roundtrip():
     data = json.loads(j)
     restored = Hansard.from_dict(data)
     assert restored.bill.content == "json test"
+
+
+def test_member_endpoint_survives_replace_but_stays_out_of_public_data():
+    from parliament.core.model_tiers import resolve_member_tier
+
+    member = Member("Opus", "openai", "anthropic/claude-opus-4.6",
+                    base_url="https://openrouter.ai/api/v1")
+    copied = replace(member, name="Copy")
+    assert copied.base_url == member.base_url
+    assert resolve_member_tier(copied).tier == 1
+    assert "openrouter.ai" not in repr(copied)
+    assert replace(member, base_url="https://other.example/v1") == member
+    hansard = Hansard(Bill("Q"), [copied], [], [], Synthesis("Copy"), unrated_members=[])
+    data = hansard.to_dict()
+    assert set(data["members"][0]) == {"name", "provider_name", "model", "tier"}
+    assert "openrouter.ai" not in hansard.to_json()
+    assert Hansard.from_dict(data).members == hansard.members
+
+
+def test_unrated_members_json_roundtrip_and_old_records():
+    hansard = Hansard(Bill("Q"), [Member("Mystery", "ollama", "unassessed")], [], [],
+                      Synthesis("Mystery"), unrated_members=["Mystery"])
+    data = json.loads(hansard.to_json())
+    assert data["unrated_members"] == ["Mystery"]
+    assert Hansard.from_dict(data).unrated_members == ["Mystery"]
+    data.pop("unrated_members")
+    assert Hansard.from_dict(data).unrated_members == []

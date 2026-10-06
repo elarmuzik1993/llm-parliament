@@ -12,6 +12,24 @@ _LIVE_DEBATE_MARKER = "Debate"
 _LIVE_DIVISION_MARKER = "Division"
 
 
+def test_ask_json_preserves_unrated_flag_and_warns_on_stderr(monkeypatch):
+    from parliament.core.types import Member
+    from parliament.providers.mock import MockProvider
+
+    members = [Member("Mystery", "ollama", "unassessed"), Member("Tiny", "ollama", "tinyllama")]
+    monkeypatch.setattr(cli, "load_config", lambda _: {})
+    monkeypatch.setattr(
+        cli, "build_parliament_from_config",
+        lambda _: (members, {m.name: MockProvider() for m in members}),
+    )
+    result = CliRunner().invoke(cli.main, ["ask", "--json", "Test question"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["unrated_members"] == ["Mystery"]
+    assert "Unrated members:" in result.stderr
+    assert "assumed tier 3" in " ".join(result.stderr.split())
+
+
+
 def test_version_flag_prints_version():
     """`parliament --version` prints the installed version and exits 0."""
     from parliament import __version__
@@ -104,10 +122,10 @@ def test_members_warning_uses_resolved_comparison_tiers(monkeypatch):
     warning = result.output.split("Warning: ", 1)[1]
     assert "GPT (tier 1)" in warning
     assert "Tiny (tier 4)" in warning
-    assert "Unknown" not in warning
+    assert "Unknown (unrated, assumed tier 3)" in " ".join(warning.split())
 
 
-def test_members_does_not_warn_for_unknown_fallback_tier(monkeypatch):
+def test_members_warns_about_unknown_fallback_tier(monkeypatch):
     from parliament.core.types import Member
 
     members = [Member("GPT", "openai", "gpt-4o"), Member("Unknown", "ollama", "unassessed")]
@@ -115,7 +133,8 @@ def test_members_does_not_warn_for_unknown_fallback_tier(monkeypatch):
     monkeypatch.setattr(cli, "build_parliament_from_config", lambda _: (members, {}))
     result = CliRunner().invoke(cli.main, ["members"])
     assert result.exit_code == 0, result.output
-    assert "Warning:" not in result.output
+    assert "unrated" in result.output
+    assert "Capability comparison is incomplete" in " ".join(result.output.split())
 
 
 def test_keys_list_empty_shows_keys_file(monkeypatch, tmp_path):

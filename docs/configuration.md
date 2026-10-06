@@ -193,20 +193,29 @@ example, `anthropic/claude-opus-4.6` resolves to tier 1 both with
 
 Unknown models receive `DEFAULT_TIER`, which is 3. This fallback is a default,
 not an assessed capability rating: an unlisted model could be frontier-level
-or much weaker. It retains the numeric tier and its display label, and remains
+or much weaker. CLI/TUI labels show `unrated (assumed tier 3)`, and warnings
+explain that Speaker selection uses this assumption. These models remain
 eligible for automatic Speaker selection using that fallback tier.
 
 Capability-gap warnings compare **only models with known ratings, for every
 provider**, including Ollama and Anthropic. Unknown models do
-not participate in this comparison, even when their fallback tier differs from
-a known model's tier. With fewer than two known models, no capability-gap
-warning is produced. Otherwise, a spread greater than one tier produces a
-warning naming the strongest and weakest known members.
+not participate in the rated gap calculation, even when their fallback tier
+differs from a known model's tier. They instead produce an explicit missing-rating
+warning, including when every model is unrated. A spread greater than one tier
+between assessed members produces a separate gap warning. Both warnings may
+appear together; absence of a rated gap never clears a missing-rating flag.
 
 For example, GPT-4o (tier 1) and an unknown Ollama model (fallback tier 3)
-produce no gap warning. GPT-4o and known `llama3.1` (tier 3) do produce one,
-including when an unknown third member is present. This changes the previous
-behavior, which included unknown models' fallback tiers in gap comparisons.
+produce a missing-rating warning rather than a rated gap warning. GPT-4o and
+known `llama3.1` (tier 3) produce a gap warning; an unknown third member adds
+a missing-rating warning. With at least two assessed members, no unknowns and
+no large gap, the assessment reports comparable members. Fewer than two assessed
+members do not establish comparability.
+
+Hansard JSON records unassessed configured member names in `unrated_members`.
+These flags remain if a member subsequently fails. TUI results and saved Markdown
+also display the rating warning at every detail level. See the
+[Hansard schema](hansard-schema.md#unrated_members) for compatibility details.
 
 Programmatically constructed mock members are an exception: their supplied
 tiers are synthetic ratings used for testing and are preserved in gap

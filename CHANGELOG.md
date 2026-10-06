@@ -8,11 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **Capability-gap comparisons across providers** — unassessed real models no
-  longer participate in gap warnings. Fallback tier 3 remains the default for
-  Speaker selection, not an assessed rating. Explicit mock tiers remain usable
-  as synthetic ratings. This extends the OpenRouter-only policy from #65 to
-  Ollama, Anthropic and other real providers.
+- **Capability assessments across providers** — distinguish assessed large gaps,
+  comparable rated members and missing ratings. Unassessed models are reported
+  explicitly in warnings and Hansard JSON's `unrated_members`, rather than
+  manufacturing a rated gap or silently disappearing. Fallback tier 3 remains
+  a Speaker-selection assumption; explicit mock tiers remain synthetic ratings.
 - **Unassessed OpenRouter variants** — unfamiliar tuning and revision IDs remain
   unassessed rather than inheriting a known model's capability rating.
 
@@ -98,6 +98,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Member endpoint copies** — dataclass replacement retains endpoint context;
+  the endpoint is excluded from equality, repr and Hansard serialization.
 - **OpenRouter endpoint tier context** — `provider: openai` with OpenRouter's
   registered endpoint receives the same tiers as `provider: openrouter` in
   configuration, TUI previews and runtime Speaker selection.

@@ -232,7 +232,7 @@ def test_gap_resolves_known_comparison_tiers_without_mutating_members(provider, 
     small = Member(name="Small", provider_name="ollama", model="tinyllama", tier=1)
     unknown = Member(name="Unknown", provider_name="ollama", model="unassessed", tier=4)
     members = [unknown, small, frontier]
-    gap = calculate_gap(members)
+    gap = calculate_gap(members).gap
     assert gap is not None
     assert gap.strongest is frontier and gap.strongest_tier == 1
     assert gap.weakest is small and gap.weakest_tier == 4
@@ -248,17 +248,53 @@ def test_gap_resolves_known_comparison_tiers_without_mutating_members(provider, 
     [Member("A", "openai", "gpt-4o"), Member("B", "openai", "gpt-4o-mini")],
     [Member("A", "openai", "gpt-4o"), Member("B", "google", "gemini-2.5-pro")],
 ])
-def test_calculate_gap_returns_none_without_a_comparable_large_gap(members):
-    assert calculate_gap(members) is None
+def test_calculate_gap_reports_no_assessed_large_gap(members):
+    assert calculate_gap(members).gap is None
     assert not detect_gap(members)
 
 
 def test_gap_and_resolution_preserve_supplied_mock_tiers():
     strongest = Member("Mock strongest", "mock", "unlisted", tier=1)
     weakest = Member("Mock weakest", "mock", "gpt-4o", tier=4)
-    gap = calculate_gap([weakest, strongest])
+    gap = calculate_gap([weakest, strongest]).gap
     assert gap is not None
     assert gap.strongest is strongest and gap.strongest_tier == 1
     assert gap.weakest is weakest and gap.weakest_tier == 4
     assert resolve_member_tier(strongest).tier == 1
     assert resolve_member_tier(weakest).tier == 4
+
+
+def test_comparable_is_distinct_from_missing_ratings():
+    rated = [Member("GPT", "openai", "gpt-4o"), Member("Pro", "google", "gemini-2.5-pro")]
+    comparable = calculate_gap(rated)
+    assert comparable.comparable
+    assert comparable.warnings() == []
+    unknown = Member("Mystery", "ollama", "unassessed")
+    incomplete = calculate_gap(rated + [unknown])
+    assert incomplete.gap is None
+    assert not incomplete.comparable
+    assert incomplete.unrated_members == (unknown,)
+    assert "Mystery (unrated, assumed tier 3)" in incomplete.warnings()[0]
+
+
+def test_assessed_gap_and_unrated_members_both_remain_visible():
+    members = [
+        Member("GPT", "openai", "gpt-4o"), Member("Tiny", "ollama", "tinyllama"),
+        Member("Mystery", "ollama", "unassessed"),
+    ]
+    result = calculate_gap(members)
+    assert result.gap is not None
+    assert not result.comparable
+    assert [m.name for m in result.unrated_members] == ["Mystery"]
+    assert len(result.warnings()) == 2
+
+
+def test_all_unrated_and_insufficient_members_are_not_comparable():
+    unknowns = [Member("A", "ollama", "unassessed"), Member("B", "openai", "unassessed")]
+    result = calculate_gap(unknowns)
+    assert result.rated_count == 0
+    assert result.unrated_members == tuple(unknowns)
+    assert len(result.warnings()) == 1
+    assert not result.comparable
+    for members in ([], [Member("GPT", "openai", "gpt-4o")]):
+        assert not calculate_gap(members).comparable

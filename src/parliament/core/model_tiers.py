@@ -127,6 +127,22 @@ def get_tier_label(tier: int) -> str:
     return TIER_LABELS.get(tier, "unknown")
 
 
+def get_member_tier_label(member: Member) -> str:
+    if member.provider_name == "mock":
+        return get_tier_label(member.tier)
+    if not has_known_tier(member.model, member.provider_name, member.tier_base_url):
+        return f"unrated (assumed tier {DEFAULT_TIER})"
+    return get_tier_label(get_tier(member.model, member.provider_name, member.tier_base_url))
+
+
+def unrated_warning(names: list[str]) -> str:
+    labels = ", ".join(f"{name} (unrated, assumed tier {DEFAULT_TIER})" for name in names)
+    return (
+        f"Unrated members: {labels}. Capability comparison is incomplete; "
+        f"Speaker selection assumes tier {DEFAULT_TIER} for these models."
+    )
+
+
 @dataclass(frozen=True)
 class TierGap:
     strongest: Member
@@ -142,9 +158,27 @@ class TierGap:
         )
 
 
-def calculate_gap(members: list[Member]) -> TierGap | None:
-    """Compare assessed tiers without changing members; return only a large gap."""
+@dataclass(frozen=True)
+class TierAssessment:
+    gap: TierGap | None
+    unrated_members: tuple[Member, ...]
+    rated_count: int
+
+    @property
+    def comparable(self) -> bool:
+        return self.rated_count >= 2 and self.gap is None and not self.unrated_members
+
+    def warnings(self) -> list[str]:
+        warnings = [self.gap.warning()] if self.gap is not None else []
+        if self.unrated_members:
+            warnings.append(unrated_warning([m.name for m in self.unrated_members]))
+        return warnings
+
+
+def calculate_gap(members: list[Member]) -> TierAssessment:
+    """Report assessed gaps and missing ratings without changing members."""
     comparisons: list[tuple[Member, int]] = []
+    unrated: list[Member] = []
     for member in members:
         # Mock tiers are supplied synthetic ratings, not unknown-model defaults.
         if member.provider_name == "mock":
@@ -153,29 +187,31 @@ def calculate_gap(members: list[Member]) -> TierGap | None:
             model = canonical_model_id(member.model, member.provider_name, member.tier_base_url)
             known_tier = MODEL_TIERS.get(model)
             if known_tier is None:
+                unrated.append(member)
                 continue
             tier = known_tier
         comparisons.append((member, tier))
-    if len(comparisons) < 2:
-        return None
-    strongest, strongest_tier = min(comparisons, key=lambda comparison: comparison[1])
-    weakest, weakest_tier = max(comparisons, key=lambda comparison: comparison[1])
-    if weakest_tier - strongest_tier <= 1:
-        return None
-    return TierGap(strongest, strongest_tier, weakest, weakest_tier)
+    gap = None
+    if len(comparisons) >= 2:
+        strongest, strongest_tier = min(comparisons, key=lambda comparison: comparison[1])
+        weakest, weakest_tier = max(comparisons, key=lambda comparison: comparison[1])
+        if weakest_tier - strongest_tier > 1:
+            gap = TierGap(strongest, strongest_tier, weakest, weakest_tier)
+    return TierAssessment(gap, tuple(unrated), len(comparisons))
 
 
 def detect_gap(members: list[Member]) -> bool:
-    """True when the tier gap between classified members exceeds 1.
-    This is used to warn when a Speaker may be needed to bridge the gap.
-    return False when there are not enough classified models to determine a gap,
-    or when the gap is 1 or less.
+    """Return whether assessed members have a gap greater than one tier.
+
+    False does not establish comparability: use calculate_gap() to inspect
+    missing ratings and warnings as well.
     """
-    return calculate_gap(members) is not None
+    return calculate_gap(members).gap is not None
 
 
 def resolve_member_tier(member: Member) -> Member:
     """Resolve a member's tier in place, preserving its API model ID."""
+    # Preserve synthetic mock ratings supplied by tests and programmatic callers.
     if member.provider_name != "mock":
         member.tier = get_tier(member.model, member.provider_name, member.tier_base_url)
     return member

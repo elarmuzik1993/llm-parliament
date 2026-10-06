@@ -176,9 +176,9 @@ class Parliament:
             synthesis=synthesis,
             duration_ms=duration_ms,
             degraded=degraded,
+            unrated_members=[m.name for m in calculate_gap(self.members).unrated_members],
         )
 
     def check_gaps(self) -> list[str]:
-        """Return warning strings if tier gaps exist. Never blocks."""
-        gap = calculate_gap(self.members)
-        return [gap.warning()] if gap is not None else []
+        """Report assessed gaps and missing ratings. Never blocks."""
+        return calculate_gap(self.members).warnings()

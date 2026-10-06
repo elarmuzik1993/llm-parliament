@@ -32,7 +32,7 @@ from parliament.config import (
     save_config,
     save_key,
 )
-from parliament.core.model_tiers import get_tier_label
+from parliament.core.model_tiers import get_member_tier_label, unrated_warning
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
 from parliament.model_catalog import picker_data_for
@@ -1077,7 +1077,7 @@ def _draw_member_editor(
     ]
     derived_rows = [
         ("Name", draft["name"] or "(set by model)"),
-        ("Tier", get_tier_label(preview_member.tier)),
+        ("Tier", get_member_tier_label(preview_member)),
         ("Role", _member_role(preview_member, speaker_name)),
         ("API key", api_key_status(draft["provider"])),
     ]
@@ -1290,7 +1290,7 @@ def _draw_dashboard(
         member = setting.member
         text = (
             f"{marker} {member.name:<20} {member.provider_name:<10} "
-            f"{member.model:<24} {get_tier_label(member.tier):<8}"
+            f"{member.model:<24} {get_member_tier_label(member):<8}"
         )
         attr = curses.A_REVERSE if idx == selected and focus == "members" else curses.A_NORMAL
         _add_line(stdscr, row, 0, text, attr, list_width)
@@ -1657,6 +1657,8 @@ def _result_lines(hansard: Hansard, level: HansardLevel | None = None, width: in
     calls = len(hansard.members) * 2 + 1
     q = f"Question: {hansard.bill.content}"
     lines = [*_wrap_text(q, width), ""]
+    if hansard.unrated_members:
+        lines.extend(["RATING WARNING", *_wrap_text(unrated_warning(hansard.unrated_members), width), ""])
 
     for section_key, heading, value in (
         ("consensus",      "CONSENSUS",      synthesis.consensus),
@@ -1703,7 +1705,7 @@ def _settings_rows(setting: ModelSettings) -> list[tuple[str, str]]:
         ("Name", member.name),
         ("Provider", member.provider_name),
         ("Model", member.model),
-        ("Tier", get_tier_label(member.tier)),
+        ("Tier", get_member_tier_label(member)),
         ("Role", setting.role),
         ("API key", setting.api_key_status),
         ("Base URL", setting.base_url),
