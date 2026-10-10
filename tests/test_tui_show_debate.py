@@ -47,7 +47,9 @@ def fake_run(monkeypatch):
     captured: dict[str, Any] = {}
 
     class _StubParliament:
-        def __init__(self, members, providers, on_progress=None, speaker_override=None):
+        def __init__(
+            self, members, providers, on_progress=None, speaker_override=None, outside_speaker=None
+        ):
             captured["on_progress"] = on_progress
             captured["members"] = members
 

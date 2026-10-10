@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 
 from parliament.core.model_tiers import calculate_gap, resolve_member_tier
-from parliament.core.types import Bill, Hansard, Member, ProgressEvent
+from parliament.core.types import Bill, Hansard, Member, ProgressEvent, Synthesis
 from parliament.procedures.debate import run_debate
 from parliament.procedures.division import run_division
 from parliament.procedures.first_reading import run_first_reading
@@ -67,6 +67,7 @@ class Parliament:
         providers: dict[str, Provider],
         on_progress: ProgressCallback | None = None,
         speaker_override: str | None = None,
+        outside_speaker: tuple[Member, Provider] | None = None,
     ) -> None:
         if len(members) < 2:
             raise ValueError("Parliament requires at least 2 members")
@@ -77,6 +78,7 @@ class Parliament:
         self.providers = providers
         self.on_progress = on_progress or _noop_progress
         self.speaker_override = speaker_override
+        self.outside_speaker = outside_speaker
 
         # Validate every member has a provider
         for m in self.members:
@@ -119,7 +121,31 @@ class Parliament:
             m for m in self.members if m.name in debating_member_names
         ]
         division_failures: list[str] = []
-        while True:
+        synthesis: Synthesis | None = None
+
+        # A configured outside Speaker did not debate, so it has no position
+        # of its own to favour (#73). An explicit --speaker naming a member
+        # still wins; a failure falls back to a member rather than losing the
+        # debate.
+        requested = (self.speaker_override or "").lower()
+        override_is_member = any(m.name.lower() == requested for m in surviving_members)
+        if self.outside_speaker is not None and not override_is_member:
+            outside, outside_provider = self.outside_speaker
+            try:
+                synthesis = await run_division(
+                    bill=bill,
+                    members=self.members,
+                    debate_responses=debate,
+                    speaker=outside,
+                    speaker_provider=outside_provider,
+                    on_progress=self.on_progress,
+                )
+            except Exception as exc:
+                division_failures.append(
+                    f"  - {outside.name}: {format_provider_error(exc)}"
+                )
+
+        while synthesis is None:
             if len(surviving_members) < 2:
                 raise RuntimeError(
                     "Not enough members responded to continue "

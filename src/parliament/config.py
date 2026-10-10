@@ -340,3 +340,30 @@ def build_parliament_from_config(
         providers[member.name] = create_provider(member.provider_name, member.model, **extra)
 
     return members, providers
+
+
+def build_speaker_from_config(config: dict[str, Any]) -> tuple[Member, Provider] | None:
+    """Build the outside Speaker from `parliament.speaker`, if one is configured.
+
+    An outside Speaker writes the synthesis without having debated, so it has
+    no position of its own to favour (#73).
+    """
+    sc = config.get("parliament", {}).get("speaker")
+    if not sc:
+        return None
+    name = sc.get("name", "Speaker")
+    for mc in config["parliament"]["members"]:
+        if mc["name"].lower() == name.lower():
+            raise ValueError(
+                f"parliament.speaker is named '{name}', the same as member '{mc['name']}'. "
+                "Give the Speaker a different name."
+            )
+    provider_configs = config.get("providers", {})
+    speaker = resolve_member_tier(Member(
+        name=name,
+        provider_name=sc["provider"],
+        model=sc["model"],
+        base_url=provider_configs.get(sc["provider"], {}).get("base_url"),
+    ))
+    extra = dict(provider_configs.get(sc["provider"], {}))
+    return speaker, create_provider(speaker.provider_name, speaker.model, **extra)

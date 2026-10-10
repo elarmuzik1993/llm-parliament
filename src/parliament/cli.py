@@ -18,6 +18,7 @@ from parliament.config import (
     KEY_PROVIDERS,
     KEYS_FILE,
     build_parliament_from_config,
+    build_speaker_from_config,
     get_keyring_key,
     load_config,
     load_keys,
@@ -209,6 +210,7 @@ def ask(
             providers=providers,
             on_progress=renderer.emit,
             speaker_override=speaker,
+            outside_speaker=build_speaker_from_config(config),
         )
 
         for warning in p.check_gaps():
