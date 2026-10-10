@@ -26,7 +26,11 @@ If the parliament invents a split here, the disagreement is theater.
 
 ## Steps
 
-1. Use Windows Terminal. Run `parliament doctor`; OpenRouter should show as configured.
+1. Use Windows Terminal. Store the key with `parliament keys set openrouter <key>`
+   in your own terminal; it takes the key only as an argument, so don't run it
+   anywhere that records the command. Run `parliament doctor`; OpenRouter
+   should show as configured. To keep an existing config, put the three members
+   in a separate file and pass it with `--config`.
 2. Baseline: ask one of the three models alone (a single-member config or the
    provider's own chat) with the main question. Save the answer.
 3. Run `parliament ask --json "<main question>"` and save the output to a file.
@@ -62,3 +66,43 @@ parliament is an expensive single call at this setup.
 
 Wall time, rough cost from the OpenRouter dashboard, models used, and whether
 any members dropped. Redact keys as `***` before sharing any output.
+
+## Results: 2026-10-10
+
+Windows 11, Python 3.14, `main` at `5d7c2d4`. The OpenRouter preset:
+`anthropic/claude-sonnet-4.6`, `openai/gpt-4o-mini`, `google/gemini-2.5-flash`.
+All three were rated tier 2 and none were unrated. The baseline is a single call
+to Sonnet 4.6 with the bare question. Total cost for everything below: $0.27.
+
+| Run | Wall | First Reading picks | Verdict | Degraded |
+|---|---|---|---|---|
+| Main #1 | 146s | Claude C, GPT-Mini A, Gemini B | C | no |
+| Main #2 | 101s | Claude C, GPT-Mini A, Gemini C | C | no |
+| Control | 117s | all hash, none encrypt | argon2id hashing | no |
+| Baseline | 50s | | C | |
+
+| Check | Result |
+|---|---|
+| First Reading positions | Pass. Three options in run 1, two in run 2. |
+| Split section | Partial. Names who disagreed and why, but the split left is narrow: C alone first, or C and B together. |
+| Debate effect | Pass, with a caveat. Both weaker members switched to the strongest member's position. GPT-Mini picked A and dropped it in both runs, after a thin critique. |
+| Risks | Weak pass. It adds two points the baseline doesn't make: whether the blocking queries are reads or writes, and how fragile the freeze is politically. The baseline is more concrete on fixes. |
+| Speaker fairness | Fail. The Speaker was also a member and sided with itself in every split; see #73. |
+| Control | Pass. It agreed on the main question. The split it reported is on real side issues: PBKDF2 as a fallback, security questions, argon2 variants. |
+| Stability | Pass. Same verdict and the same first steps both times. |
+| Verdict vs baseline | Marginal. The same answer in about 3x the wall time. What it adds is the reads-or-writes framing. |
+
+**Verdict:** at this setup the parliament gives the same answer as its strongest
+member. The disagreement in First Reading is real, but the debate mostly
+converges on the strongest member rather than sharpening the split, and the
+Speaker's judgement of the split cannot be trusted while it is a member (#73).
+
+**Bugs found:**
+- #72: the synthesis parser strips bold markers from section edges, leaving a
+  stray `**` in the verdict.
+- #73: on tied tiers the first member is always the Speaker, and it credits
+  itself.
+- #74: `doctor` and `ask` crash with `UnicodeEncodeError` when output is
+  redirected on Windows. `--json` is unaffected.
+
+**Not yet run:** step 5 (TUI) and the Windows-specific checks above.
