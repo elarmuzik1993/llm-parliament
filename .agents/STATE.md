@@ -11,19 +11,16 @@ _Updated 2026-10-10_
   when the outside Speaker shares a member's model, or when tied members leave the Speaker to
   be picked by order. The TUI shows neither these nor the tier warnings.
 - `docs/live-test-windows.md` holds the Windows/OpenRouter live test plan and four result sets.
-  Headline, on the memory-safety question: single calls to Sonnet 5.5 / GPT-5.6 Sol /
-  Gemini 3.1 Pro give a confident letter that changes with wording. Eight debates (those three,
-  Grok 4.7 as outside Speaker) gave B 6 times and A twice, but all eight gave the same first
-  step and switch conditions: a stable decision procedure, not a stable letter. A member changed
-  its mind in 5 of 8 runs. The original monolith question no longer divides frontier models.
-- Judge swap (same 8 debates re-judged): outside judges (Grok, DeepSeek, Kimi) agree on 7 of 8,
-  so the verdict tracks the debate. A judge that shares a member's model (Sonnet) sided with
-  that member in 2 of 8, against all outside judges, despite anonymised input.
-- Contributor PRs are open for #72 (synthesis parser strips bold) and #74 (Windows encoding crash).
+  Headline: on a contested question, eight debates (Sonnet 5.5, GPT-5.6 Sol, Gemini 3.1 Pro;
+  Grok 4.7 as outside Speaker) gave B 6 times and A twice, but always the same first step and
+  switch conditions, where single calls change their answer with the wording. Re-judging the
+  same debates, outside judges agreed on 7 of 8; a judge sharing a member's model sided with it.
 
 ## Next
-1. Review the #72 and #74 contributor PRs. The #72 one edits `procedures/division.py`, which the
-   #73 fix also changed, so check it rebased and that `test_speaker_neutrality.py` still passes.
+1. When the contributors update their PRs for #72 and #74, re-review against the posted
+   reviews. #72's must keep same-line bold headers (`**CONSENSUS:** text`) parsing cleanly. #74's
+   first version replaced all of `cli.py` with `PLACEHOLDER_CLI`; read the real diff before
+   approving its CI workflows.
 2. Test a second contested question to see if "stable procedure, unstable letter" generalises.
    The analytics-database question in the doc's screen is the next candidate. Run debates
    **one at a time**; check the OpenRouter balance first (about $4.60 on 2026-10-10).
