@@ -16,7 +16,9 @@ First Reading, Debate, and Division. The result is a structured verdict with
 consensus, split views, risks, and a recommendation.
 
 Built on multi-agent debate, a technique shown to improve AI accuracy by
-7-15% in research (Liang et al. 2023, Chen et al. 2023).
+7-15% in research (Liang et al. 2023, Chen et al. 2023). Our own live tests,
+including where it does *not* help, are summarised under
+[When it helps — measured](#when-it-helps--measured).
 
 See [CHANGELOG.md](CHANGELOG.md) for the release history.
 
@@ -110,6 +112,7 @@ parliament doctor
 - All cloud provider SDKs (Anthropic, Google, OpenAI) are bundled. No extras needed.
 - Ollama (for local models) is a separate native daemon — install from <https://ollama.com> if you want local models. The `parliament doctor` command tells you what's detected.
 - On Windows, the install pulls in `windows-curses` automatically so the TUI works out of the box. Windows Terminal is recommended over `cmd.exe` (better VT/UTF-8 support); legacy `cmd.exe` is supported.
+- On Windows, redirecting `parliament doctor` or `parliament ask` output to a file (`> out.txt`) currently crashes with `UnicodeEncodeError` ([#74](https://github.com/elarmuzik1993/llm-parliament/issues/74)). Until it's fixed, run `$env:PYTHONIOENCODING = "utf-8"` first. `parliament ask --json` is not affected.
 - Keys are stored in the OS native credential store (Windows Credential Manager, macOS Keychain, GNOME Keyring) via `parliament keys set`. Falls back to `~/.parliament/keys.env` if no keyring is available.
 
 ## Verify your install
@@ -189,6 +192,30 @@ writes a mock preset, not the next available cloud or local preset.
 every key, its type, its real default, and the environment variable or CLI flag
 that overrides it — plus `settings.json`, which the TUI writes and this file
 does not cover.
+
+### Choosing the Speaker
+
+The Speaker writes the final verdict. By default it is one of the members: the
+strongest by tier, or the first listed when they tie. In our tests a member
+Speaker tended to side with its own position, even with member names hidden
+from it. A Speaker that did not debate has no position to defend:
+
+```yaml
+parliament:
+  members:
+    - {name: Claude, provider: openrouter, model: anthropic/claude-sonnet-5.5}
+    - {name: GPT,    provider: openrouter, model: openai/gpt-5.6-sol}
+    - {name: Gemini, provider: openrouter, model: google/gemini-3.1-pro-preview}
+  speaker:
+    name: Grok
+    provider: openrouter
+    model: x-ai/grok-4.7
+```
+
+Pick a model that is not on the panel. `parliament ask` warns when the Speaker
+shares a member's model, and when tied members leave the choice to list order.
+If the outside Speaker fails, a member takes over, and `--speaker <member>`
+still overrides it.
 
 ## Optional: Local Models (Ollama)
 
@@ -331,6 +358,32 @@ can use `provider: openai`: point `providers.openai` at its
 gateways, and small vendors that ship only an OpenAI-shaped endpoint all fall
 into this category.
 
+## When it helps — measured
+
+We ran live tests on Windows through OpenRouter (October 2026). The full
+method, every run and the raw tallies are in
+[`docs/live-test-windows.md`](docs/live-test-windows.md). In short:
+
+- **Easy or settled questions: no gain.** When the answer is a best practice
+  (how to store passwords, say), all three members agree, and one good model
+  gives the same answer faster and cheaper.
+- **An uneven panel acts like its strongest member.** With one strong model and
+  two cheap ones, the cheap members came round to the strong one. The verdict
+  was the strong model's answer, at about 3× the time.
+- **Contested judgement calls: a consistent way to decide, not a fixed answer.**
+  On a question where experts genuinely differ, with three evenly matched
+  frontier models and an outside Speaker, 8 debates chose one option 6 times
+  and another twice. All 8 gave the same first step and the same conditions
+  for switching. In 5 of 8 a member changed its mind on a peer's argument.
+  A single model asked the same question gave different answers depending on
+  the wording.
+- **The Speaker matters.** Re-judging the same 8 debates, three outside
+  Speakers agreed on 7. A Speaker running the same model as a member sided
+  with that member. See [Choosing the Speaker](#choosing-the-speaker).
+
+Use it for decisions with real trade-offs, and read the Split and the
+conditions for switching, not only the recommended option.
+
 ## Does it cost 3× more?
 
 Yes — Parliament makes more API calls than asking a single model: 3 for First
@@ -345,6 +398,11 @@ Reading, 3 for Debate, 1 for Division (7 total). On cloud APIs, that's real mone
 | Parliament — 3× mid-tier (Sonnet + GPT-4o + Flash) | ~$0.15–0.30 | High-stakes architecture or strategy calls |
 | Parliament — local Ollama models | ~$0.00 | Any decision, no API cost |
 
+Measured on OpenRouter in October 2026: under $0.10 a debate for Sonnet 4.6,
+GPT-4o-mini and Gemini 2.5 Flash, and about $0.25 for Sonnet 5.5, GPT-5.6 Sol
+and Gemini 3.1 Pro with an outside Speaker. A debate took about 1.5–3 minutes;
+a single call to one of those models took 20–50 seconds.
+
 **The right question is whether that cost is worth it for the specific decision.**
 
 Parliament is designed for decisions where being wrong is expensive — architecture
@@ -357,9 +415,11 @@ model. Parliament is a deliberation tool, not a throughput tool.
 
 **Three reasons the cost argument flips:**
 
-1. **Tier mixing closes the gap.** One strong model for Division + two fast cheap
-   models for First Reading and Debate is the default wizard preset — total cost
-   is close to a single mid-tier call, with multi-perspective quality.
+1. **Tier mixing cuts the cost, but also the disagreement.** One strong model
+   plus two cheap ones (as in the OpenRouter wizard preset) costs much less
+   than three strong ones. In our tests, though, the cheap members came round
+   to the strong one, so the verdict was mostly that model's answer. For a real
+   debate, use evenly matched members.
 
 2. **Local models make it free.** Ollama runs 3B–13B models on commodity hardware
    at no API cost. For anyone who can run two small local models, the "3×" concern
@@ -374,7 +434,7 @@ model. Parliament is a deliberation tool, not a throughput tool.
 
 | Approach | Effect |
 |----------|--------|
-| Mix cheap models for First Reading + Debate, one strong model for Division only | Total cost comparable to a single mid-tier call |
+| Three evenly matched cheaper members, with a stronger model as the outside `speaker` | Strong judgement only where it is spent once (not measured yet) |
 | Run local Ollama models for some or all members | No API cost — just electricity |
 | `parliament ask "..." --mock` | Zero cost — useful for exploring the format |
 
@@ -404,7 +464,7 @@ parliament ask "Which queue should we use?" --json
 # Hide the live debate panels and only print the final verdict
 parliament ask "Quick check?" --no-show-debate
 
-# Choose the Speaker for the final synthesis
+# Make a member the Speaker (overrides parliament.speaker; see "Choosing the Speaker")
 parliament ask "What are the main risks?" --speaker Claude
 
 # Show configured members
@@ -569,6 +629,10 @@ src/parliament/
   providers/              Adapters for Ollama, OpenAI, Anthropic, Google, plus Mock
   render/                 HansardLevel + terminal/markdown renderers + live CLI/TUI views
 tests/                    Pytest suite (pytest-asyncio)
+docs/
+  configuration.md        Every config key, default and override
+  hansard-schema.md       JSON schema emitted by `parliament ask --json`
+  live-test-windows.md    Live test plan and results (what the debate adds, and when)
 scripts/
   diagnose-render.py      Render diagnostic — colors + spinner debugging
 config.example.yaml       Default config template (fallback if first-run wizard fails)
