@@ -466,3 +466,35 @@ def test_update_cli_pull_failure_exits_one(monkeypatch):
     result = CliRunner().invoke(cli.main, ["update"])
     assert result.exit_code == 1
     assert "fail" in result.output.lower() or "conflict" in result.output.lower()
+
+
+def test_cp1252_redirect_does_not_crash_on_glyphs(monkeypatch):
+    """Regression test for #74: cp1252 stdout (Windows redirect) must not crash."""
+    import io
+
+    from parliament import cli as cli_module
+
+    fake_out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    fake_err = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr("sys.stdout", fake_out)
+    monkeypatch.setattr("sys.stderr", fake_err)
+    cli_module._ensure_utf8_streams()
+    assert fake_out.encoding == "utf-8"
+    assert fake_err.encoding == "utf-8"
+    cli_module.console.print("✓ 📖 ok")
+    fake_out.flush()
+    assert "ok" in fake_out.buffer.getvalue().decode("utf-8")
+
+
+def test_utf8_streams_untouched_by_ensure(monkeypatch):
+    """_ensure_utf8_streams is a no-op when streams are already UTF-8."""
+    import io
+
+    from parliament import cli as cli_module
+
+    before_console = cli_module.console
+    monkeypatch.setattr(
+        "sys.stdout", io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    )
+    cli_module._ensure_utf8_streams()
+    assert cli_module.console is before_console
