@@ -12,6 +12,10 @@ to do*. None trigger on *whether the decision is hard*.
 
 **Spec source:** none yet. This plan precedes a spec deliberately — Phase 1 may end it.
 
+**Sources:** "the MAD survey" below is *Multi-Agent Debate Strategies: Survey, Taxonomy,
+and Challenges* (arXiv 2607.26212, tracked in #45). Its figures (141 papers, 7–15% gains,
+2.7% long-term memory) are quoted from it, not re-derived.
+
 ---
 
 ## 1. The claim, stated weakly on purpose
@@ -67,9 +71,13 @@ before Phase 1 produces a threshold.
 
 ---
 
-## Phase 0 — Instrumentation (prerequisite, ~1 week)
+## Phase 0 — Instrumentation (~1 week)
 
 Nothing here is a product feature. It exists so every later phase is cheap.
+
+**Dependency note:** Phase 1 needs the structured `positions` below, so that item is the
+true prerequisite; the rest can trail. If `positions` is not built yet, the cheapest
+Phase 1 run is a hand-labelled pass over today's prose splits and First Reading outputs.
 
 - [ ] **Token + cost per phase.** `Response` carries `duration_ms` and nothing else.
       Add token counts and resolved cost; surface at `archive` level and in `--json`.
@@ -106,15 +114,25 @@ Build ~30 questions where the answer's *difficulty* is known in advance:
   · "Should this be a library or a service?"
 
 - [ ] Author and label the set (label before running — no post-hoc rationalising)
-- [ ] Run all questions; record positions, split length, cost
+- [ ] **Pre-register the pass bar** before the first run: the divergence metric, and the
+      minimum separation between the settled and contested groups that counts as GO
+      (e.g. an AUC floor). Commit it to the repo so it cannot move afterwards.
+- [ ] Run each question several times (LLM output varies run to run) and report the
+      spread, not a single draw
+- [ ] Record positions, split length, cost, and **First Reading divergence separately
+      from post-debate divergence** — the debate can pull members together, so
+      convergence after Debate is not the same as agreement before it
 - [ ] Build the 2×2: predicted-contested vs actually-split
 - [ ] **Pick the escalation threshold from this data**, not from taste
 
 **Kill criteria — write the result down either way:**
 
-> If the system splits on password salting and converges on monorepo-vs-polyrepo, the
+> If the settled and contested groups fall below the pre-registered separation, the
 > disagreement signal is noise. Close this plan. The finding is still worth publishing —
 > it is a negative result nobody in the 141-paper MAD corpus has reported.
+
+The single-question version of this test (splits on password salting, converges on
+monorepo-vs-polyrepo) is a useful smoke check, not the criterion.
 
 **Second eval set, free and sharper:** decisions from this repo's own history where the
 outcome is now known. Run it on *"should the default Hansard level be minimal or
@@ -155,8 +173,11 @@ parliament.deliberate(question, context)
     hansard: "hansard://2026-09-11-billing-split" }
 ```
 
-- [ ] MCP server as a fourth surface beside CLI/TUI/JSON — `render/` already has the
-      `DebateRenderer` ABC and `build_renderer()` factory for exactly this
+- [ ] MCP server as a fourth surface beside CLI/TUI/JSON. This extends #9 (`parliament
+      mcp`, a `debate` tool) rather than duplicating it: #9 returns the verdict, this adds
+      the policy verdict and the addressable Hansard. The server is not a renderer, so it
+      does not reuse `DebateRenderer`; it consumes the `Hansard` that `Parliament.ask()`
+      returns
 - [ ] Policy layer mapping split-degree → `proceed | caution | escalate`, threshold
       from Phase 1
 - [ ] Stable Hansard id/URL so the escalation payload is addressable
@@ -217,9 +238,10 @@ Sell the gate:
 
 ## Honest summary of the bet
 
-The engineering is done and it is good: provider abstraction, phase separation, typed
-JSON-serializable core, abort-vs-degrade discipline, 460 tests, cross-platform CI. The
-expensive part is finished, and it is modular enough to pivot without a rewrite.
+The core is solid: provider abstraction, phase separation, typed JSON-serializable
+core, abort-vs-degrade discipline, a broad test suite, cross-platform CI. It is modular
+enough to pivot without a rewrite. It is not finished: the provider and model-identity
+consolidation tracked in #15 and #67 is still open, and that is what this plan would sit on.
 
 What is unproven is one sentence: **that the split correlates with real contestedness.**
 If it does, this is a primitive nobody owns. If it does not, the gate is a random number
