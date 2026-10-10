@@ -18,10 +18,12 @@ _Updated 2026-10-10_
   The README summarises this under "When it helps — measured" and "Choosing the Speaker".
 
 ## Next
-1. When the contributors update their PRs for #72 and #74, re-review against the posted
-   reviews. #72's must keep same-line bold headers (`**CONSENSUS:** text`) parsing cleanly. #74's
-   first version replaced all of `cli.py` with `PLACEHOLDER_CLI`; read the real diff before
-   approving its CI workflows. When a #74 fix merges, drop the README's Windows note about it.
+1. #72 and #74 now each have two PRs. cryptonikav's #81 (parser) and #82 (UTF-8 stdio) are
+   real fixes; changes requested 2026-10-10. #81: `**CONSENSUS:** text` parses as `** text`
+   (suggested tail `\s*:?(?:[ \t]*\*+(?=\s))?[ \t]*\n?`, add that test). #82: add a test that
+   runs `doctor` with cp1252 stdout, drop the needless console rebuild. Both: CHANGELOG line.
+   Re-review when they push. CI on fork PRs waits for the owner to approve the run. Merge one
+   per issue, close the other (#76 / #77). When a #74 fix merges, drop the README's Windows note.
 2. Test a second contested question to see if "stable procedure, unstable letter" generalises.
    The analytics-database question in the doc's screen is the next candidate. Run debates
    **one at a time**; check the OpenRouter balance first (about $4.60 on 2026-10-10).
@@ -48,8 +50,10 @@ _Updated 2026-10-10_
   fix the finding rather than pin.
 
 ## Known issues
-- Local ruff can lag CI's: CI installs the newest version (0.17.0 on 2026-10-10). Upgrade the
-  venv's ruff before trusting a local green.
+- Local ruff can lag CI's: CI installs the newest version (0.17.0 on 2026-10-10). In cloud
+  containers a stale pipx ruff (0.16.8) in `~/.local/bin` shadows it and reports a false DTZ005
+  on `tui.py`; run verify with `PATH="/usr/local/bin:$PATH"`. There, `python -m mypy` then fails on
+  the system numpy stubs (needs 3.12); `~/.local/bin/mypy src/parliament` passes. Env-only.
 - Until #74 is fixed, `doctor` and plain `ask` crash on Windows when output is redirected; set
   `PYTHONIOENCODING=utf-8`. `ask --json` is unaffected.
 - `MODEL_TIERS` stops at Claude 4.6 / `gpt-4o`, so current models are unrated (#67).
