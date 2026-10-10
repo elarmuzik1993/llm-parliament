@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from parliament.core.model_tiers import calculate_gap, resolve_member_tier
+from parliament.core.model_tiers import calculate_gap, canonical_model_id, resolve_member_tier
 from parliament.core.types import Bill, Hansard, Member, ProgressEvent, Synthesis
 from parliament.procedures.debate import run_debate
 from parliament.procedures.division import run_division
@@ -208,3 +208,43 @@ class Parliament:
     def check_gaps(self) -> list[str]:
         """Report assessed gaps and missing ratings. Never blocks."""
         return calculate_gap(self.members).warnings()
+
+    def check_speaker(self) -> list[str]:
+        """Warn when the Speaker may favour a position it argued (#73). Never blocks.
+
+        In a live judge swap, a Speaker sharing a member's model sided with that
+        member even with anonymised input. A member chosen only by its place
+        among equally rated members is an insider nobody picked.
+        """
+        if self.outside_speaker is not None:
+            outside, outside_provider = self.outside_speaker
+            identity = canonical_model_id(
+                outside.model, outside.provider_name, outside_provider.base_url
+            )
+            twins = [
+                m.name for m in self.members
+                if canonical_model_id(m.model, m.provider_name, m.base_url) == identity
+            ]
+            if not twins:
+                return []
+            warning = (
+                f"Speaker {outside.name} uses the same model as {', '.join(twins)}, so it may "
+                "favour that member's position. Use a model not on the panel."
+            )
+            return [warning]
+
+        requested = (self.speaker_override or "").lower()
+        if any(m.name.lower() == requested for m in self.members):
+            return []
+        if all(m.provider_name == "mock" for m in self.members):
+            return []
+        top_tier = min(m.tier for m in self.members)
+        if sum(m.tier == top_tier for m in self.members) < 2:
+            return []
+        speaker, _ = select_speaker(self.members, self.providers)
+        warning = (
+            f"Speaker {speaker.name} is a member, picked by order among equally rated "
+            "members, and may favour its own position. Set parliament.speaker to a model "
+            "not on the panel."
+        )
+        return [warning]

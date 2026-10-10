@@ -61,7 +61,7 @@ CLI flag  >  environment variable  >  config.yaml  >  built-in default
 | `parliament.members[].name` | string | **required** | Also the key each provider instance is stored under, so it must be unique. |
 | `parliament.members[].provider` | string | **required** | One of `ollama`, `anthropic`, `openai`, `google`, `openrouter`, `groq`, `mistral`, `mock`. |
 | `parliament.members[].model` | string | **required** | Also decides the member's tier — see [tiers](#tiers). |
-| `parliament.speaker` | mapping | — | An outside Speaker that writes the synthesis without debating. Without it, the Speaker is a member, chosen by tier. `--speaker <member>` still overrides it. If the outside Speaker fails, a member takes over. |
+| `parliament.speaker` | mapping | — | An outside Speaker that writes the synthesis without debating. Without it, the Speaker is a member, chosen by tier. `--speaker <member>` still overrides it. If the outside Speaker fails, a member takes over. Use a model that is not on the panel: `parliament ask` warns when the Speaker shares a member's model, and when tied members leave the Speaker to be picked by order. |
 | `parliament.speaker.provider` | string | required if `speaker` is set | Same values as a member's `provider`. Uses the same `providers` block and key. |
 | `parliament.speaker.model` | string | required if `speaker` is set | |
 | `parliament.speaker.name` | string | `Speaker` | Shown as `speaker_name` in the Hansard. Must not match a member's name. |

@@ -25,6 +25,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   positions as `Member 1`, `Member 2`, …, with names hidden in the text as
   well, and the names are put back in the parsed synthesis. A Speaker that is
   also a member can no longer spot its own position by name.
+- **Insider-Speaker warnings** — `parliament ask` warns when the outside
+  Speaker shares a member's model, and when equally rated members leave the
+  Speaker to be picked by order. In a live judge swap, a Speaker sharing a
+  member's model sided with that member despite anonymised input.
 - **OpenRouter first-run preset** — detect `OPENROUTER_API_KEY` and propose
   three models from Anthropic, OpenAI, and Google using one account. Existing
   two- and three-provider setups keep their direct presets, and three usable
