@@ -15,12 +15,13 @@ _Updated 2026-10-10_
   Grok 4.7 as outside Speaker) gave B 6 times and A twice, but always the same first step and
   switch conditions, where single calls change their answer with the wording. Re-judging the
   same debates, outside judges agreed on 7 of 8; a judge sharing a member's model sided with it.
+  The README summarises this under "When it helps — measured" and "Choosing the Speaker".
 
 ## Next
 1. When the contributors update their PRs for #72 and #74, re-review against the posted
    reviews. #72's must keep same-line bold headers (`**CONSENSUS:** text`) parsing cleanly. #74's
    first version replaced all of `cli.py` with `PLACEHOLDER_CLI`; read the real diff before
-   approving its CI workflows.
+   approving its CI workflows. When a #74 fix merges, drop the README's Windows note about it.
 2. Test a second contested question to see if "stable procedure, unstable letter" generalises.
    The analytics-database question in the doc's screen is the next candidate. Run debates
    **one at a time**; check the OpenRouter balance first (about $4.60 on 2026-10-10).
