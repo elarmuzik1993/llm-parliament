@@ -100,7 +100,7 @@ four parts shown in the normal terminal verdict.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `speaker_name` | `string` | Member chosen to write the final synthesis. |
+| `speaker_name` | `string` | Who wrote the final synthesis: a member, or the outside Speaker from `parliament.speaker`. Not in `members` means it did not debate. |
 | `consensus` | `string` | Points the members mostly agreed on. |
 | `split` | `string` | Material disagreements or trade-offs. |
 | `risks` | `string` | Risks, caveats, and failure modes. |

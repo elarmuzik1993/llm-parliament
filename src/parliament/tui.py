@@ -26,6 +26,7 @@ from parliament.config import (
     api_key_status,
     build_members_from_config,
     build_parliament_from_config,
+    build_speaker_from_config,
     load_keys,
     resolve_hansard_level,
     resolve_show_debate,
@@ -260,7 +261,7 @@ def build_model_settings(
     load_keys()
     provider_configs = config.get("providers", {})
     members = build_members_from_config(config)
-    speaker_name = _speaker_name(members, speaker_override)
+    speaker_name = _speaker_name(members, speaker_override, config)
 
     return [
         ModelSettings(
@@ -284,16 +285,21 @@ def run_tui(
     curses.wrapper(_run, settings, config, config_path, speaker_override, mock)
 
 
-def _speaker_name(members: list[Member], override: str | None) -> str:
+def _speaker_name(
+    members: list[Member], override: str | None, config: dict[str, Any]
+) -> str | None:
+    """Name the member who will be Speaker, or None for an outside Speaker."""
     if override:
         for member in members:
             if member.name.lower() == override.lower():
                 return member.name
+    if config.get("parliament", {}).get("speaker"):
+        return None
     top_tier = min(member.tier for member in members)
     return next(member.name for member in members if member.tier == top_tier)
 
 
-def _member_role(member: Member, speaker_name: str) -> str:
+def _member_role(member: Member, speaker_name: str | None) -> str:
     if member.name == speaker_name:
         return "Speaker / member"
     return "Member"
@@ -1067,7 +1073,7 @@ def _draw_member_editor(
     width: int,
 ) -> None:
     preview_members = _preview_members(config, editor)
-    speaker_name = _speaker_name(preview_members, speaker_override)
+    speaker_name = _speaker_name(preview_members, speaker_override, config)
     preview_member = preview_members[editor.member_index]
     draft = editor.draft
     editable_rows = [
@@ -1382,6 +1388,7 @@ def _run_debate(
         providers=providers,
         on_progress=renderer.emit,
         speaker_override=speaker_override,
+        outside_speaker=build_speaker_from_config(config),
     )
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -1624,9 +1631,9 @@ def save_hansard(
     directory = Path(save_dir).expanduser()
     directory.mkdir(parents=True, exist_ok=True)
 
-    # Deliberately naive local time (DTZ005 suppressed below): this names a
-    # file the user browses themselves, so it should match their clock, not UTC.
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # noqa: DTZ005
+    # Deliberately naive local time: this names a file the user browses
+    # themselves, so it should match their clock, not UTC.
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     slug = _slugify(hansard.bill.title or hansard.bill.content)
     path = directory / f"{timestamp}-{slug}-{hansard.id[:8]}.md"
     path.write_text(render_markdown(hansard, resolved_level), encoding="utf-8")

@@ -18,6 +18,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Outside Speaker** — `parliament.speaker` names a model that writes the
+  synthesis without having debated, so the Speaker has no position of its own
+  to favour (#73). If it fails, a member takes over.
+- **Anonymous Division input** — the Speaker reads the members' final
+  positions as `Member 1`, `Member 2`, …, with names hidden in the text as
+  well, and the names are put back in the parsed synthesis. A Speaker that is
+  also a member can no longer spot its own position by name.
 - **OpenRouter first-run preset** — detect `OPENROUTER_API_KEY` and propose
   three models from Anthropic, OpenAI, and Google using one account. Existing
   two- and three-provider setups keep their direct presets, and three usable
