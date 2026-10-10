@@ -106,3 +106,41 @@ Speaker's judgement of the split cannot be trusted while it is a member (#73).
   redirected on Windows. `--json` is unaffected.
 
 **Not yet run:** step 5 (TUI) and the Windows-specific checks above.
+
+## Results: 2026-10-10, flagships with an outside Speaker
+
+A rerun to separate the idea from the setup. The first run had an uneven panel
+and a Speaker who was also a member. This one runs the code from #78:
+anonymous Division input and an outside Speaker. Members:
+`anthropic/claude-sonnet-5.5`, `openai/gpt-5.6-sol`,
+`google/gemini-3.1-pro-preview`. Speaker: `x-ai/grok-4.7`, which is from a
+fourth vendor and did not debate. All three members are unrated. The baseline
+is a single call to Sonnet 5.5. Total cost: about $0.44.
+
+| Run | Wall | First Reading picks | Verdict | Degraded |
+|---|---|---|---|---|
+| Main #1 | 103s | Claude C, GPT C, Gemini C | C | no |
+| Main #2 | 88s | Claude C, GPT C, Gemini C | C | no |
+| Control | 85s | all hash, none encrypt | argon2id hashing | no |
+| Baseline | 21s | | C | |
+
+| Check | Result |
+|---|---|
+| First Reading positions | Partial. Same option, for overlapping reasons. The main question no longer divides frontier models. |
+| Split section | Pass. Names who disagreed and why, on execution: how wide the freeze is, whether parts of B can be added, how confident to be. |
+| Debate effect | Pass. Members corrected each other's facts, and Gemini revised its timeline and its view of B. Nobody gave in to the strongest member. |
+| Risks | Pass. It adds points the baseline misses. Ordinary Postgres reads don't block writes, so the premise needs diagnosing. PgBouncer transaction pooling breaks ORM session state. A background job that reruns the same query doesn't reduce load. A blanket checkout timeout can leave transactions open. |
+| Speaker fairness | Pass. The Speaker sided with GPT on freeze scope, and with Claude and GPT against Gemini's overconfidence. It credited no member with points the member didn't make. |
+| Control | Pass. It agreed on the main question. The split it reported is on real details: cost parameters, pre-hashing for bcrypt, migrating legacy hashes. |
+| Stability | Pass. Same verdict and the same shape of plan both times. |
+| Verdict vs baseline | Pass on depth, not on decision. Same choice, but the debate corrected the premise and the plan in ways the single call did not. |
+
+**Verdict:** with an even panel and a neutral Speaker, the debate does real
+work. Members check each other's facts, and the Split can be trusted. But this
+question has stopped testing disagreement: frontier models all choose C. The
+next run needs a question that frontier models genuinely split on.
+
+**Found:** the two runs here used the code from before the plural fix, so the
+Speaker's "Members 1 and 2" stayed unresolved. #78 now restores plural labels.
+With an outside Speaker configured, the unrated-members warning still says
+"Speaker selection assumes tier 3".
