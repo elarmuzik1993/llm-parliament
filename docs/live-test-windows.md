@@ -169,18 +169,18 @@ drops them. This is a check on fact-correction, not on disagreement.
 |---|---|---|---|
 | Alone, bare question, 3 tries | A, B, A | B, B, B | B, B, B |
 | Alone, First Reading wording, 3 tries | A, A, A | B, A, A | C, B, A |
-| First Reading inside 2 debates | C, C | B, B | B, B |
-| **Parliament verdict, 2 debates** | | | **B, B** |
+| First Reading inside 3 debates | C, C, C | B, B, B | B, B, B |
+| **Parliament verdict, 3 debates** | | | **B, B, B** |
 
 Picks were read off by pattern and checked by hand where it failed.
 
 | Check | Result |
 |---|---|
-| First Reading positions | Pass. C against B in both runs. |
+| First Reading positions | Pass. C against B in every run. |
 | Split section | Pass. Names each side, its strongest argument and its rebuttals. |
 | Debate effect | Pass. Nobody gave in; positions sharpened. Claude's C became conditional on finding out where the six bugs were. A steady bug rate may mean fuzzing was never set up. A sandbox moves the attack surface into the code that talks to it. |
 | Speaker fairness | Pass. The minority case is turned into explicit conditions for switching to C, or to A. |
-| Stability | Pass on 2 runs: the same verdict and the same conditions. |
+| Stability | Pass on 3 runs: the same verdict and the same conditions. |
 | Verdict vs baseline | Pass. See below. |
 
 **What the repeat test shows:** a single model's answer to this question is
@@ -188,14 +188,25 @@ not stable. Claude gave A or B on the bare question. Under the slightly
 different First Reading wording, GPT and Gemini moved from a steady B to
 mostly A, and Gemini gave a different option on each try. One call can return
 any of the three options, depending on the model, the wording and the run.
-Both parliament runs gave B, with the same conditions for switching. Two runs
-is too few to call the verdict stable, but the single-call spread is wide
-enough that the difference is worth measuring properly.
+All three valid parliament runs gave B, with the same conditions for switching.
+Three runs are too few to call the verdict stable, but the single-call spread
+is wide enough that the difference is worth measuring properly.
 
 **Verdict:** on a genuinely contested question, with an even panel and a
 neutral Speaker, the parliament gives a qualified, repeatable answer where
 single calls scatter. This is the first result that supports the project's
-central claim. Next: run the parliament 5 or more times on this question and
-compare how much its verdict spreads with the single-call spread.
+central claim. Next: run the parliament 5–8 times in total on this question
+and compare how much its verdict spreads with the single-call spread.
 
-Cost: the screen $0.29, four debates $0.91, the repeat test $0.46.
+**Run stopped by credit.** Six more debates were started in parallel. The
+account had $5 of credit, and OpenRouter reserves credit for every request in
+flight, so most requests were refused with HTTP 402. One run finished cleanly
+and counts above. In another, Claude was refused at First Reading; it reached
+B on two members and was correctly marked `degraded`, so it isn't counted.
+Four stopped with "Not enough members responded" and no verdict. The
+abort-or-degrade rule held against a real provider failure. Next time, check
+the account balance first (the key's spending limit is not the balance), and
+run debates one at a time.
+
+Cost: the screen $0.29, four debates $0.91, the repeat test $0.46, the
+credit-limited batch about $0.65.
