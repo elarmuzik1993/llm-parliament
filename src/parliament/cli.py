@@ -50,6 +50,45 @@ err_console = (
 )
 
 
+def _ensure_utf8_streams() -> None:
+    """Reconfigure stdio to UTF-8 when its encoding cannot carry CLI glyphs.
+
+    On Windows a redirected stdout/stderr uses the ANSI code page (e.g.
+    cp1252), so printing ✓ or 📖 raises UnicodeEncodeError. Reconfiguring to
+    UTF-8 (with errors="replace" as a backstop) fixes redirected runs, CI
+    logs and wrapping CLIs without touching TTY behavior. The module-level
+    consoles bound the old streams at import, so they are rebuilt too — but
+    only when a reconfigure actually happened, so tests patching
+    `parliament.cli.console` are unaffected.
+    """
+    global console, err_console
+    changed = False
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        encoding = getattr(stream, "encoding", "") or ""
+        if "utf" in encoding.lower().replace("-", ""):
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
+        changed = True
+    if changed:
+        console = (
+            Console(force_terminal=True, legacy_windows=False)
+            if sys.stdout.isatty()
+            else Console()
+        )
+        err_console = (
+            Console(stderr=True, force_terminal=True, legacy_windows=False)
+            if sys.stderr.isatty()
+            else Console(stderr=True)
+        )
+
+
 def _mock_config() -> dict:
     """Return a config that runs entirely against mock providers."""
     return {
@@ -105,6 +144,7 @@ def _configured_keys() -> list[tuple[str, str, str, str]]:
 @click.pass_context
 def main(ctx: click.Context, config_path: Path | None, speaker: str | None, mock: bool):
     """LLM Parliament — multi-agent debate for better AI decisions."""
+    _ensure_utf8_streams()
     if ctx.invoked_subcommand is not None:
         return
 
