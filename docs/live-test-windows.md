@@ -144,3 +144,58 @@ next run needs a question that frontier models genuinely split on.
 Speaker's "Members 1 and 2" stayed unresolved. #78 now restores plural labels.
 With an outside Speaker configured, the unrated-members warning still says
 "Speaker selection assumes tier 3".
+
+## Results: 2026-10-10, contested questions
+
+Same panel and outside Speaker as above, on the code from #78.
+
+**Screening.** Five candidate questions were each put once to each member on
+its own ($0.29). Three of them split the panel 2–1: open-source licensing,
+analytics database, and memory-safety rewrite. Claude was the odd one out
+every time. Shipping with a known bug and forced two-factor got the same
+answer from all three; they would make realistic controls.
+
+**Licensing** (BSL, AGPL, or stay Apache; 2 debates). All three picked BSL in
+First Reading both times, so the screen's split did not reproduce. The debate
+still corrected facts. Members caught one member's wrong account of the Redis
+licence history, and timelines it stated without support, and the verdict
+drops them. This is a check on fact-correction, not on disagreement.
+
+**Memory-safety rewrite** (Rust, harden C++, or sandbox the parser):
+
+> A 150k-line C++ network daemon, exposed to the internet, has had 2 memory-safety vulnerabilities a year for 3 years. There are 5 engineers, 2 of whom know Rust. Choose exactly one: (A) rewrite incrementally in Rust, starting with the parser, (B) keep C++ and invest in fuzzing, sanitizers and hardening, (C) put the parser in a sandboxed separate process and leave the rest alone. Pick one, justify it, and say what would change your mind.
+
+| | Claude | GPT | Gemini |
+|---|---|---|---|
+| Alone, bare question, 3 tries | A, B, A | B, B, B | B, B, B |
+| Alone, First Reading wording, 3 tries | A, A, A | B, A, A | C, B, A |
+| First Reading inside 2 debates | C, C | B, B | B, B |
+| **Parliament verdict, 2 debates** | | | **B, B** |
+
+Picks were read off by pattern and checked by hand where it failed.
+
+| Check | Result |
+|---|---|
+| First Reading positions | Pass. C against B in both runs. |
+| Split section | Pass. Names each side, its strongest argument and its rebuttals. |
+| Debate effect | Pass. Nobody gave in; positions sharpened. Claude's C became conditional on finding out where the six bugs were. A steady bug rate may mean fuzzing was never set up. A sandbox moves the attack surface into the code that talks to it. |
+| Speaker fairness | Pass. The minority case is turned into explicit conditions for switching to C, or to A. |
+| Stability | Pass on 2 runs: the same verdict and the same conditions. |
+| Verdict vs baseline | Pass. See below. |
+
+**What the repeat test shows:** a single model's answer to this question is
+not stable. Claude gave A or B on the bare question. Under the slightly
+different First Reading wording, GPT and Gemini moved from a steady B to
+mostly A, and Gemini gave a different option on each try. One call can return
+any of the three options, depending on the model, the wording and the run.
+Both parliament runs gave B, with the same conditions for switching. Two runs
+is too few to call the verdict stable, but the single-call spread is wide
+enough that the difference is worth measuring properly.
+
+**Verdict:** on a genuinely contested question, with an even panel and a
+neutral Speaker, the parliament gives a qualified, repeatable answer where
+single calls scatter. This is the first result that supports the project's
+central claim. Next: run the parliament 5 or more times on this question and
+compare how much its verdict spreads with the single-call spread.
+
+Cost: the screen $0.29, four debates $0.91, the repeat test $0.46.
