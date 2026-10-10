@@ -165,48 +165,72 @@ drops them. This is a check on fact-correction, not on disagreement.
 
 > A 150k-line C++ network daemon, exposed to the internet, has had 2 memory-safety vulnerabilities a year for 3 years. There are 5 engineers, 2 of whom know Rust. Choose exactly one: (A) rewrite incrementally in Rust, starting with the parser, (B) keep C++ and invest in fuzzing, sanitizers and hardening, (C) put the parser in a sandboxed separate process and leave the rest alone. Pick one, justify it, and say what would change your mind.
 
+**Single calls.** Each model on its own, three tries per wording:
+
 | | Claude | GPT | Gemini |
 |---|---|---|---|
-| Alone, bare question, 3 tries | A, B, A | B, B, B | B, B, B |
-| Alone, First Reading wording, 3 tries | A, A, A | B, A, A | C, B, A |
-| First Reading inside 3 debates | C, C, C | B, B, B | B, B, B |
-| **Parliament verdict, 3 debates** | | | **B, B, B** |
+| Bare question | A, B, A | B, B, B | B, B, B |
+| First Reading wording | A, A, A | B, A, A | C, B, A |
 
-Picks were read off by pattern and checked by hand where it failed.
+**Eight full debates.** Each cell is First Reading → position after the
+Debate; an arrow marks a member who changed its mind.
+
+| Run | Claude | GPT | Gemini | Verdict |
+|---|---|---|---|---|
+| 1 | C | B | B | B |
+| 2 | C | B | A → B | B |
+| 3 | C | B | A → B | B |
+| 4 | A | A | B → A | A |
+| 5 | B | B | B | B |
+| 6 | C | A | A | A |
+| 7 | A | A → B | C → A | B |
+| 8 | C | B | A → B | B |
+
+All eight are valid, and none degraded. Picks were read by hand from each
+member's stated choice. Pattern matching misread several of them.
 
 | Check | Result |
 |---|---|
-| First Reading positions | Pass. C against B in every run. |
+| First Reading positions | Pass. At least two options in 7 of 8 runs. |
 | Split section | Pass. Names each side, its strongest argument and its rebuttals. |
-| Debate effect | Pass. Nobody gave in; positions sharpened. Claude's C became conditional on finding out where the six bugs were. A steady bug rate may mean fuzzing was never set up. A sandbox moves the attack surface into the code that talks to it. |
-| Speaker fairness | Pass. The minority case is turned into explicit conditions for switching to C, or to A. |
-| Stability | Pass on 3 runs: the same verdict and the same conditions. |
-| Verdict vs baseline | Pass. See below. |
+| Debate effect | Pass. A member changed its mind in 5 of 8 runs, each time citing a peer's argument. Gemini moved most. |
+| Speaker fairness | Mostly pass. Seven verdicts follow the members' final majority. In run 7 the Speaker chose B against two members on A, reasoning that the condition both had set for A (bugs concentrated in the parser) was not established. That is defensible, but it shows the outside Speaker also brings a view of its own. |
+| Stability | Partial. B in 6 of 8, A in 2 of 8. The first step is the same in all 8: review where the six past bugs were, then commit. |
+| Verdict vs baseline | Mixed. See below. |
 
-**What the repeat test shows:** a single model's answer to this question is
-not stable. Claude gave A or B on the bare question. Under the slightly
-different First Reading wording, GPT and Gemini moved from a steady B to
-mostly A, and Gemini gave a different option on each try. One call can return
-any of the three options, depending on the model, the wording and the run.
-All three valid parliament runs gave B, with the same conditions for switching.
-Three runs are too few to call the verdict stable, but the single-call spread
-is wide enough that the difference is worth measuring properly.
+**What eight runs show:**
+- **The verdict is steadier than a single call under the same wording, but not
+  steadier than every model.** Under the First Reading wording, single calls
+  gave A 6 times, B twice and C once. The parliament gave B 6 times and A twice.
+  But GPT and Gemini, asked the bare question, gave B every time, which is
+  steadier than the parliament.
+- **The verdict letter moves, the plan does not.** Every verdict, A or B,
+  starts by reviewing the six bugs, and names the result that would switch it.
+  The A verdicts are explicitly gated on that review. The real output is the
+  same: "find where the bugs were, then commit". The letter depends on which
+  side of that gate the run leans.
+- **The Debate does persuade.** In 5 of 8 runs a member moved to a peer's
+  position, so the final majority is not just the First Reading count.
 
-**Verdict:** on a genuinely contested question, with an even panel and a
-neutral Speaker, the parliament gives a qualified, repeatable answer where
-single calls scatter. This is the first result that supports the project's
-central claim. Next: run the parliament 5–8 times in total on this question
-and compare how much its verdict spreads with the single-call spread.
+**Verdict:** on a genuinely contested question, the parliament does not give
+one fixed answer. It gives a consistent decision procedure: the first step, the
+evidence that decides, and the conditions for each option. Single calls give a
+confident letter that changes with the wording. That is a weaker claim than "a
+stable verdict", but it holds across all eight runs, and it is the claim this
+evidence supports. The earlier version of this section claimed a stable
+verdict after three runs. Five more runs did not bear that out.
 
-**Run stopped by credit.** Six more debates were started in parallel. The
-account had $5 of credit, and OpenRouter reserves credit for every request in
-flight, so most requests were refused with HTTP 402. One run finished cleanly
-and counts above. In another, Claude was refused at First Reading; it reached
-B on two members and was correctly marked `degraded`, so it isn't counted.
-Four stopped with "Not enough members responded" and no verdict. The
-abort-or-degrade rule held against a real provider failure. Next time, check
-the account balance first (the key's spending limit is not the balance), and
-run debates one at a time.
+**A batch stopped by credit.** An earlier attempt started six debates in
+parallel. The account had $5 of credit, and OpenRouter reserves credit for
+every request in flight, so most requests were refused with HTTP 402. Five
+of those six produced no usable result:
+- One lost Claude at First Reading. It finished on two members and was
+  correctly marked `degraded`.
+- Four stopped with "Not enough members responded" and gave no verdict.
 
-Cost: the screen $0.29, four debates $0.91, the repeat test $0.46, the
-credit-limited batch about $0.65.
+The abort-or-degrade rule held against a real provider failure. The one
+clean run from that batch is run 3 above. Check the account balance first
+(the key's spending limit is not the balance), and run debates one at a time.
+
+Cost: the screen $0.29, the first four debates $0.91, the repeat test $0.46,
+the credit-limited batch about $0.65, the last five debates $1.25.

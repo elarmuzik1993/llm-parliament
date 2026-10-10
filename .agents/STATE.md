@@ -9,18 +9,20 @@ _Updated 2026-10-10_
   (provider/model/name) is an outside Speaker that did not debate. If it fails, a member takes
   over; `--speaker <member>` still wins.
 - `docs/live-test-windows.md` holds the Windows/OpenRouter live test plan and three result sets.
-  Headline: on the memory-safety question (Q5 there), single calls to Sonnet 5.5 / GPT-5.6 Sol /
-  Gemini 3.1 Pro scatter across all three options. The parliament (those three, with Grok 4.7
-  as outside Speaker) gave B in 3 of 3 valid runs, with the same conditions for switching. The
-  original monolith question no longer divides frontier models.
+  Headline, on the memory-safety question: single calls to Sonnet 5.5 / GPT-5.6 Sol /
+  Gemini 3.1 Pro give a confident letter that changes with wording. Eight debates (those three,
+  Grok 4.7 as outside Speaker) gave B 6 times and A twice, but all eight gave the same first
+  step and switch conditions: a stable decision procedure, not a stable letter. A member changed
+  its mind in 5 of 8 runs. The original monolith question no longer divides frontier models.
 - Contributor PRs are open for #72 (synthesis parser strips bold) and #74 (Windows encoding crash).
 
 ## Next
 1. Review the #72 and #74 contributor PRs. The #72 one edits `procedures/division.py`, which the
    #73 fix also changed, so check it rebased and that `test_speaker_neutrality.py` still passes.
-2. Finish Q5 stability: 2–5 more debates, run **one at a time**. Config: the members and Speaker
-   named in the doc's "contested questions" section. Check the OpenRouter account balance first
-   (about $1.70 left at the end of 2026-10-10).
+2. Decide what to test next, given the doc's verdict. Options: a second contested question, to
+   see if "stable procedure, unstable letter" generalises; or whether the outside Speaker's own
+   lean sets the verdict (swap Grok for another model on the same question). Run debates
+   **one at a time**; check the OpenRouter balance first (about $5.30 on 2026-10-10).
 3. Live test step 5 and the Windows checks (TUI rendering, `Ctrl-C`, saved Hansard), using the
    same config; record them in the doc.
 4. Small follow-up, not filed yet: with `parliament.speaker` set, the unrated-members warning
