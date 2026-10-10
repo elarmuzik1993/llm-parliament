@@ -1631,9 +1631,9 @@ def save_hansard(
     directory = Path(save_dir).expanduser()
     directory.mkdir(parents=True, exist_ok=True)
 
-    # Deliberately naive local time (DTZ005 suppressed below): this names a
-    # file the user browses themselves, so it should match their clock, not UTC.
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # noqa: DTZ005
+    # Deliberately naive local time: this names a file the user browses
+    # themselves, so it should match their clock, not UTC.
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     slug = _slugify(hansard.bill.title or hansard.bill.content)
     path = directory / f"{timestamp}-{slug}-{hansard.id[:8]}.md"
     path.write_text(render_markdown(hansard, resolved_level), encoding="utf-8")
