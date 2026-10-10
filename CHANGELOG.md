@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Synthesis Markdown** — preserve emphasis at section boundaries while
+  removing only a standalone leftover bold-header marker and trailing section
+  separators. Fixes #72.
+
 ### Changed
 
 - **Capability assessments across providers** — distinguish assessed large gaps,

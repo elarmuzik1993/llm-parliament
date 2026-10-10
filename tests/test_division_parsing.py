@@ -90,6 +90,23 @@ def test_bold_markdown_headers_strip_asterisks():
     assert "Use Redis" in s.recommendation
 
 
+def test_sections_preserve_emphasis_and_trim_separator():
+    """Only a standalone bold-header marker is removed from a section body."""
+    raw = (
+        "**CONSENSUS:**\n**Keep the opening emphasis.**\n---\n\n"
+        "**SPLIT**:\nA disagreement ends in **bold text.**\n\n"
+        "### RISKS\n**A whole bold risk.**\n\n"
+        "RECOMMENDATION:\nUse **the bold recommendation.**"
+    )
+
+    s = parse_synthesis(raw, "Speaker")
+
+    assert s.consensus == "**Keep the opening emphasis.**"
+    assert s.split == "A disagreement ends in **bold text.**"
+    assert s.risks == "**A whole bold risk.**"
+    assert s.recommendation == "Use **the bold recommendation.**"
+
+
 def test_sections_without_colons():
     """Headers like 'CONSENSUS' without colon should still work."""
     raw = "CONSENSUS\nAgreed.\n\nSPLIT\nDisagreed.\n\nRISKS\nRisky.\n\nRECOMMENDATION\nDo it."
