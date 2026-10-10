@@ -96,3 +96,26 @@ def test_sections_without_colons():
     s = parse_synthesis(raw, "Speaker")
     assert "Agreed" in s.consensus
     assert "Do it" in s.recommendation
+
+
+def test_bold_edges_survive_parsing():
+    """A bold first or last line is content, not a header remnant (#72)."""
+    raw = (
+        "## RECOMMENDATION\n\n"
+        "**Choose Option C. Begin with a statement timeout applied today.**"
+    )
+    s = parse_synthesis(raw, "Speaker")
+    assert (
+        s.recommendation
+        == "**Choose Option C. Begin with a statement timeout applied today.**"
+    )
+    raw = "RISKS:\nSome risk with **argon2id, salted, no exceptions** inside."
+    s = parse_synthesis(raw, "Speaker")
+    assert "**argon2id, salted, no exceptions**" in s.risks
+
+
+def test_bold_header_variants_parse_clean():
+    """**H:**, **H**:, ### H and H: all yield clean bodies (#72)."""
+    for header in ("**CONSENSUS:**", "**CONSENSUS**:", "### CONSENSUS", "CONSENSUS:"):
+        s = parse_synthesis(f"{header}\nAll agree.", "Speaker")
+        assert s.consensus == "All agree.", header
