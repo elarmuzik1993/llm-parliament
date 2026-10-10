@@ -278,6 +278,7 @@ a weaker form.
 **Consequences:**
 - Use an outside Speaker from a vendor not on the panel. The default, a
   member as Speaker, keeps this bias even with anonymised input.
-- Candidate change: warn when `parliament.speaker` uses the same model as a
-  member, and recommend an outside Speaker whenever members are tied on tier.
+- Done in #79: `parliament ask` warns when `parliament.speaker` uses the same
+  model as a member, and when tied members leave the Speaker to be picked by
+  order.
 

@@ -3,12 +3,14 @@
 _Updated 2026-10-10_
 
 ## Now
-- `main` is 0.2.0 plus unreleased changes (CHANGELOG `[Unreleased]`). verify.sh green: 724 tests.
+- `main` is 0.2.0 plus unreleased changes (CHANGELOG `[Unreleased]`). verify.sh green: 731 tests.
 - Speaker neutrality (#73): the Division prompt anonymises members (`Member 1..n`, names
   scrubbed from the text, restored after parsing), and an optional `parliament.speaker`
   (provider/model/name) is an outside Speaker that did not debate. If it fails, a member takes
-  over; `--speaker <member>` still wins.
-- `docs/live-test-windows.md` holds the Windows/OpenRouter live test plan and three result sets.
+  over; `--speaker <member>` still wins. `parliament ask` warns (`Parliament.check_speaker`)
+  when the outside Speaker shares a member's model, or when tied members leave the Speaker to
+  be picked by order. The TUI shows neither these nor the tier warnings.
+- `docs/live-test-windows.md` holds the Windows/OpenRouter live test plan and four result sets.
   Headline, on the memory-safety question: single calls to Sonnet 5.5 / GPT-5.6 Sol /
   Gemini 3.1 Pro give a confident letter that changes with wording. Eight debates (those three,
   Grok 4.7 as outside Speaker) gave B 6 times and A twice, but all eight gave the same first
@@ -22,11 +24,9 @@ _Updated 2026-10-10_
 ## Next
 1. Review the #72 and #74 contributor PRs. The #72 one edits `procedures/division.py`, which the
    #73 fix also changed, so check it rebased and that `test_speaker_neutrality.py` still passes.
-2. Act on the judge swap: warn when `parliament.speaker` uses a member's model, and recommend
-   an outside Speaker when members tie on tier (the member default keeps same-model bias).
-   Then test a second contested question to see if "stable procedure, unstable letter"
-   generalises. Run debates **one at a time**; check the OpenRouter balance first (about $4.60
-   on 2026-10-10).
+2. Test a second contested question to see if "stable procedure, unstable letter" generalises.
+   The analytics-database question in the doc's screen is the next candidate. Run debates
+   **one at a time**; check the OpenRouter balance first (about $4.60 on 2026-10-10).
 3. Live test step 5 and the Windows checks (TUI rendering, `Ctrl-C`, saved Hansard), using the
    same config; record them in the doc.
 4. Small follow-up, not filed yet: with `parliament.speaker` set, the unrated-members warning
@@ -41,7 +41,9 @@ _Updated 2026-10-10_
 - Agents read `AGENTS.md` directly; agent state lives in `.agents/` (not in the sdist).
 - `scripts/verify.sh` mirrors ci.yml; `tests/test_verify_matches_ci.py` keeps them equal.
 - The Speaker must not judge a position it holds (#73). Division input is always anonymised;
-  an outside Speaker is opt-in, so existing configs behave as before.
+  an outside Speaker is opt-in, so existing configs behave as before, but insider Speakers
+  are warned about (#79). Anonymising alone is not enough: a same-model judge still sided with
+  its twin in the judge swap.
 - Unrated models are reported, never silently excluded (#66); fallback tier 3 is a
   Speaker-selection assumption, not a rating. No live leaderboard feed, no price as a proxy.
 - Ruff is unpinned on purpose (`pyproject.toml`): a new ruff release can fail CI on old code;
