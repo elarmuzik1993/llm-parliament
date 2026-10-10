@@ -234,3 +234,50 @@ clean run from that batch is run 3 above. Check the account balance first
 
 Cost: the screen $0.29, the first four debates $0.91, the repeat test $0.46,
 the credit-limited batch about $0.65, the last five debates $1.25.
+
+## Results: 2026-10-10, judge swap
+
+Does the verdict reflect the debate or the judge? The eight saved debates
+above were re-judged, with each transcript held fixed and only the Division
+step re-run. Judges:
+- Grok 4.7 again, to measure its own variation.
+- DeepSeek V4 Pro and Kimi K2.6, two more outside models.
+- Claude Sonnet 5.5, the same model as one member. Its input is anonymised as
+  usual.
+
+That is 32 calls, costing $0.73. Verdicts are read from each judge's opening
+line, by hand where pattern matching failed.
+
+| Run | Members' final positions (Claude, GPT, Gemini) | Live verdict (Grok) | Grok again | DeepSeek | Kimi | Sonnet |
+|---|---|---|---|---|---|---|
+| 1 | C, B, B | B | B | B | B | B |
+| 2 | C, B, B | B | B | B | B | B |
+| 3 | C, B, B | B | B | B | B | B |
+| 4 | A, A, A | A | A | A | A | A |
+| 5 | B, B, B | B | B | B | B | B |
+| 6 | C, A, A | A | A | A | A | **C** |
+| 7 | A, B, A | B | B | B | A | A |
+| 8 | C, B, B | B | B | B | B | **C** |
+
+**The verdict comes from the debate, not from an outside judge.** The three
+outside judges agree on 7 of 8 debates. Grok gave the same verdict on every
+re-judge. The one split is run 7, the closest debate. There the members ended
+2–1 for A, but both of them had made A conditional on evidence nobody had.
+Grok and DeepSeek chose B on that ground; Kimi followed the majority. So the
+6-to-2 spread across runs in the section above comes from what members argued
+in each debate, not from Grok's lean.
+
+**A judge that shares a model with a member sides with it.** In runs 6 and 8
+the Sonnet judge chose C. That was the position of the Claude member (also
+Sonnet 5.5), and no outside judge chose it. In run 8 it overruled a 2–1
+majority, saying "headcount is not evidence". In both runs it agreed with that
+member against the outside judges. Anonymising the input did not stop this: a
+model recognises its own arguments without names. This is the #73 failure in
+a weaker form.
+
+**Consequences:**
+- Use an outside Speaker from a vendor not on the panel. The default, a
+  member as Speaker, keeps this bias even with anonymised input.
+- Candidate change: warn when `parliament.speaker` uses the same model as a
+  member, and recommend an outside Speaker whenever members are tied on tier.
+

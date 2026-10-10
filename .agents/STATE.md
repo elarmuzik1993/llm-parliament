@@ -14,15 +14,19 @@ _Updated 2026-10-10_
   Grok 4.7 as outside Speaker) gave B 6 times and A twice, but all eight gave the same first
   step and switch conditions: a stable decision procedure, not a stable letter. A member changed
   its mind in 5 of 8 runs. The original monolith question no longer divides frontier models.
+- Judge swap (same 8 debates re-judged): outside judges (Grok, DeepSeek, Kimi) agree on 7 of 8,
+  so the verdict tracks the debate. A judge that shares a member's model (Sonnet) sided with
+  that member in 2 of 8, against all outside judges, despite anonymised input.
 - Contributor PRs are open for #72 (synthesis parser strips bold) and #74 (Windows encoding crash).
 
 ## Next
 1. Review the #72 and #74 contributor PRs. The #72 one edits `procedures/division.py`, which the
    #73 fix also changed, so check it rebased and that `test_speaker_neutrality.py` still passes.
-2. Decide what to test next, given the doc's verdict. Options: a second contested question, to
-   see if "stable procedure, unstable letter" generalises; or whether the outside Speaker's own
-   lean sets the verdict (swap Grok for another model on the same question). Run debates
-   **one at a time**; check the OpenRouter balance first (about $5.30 on 2026-10-10).
+2. Act on the judge swap: warn when `parliament.speaker` uses a member's model, and recommend
+   an outside Speaker when members tie on tier (the member default keeps same-model bias).
+   Then test a second contested question to see if "stable procedure, unstable letter"
+   generalises. Run debates **one at a time**; check the OpenRouter balance first (about $4.60
+   on 2026-10-10).
 3. Live test step 5 and the Windows checks (TUI rendering, `Ctrl-C`, saved Hansard), using the
    same config; record them in the doc.
 4. Small follow-up, not filed yet: with `parliament.speaker` set, the unrated-members warning
