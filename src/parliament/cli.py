@@ -213,7 +213,7 @@ def ask(
             outside_speaker=build_speaker_from_config(config),
         )
 
-        for warning in p.check_gaps():
+        for warning in p.check_gaps() + p.check_speaker():
             diag.print(f"[yellow]Warning: {warning}[/yellow]")
 
         if not json_output:

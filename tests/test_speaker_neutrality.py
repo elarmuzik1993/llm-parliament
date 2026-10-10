@@ -157,3 +157,66 @@ def test_settings_screen_shows_no_member_as_speaker_when_one_is_configured():
     assert [row.role for row in rows] == ["Member", "Member"]
     rows = build_model_settings(_config({"provider": "mock", "model": "judge-v1"}), "Beta")
     assert [row.role for row in rows] == ["Member", "Speaker / member"]
+
+
+# A Speaker that shares a member's model sided with that member in a live
+# judge swap, even with anonymised input; one chosen only by order among tied
+# members is an insider nobody picked. Both get a warning; neither blocks.
+
+
+def _panel(*models: tuple[str, str]):
+    members = [
+        Member(name=f"M{i}", provider_name=provider, model=model)
+        for i, (provider, model) in enumerate(models, 1)
+    ]
+    providers = {m.name: MockProvider(model=m.model, latency_ms=0) for m in members}
+    return members, providers
+
+
+def _outside(provider: str, model: str):
+    return (Member(name="Judge", provider_name=provider, model=model), MockProvider(model=model))
+
+
+TIED = (("openrouter", "anthropic/claude-sonnet-5.5"), ("openrouter", "openai/gpt-5.6-sol"))
+
+
+def test_outside_speaker_sharing_a_member_model_is_warned():
+    members, providers = _panel(*TIED)
+    outside = _outside("openrouter", "anthropic/claude-sonnet-5.5")
+    (warning,) = Parliament(members, providers, outside_speaker=outside).check_speaker()
+    assert "Judge" in warning and "M1" in warning and "M2" not in warning
+
+
+def test_same_model_through_another_provider_still_counts():
+    members, providers = _panel(("openrouter", "anthropic/claude-sonnet-4.6"), TIED[1])
+    outside = _outside("anthropic", "claude-sonnet-4-6")
+    assert len(Parliament(members, providers, outside_speaker=outside).check_speaker()) == 1
+
+
+def test_outside_speaker_off_the_panel_is_not_warned():
+    members, providers = _panel(*TIED)
+    outside = _outside("openrouter", "x-ai/grok-4.7")
+    assert Parliament(members, providers, outside_speaker=outside).check_speaker() == []
+
+
+def test_tied_members_without_an_outside_speaker_are_warned():
+    members, providers = _panel(*TIED)
+    (warning,) = Parliament(members, providers).check_speaker()
+    assert "M1" in warning and "parliament.speaker" in warning
+
+
+def test_an_explicit_member_speaker_is_not_warned():
+    members, providers = _panel(*TIED)
+    assert Parliament(members, providers, speaker_override="M2").check_speaker() == []
+
+
+def test_a_single_strongest_member_is_not_warned():
+    members, providers = _panel(
+        ("openrouter", "anthropic/claude-opus-4.6"), ("openrouter", "openai/gpt-4o-mini")
+    )
+    assert Parliament(members, providers).check_speaker() == []
+
+
+def test_a_mock_panel_is_not_warned():
+    members, providers = _panel(("mock", "mock-v1"), ("mock", "mock-v2"))
+    assert Parliament(members, providers).check_speaker() == []
