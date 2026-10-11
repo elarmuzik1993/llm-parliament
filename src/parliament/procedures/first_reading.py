@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 
 from parliament.core.types import Bill, Member, ProgressEvent, Response
+from parliament.procedures.positions import FIRST_READING_INSTRUCTIONS, parse_position
 from parliament.procedures.results import CANCELLED_MESSAGE, partition_results
 from parliament.providers.base import Provider
 from parliament.providers.errors import format_provider_error
@@ -17,7 +18,9 @@ Give your honest, thorough analysis of the following question.
 Cover: pros, cons, tradeoffs, and your recommendation.
 Be specific and practical.
 
-Question: {question}"""
+Question: {question}
+
+{position_instructions}"""
 
 
 async def _read_one(
@@ -39,6 +42,7 @@ async def _read_one(
         prompt = PROMPT_TEMPLATE.format(
             member_count=member_count,
             question=bill.content,
+            position_instructions=FIRST_READING_INSTRUCTIONS,
         )
         content = await provider.generate(prompt)
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -47,6 +51,7 @@ async def _read_one(
             content=content,
             phase="first_reading",
             duration_ms=duration_ms,
+            position=parse_position(content, with_changed_mind=False),
         )
         on_progress(
             ProgressEvent(

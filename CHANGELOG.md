@@ -24,6 +24,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Members state their positions (#69)** — First Reading and Debate prompts
+  ask each member to end with a `POSITION:` line, and Debate also asks for
+  `CHANGED MIND: yes/no`. They are parsed into `Response.position`
+  (`stance`, `changed_mind`) and appear in `--json`, so disagreement and
+  movement between phases can be read as data instead of from prose. A member
+  that leaves the lines out gets `position: null`; older Hansards load the same
+  way.
+
 - **Outside Speaker** — `parliament.speaker` names a model that writes the
   synthesis without having debated, so the Speaker has no position of its own
   to favour (#73). If it fails, a member takes over.

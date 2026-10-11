@@ -92,6 +92,24 @@ cancelled call can never be mistaken for a confident one.
 | `content` | `string` | The response text. |
 | `phase` | `"first_reading" \| "debate"` | Phase that produced the response. |
 | `duration_ms` | `number` | Duration for this member response in milliseconds. |
+| `position` | `Position \| null` | The member's own one-line position, or `null` when it did not state one. |
+
+## `Position`
+
+Each member is asked to end its answer with a labelled line, `POSITION:` in
+First Reading and `POSITION:` plus `CHANGED MIND: yes/no` in Debate. The
+member states these itself; the Speaker does not infer them. Only the last few
+lines of an answer are read, so a peer's `POSITION:` quoted earlier in a
+critique is never taken as the member's own. Records written before this field
+existed omit it, and read back as `null`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `stance` | `string` | The member's recommendation, in one sentence of its own words. Free text: two stances are not guaranteed to be comparable without reading them. |
+| `changed_mind` | `boolean \| null` | Whether the debate changed the member's recommendation. Always `null` in First Reading; also `null` in Debate when the member did not give a clear yes or no. |
+
+`null` is not "no". A missing position or answer means the member did not
+say, so do not count it as agreement or as an unchanged mind.
 
 ## `Synthesis`
 
@@ -148,17 +166,25 @@ jq -e '(.members | length) == (.first_reading | length)' hansard.json >/dev/null
   "first_reading": [
     {
       "member_name": "Mock-A",
-      "content": "Initial analysis...",
+      "content": "Initial analysis...\nPOSITION: Keep it as one service.",
       "phase": "first_reading",
-      "duration_ms": 12
+      "duration_ms": 12,
+      "position": {
+        "stance": "Keep it as one service.",
+        "changed_mind": null
+      }
     }
   ],
   "debate": [
     {
       "member_name": "Mock-A",
-      "content": "Critique...",
+      "content": "Critique...\nPOSITION: Split out billing only.\nCHANGED MIND: yes",
       "phase": "debate",
-      "duration_ms": 9
+      "duration_ms": 9,
+      "position": {
+        "stance": "Split out billing only.",
+        "changed_mind": true
+      }
     }
   ],
   "synthesis": {
@@ -205,4 +231,11 @@ Print debate critiques in phase order:
 ```bash
 parliament ask "Should this be async?" --json \
   | jq -r '.debate[] | "\(.member_name): \(.content)"'
+```
+
+List who changed their mind during the debate:
+
+```bash
+parliament ask "Should we split this service?" --json \
+  | jq -r '.debate[] | select(.position.changed_mind == true) | .member_name'
 ```
