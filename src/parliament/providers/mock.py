@@ -21,7 +21,17 @@ class MockProvider(Provider):
         # Detect Speaker synthesis prompt by looking for the section headers instruction
         if "CONSENSUS" in prompt and "RECOMMENDATION" in prompt and "Speaker" in prompt:
             return self._mock_synthesis()
-        return f"[Mock {self.model}] Analysis of: {prompt[:100]}..."
+        content = f"[Mock {self.model}] Analysis of: {prompt[:100]}..."
+        # Answer the position instructions (procedures/positions.py) so --mock
+        # runs exercise the parser. Debate asks for both lines.
+        if "CHANGED MIND:" in prompt:
+            content += (
+                f"\n\nPOSITION: Mock {self.model} keeps its first recommendation."
+                "\nCHANGED MIND: no"
+            )
+        elif "POSITION:" in prompt:
+            content += f"\n\nPOSITION: Mock {self.model} recommends the simplest option."
+        return content
 
     def _mock_synthesis(self) -> str:
         return (

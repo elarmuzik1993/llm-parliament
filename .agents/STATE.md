@@ -1,6 +1,6 @@
 # State
 
-_Updated 2026-10-11_
+_Updated 2026-10-11 (#69 branch)_
 
 ## Now
 - `main` is 0.2.0 plus unreleased changes (CHANGELOG `[Unreleased]`). verify.sh green: 736 tests.
@@ -17,7 +17,17 @@ _Updated 2026-10-11_
   same debates, outside judges agreed on 7 of 8; a judge sharing a member's model sided with it.
   The README summarises this under "When it helps — measured" and "Choosing the Speaker".
 
+- #69 in progress on branch `ccr-f5da835b-ki1dt2` (not merged): members self-report a
+  `POSITION:` line (First Reading) plus `CHANGED MIND: yes/no` (Debate), parsed by
+  `procedures/positions.py` into `Response.position`; in `--json` and `docs/hansard-schema.md`,
+  whose Response/Position/Synthesis tables are now pinned by `test_docs_match_code.py`.
+  Chosen over a Speaker-written POSITIONS section: the Speaker sees no First Readings and is
+  the biased party in #73. 752 tests.
+
 ## Next
+0. #69: open the PR, then a live run to see how real models follow the trailer (strip it from
+   displayed content? render positions in the Hansard markdown?). Then the MCP prerequisites:
+   check warnings (gap, Speaker) into Hansard JSON, then #9's return shape.
 1. Test a second contested question to see if "stable procedure, unstable letter" generalises.
    The analytics-database question in the doc's screen is the next candidate. Run debates
    **one at a time**; check the OpenRouter balance first (about $4.60 on 2026-10-10).
@@ -46,8 +56,8 @@ _Updated 2026-10-11_
 
 ## Known issues
 - Local ruff can lag CI's: CI installs the newest version (0.17.0 on 2026-10-10). In cloud
-  containers a stale pipx ruff (0.16.8) in `~/.local/bin` shadows it and reports a false DTZ005
-  on `tui.py`; run verify with `PATH="/usr/local/bin:$PATH"`. There, `python -m mypy` then fails on
+  containers both `~/.local/bin` (0.16.8) and `/usr/local/bin` (0.16.10) ruff are stale and
+  report a false DTZ005 on `tui.py`; install the newest ruff into a scratch venv and run that. There, `python -m mypy` then fails on
   the system numpy stubs (needs 3.12); `~/.local/bin/mypy src/parliament` passes. Env-only.
 - `MODEL_TIERS` stops at Claude 4.6 / `gpt-4o`, so current models are unrated (#67).
 - On Windows, verify.sh picks the system `python`: prefix `PATH="$PWD/.venv/Scripts:$PATH"`.

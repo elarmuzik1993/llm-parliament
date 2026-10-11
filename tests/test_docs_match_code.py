@@ -20,10 +20,19 @@ from pathlib import Path
 
 import pytest
 
-from parliament.core.types import Hansard, Member
+from parliament.core.types import Hansard, Member, Position, Response, Synthesis
 
 
-@pytest.mark.parametrize("record,header", [(Hansard, "Top-level object"), (Member, "`Member`")])
+@pytest.mark.parametrize(
+    "record,header",
+    [
+        (Hansard, "Top-level object"),
+        (Member, "`Member`"),
+        (Response, "`Response`"),
+        (Position, "`Position`"),
+        (Synthesis, "`Synthesis`"),
+    ],
+)
 def test_hansard_schema_documents_public_fields(record, header):
     root = _repo_root()
     if root is None:

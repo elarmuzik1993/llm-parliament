@@ -60,6 +60,19 @@ class Member:
 
 
 @dataclass
+class Position:
+    """A member's own one-line statement of where it stands after a phase.
+
+    Self-reported, not inferred by the Speaker (#69, #73). `changed_mind` is
+    only asked for in Debate, so it is None after First Reading -- and also
+    when the member left the answer out.
+    """
+
+    stance: str
+    changed_mind: bool | None = None
+
+
+@dataclass
 class Response:
     """A single member's output from a phase."""
 
@@ -67,6 +80,13 @@ class Response:
     content: str
     phase: str  # "first_reading" | "debate"
     duration_ms: int = 0
+    # None when the member did not end with a POSITION line.
+    position: Position | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Response:
+        position = data.get("position")  # absent before #69
+        return cls(**{**data, "position": Position(**position) if position else None})
 
 
 @dataclass
@@ -130,8 +150,8 @@ class Hansard:
         return cls(
             bill=Bill(**data["bill"]),
             members=[Member(**m) for m in data["members"]],
-            first_reading=[Response(**r) for r in data["first_reading"]],
-            debate=[Response(**r) for r in data["debate"]],
+            first_reading=[Response.from_dict(r) for r in data["first_reading"]],
+            debate=[Response.from_dict(r) for r in data["debate"]],
             synthesis=Synthesis(**data["synthesis"]),
             id=data["id"],
             created_at=data["created_at"],
