@@ -51,7 +51,7 @@ async def _read_one(
             content=content,
             phase="first_reading",
             duration_ms=duration_ms,
-            position=parse_position(content),
+            position=parse_position(content, with_changed_mind=False),
         )
         on_progress(
             ProgressEvent(

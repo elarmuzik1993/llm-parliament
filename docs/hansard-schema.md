@@ -98,8 +98,10 @@ cancelled call can never be mistaken for a confident one.
 
 Each member is asked to end its answer with a labelled line, `POSITION:` in
 First Reading and `POSITION:` plus `CHANGED MIND: yes/no` in Debate. The
-member states these itself; the Speaker does not infer them. Records written
-before this field existed omit it, and read back as `null`.
+member states these itself; the Speaker does not infer them. Only the last few
+lines of an answer are read, so a peer's `POSITION:` quoted earlier in a
+critique is never taken as the member's own. Records written before this field
+existed omit it, and read back as `null`.
 
 | Field | Type | Description |
 | --- | --- | --- |
