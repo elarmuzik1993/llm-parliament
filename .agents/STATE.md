@@ -4,8 +4,6 @@ _Updated 2026-10-11_
 
 ## Now
 - `main` is 0.2.0 plus unreleased changes (CHANGELOG `[Unreleased]`). verify.sh green: 736 tests.
-  Merged #81 (bold markers in synthesis parsing, #72) and #82 (UTF-8 stdio, #74); the duplicates
-  #76 and #77 are closed.
 - Speaker neutrality (#73): the Division prompt anonymises members (`Member 1..n`, names
   scrubbed from the text, restored after parsing), and an optional `parliament.speaker`
   (provider/model/name) is an outside Speaker that did not debate. If it fails, a member takes
@@ -54,6 +52,6 @@ _Updated 2026-10-11_
 - On Windows, verify.sh picks the system `python`: prefix `PATH="$PWD/.venv/Scripts:$PATH"`.
 - Cloud git defaults to the Claude identity: commit with `git -c user.name="Boris Miscenco"
   -c user.email=aidevblock@gmail.com`.
-- Stale remote branches: `fix/openrouter-tier-resolution`, `chore/review-66-handoff`,
-  `docs/state-after-66-review`, three `claude/...` ones. Delete once confirmed unneeded.
+- `claude/community-engagement-improvements-abuakf` (member personas, 2 commits from July) is
+  kept on the remote on purpose, unmerged and without a PR. Decide: revive or delete.
 - CI on fork PRs waits for the owner to approve the run; merging needs an approving review.
