@@ -29,7 +29,8 @@ _Updated 2026-10-11_
    `presets._cloud_openrouter_preset` ids from `GPT_4O_MINI` / `GEMINI_FLASH`.
 5. #67 in order: per-member `tier:` override; Ollama size; family rules. #66 leftovers:
    `Member.base_url` vs `tier_base_url` alias; rated gap missing from Hansard JSON (MCP, #9).
-6. OpenRouter series: #37, then #39. Roadmap: #15.
+6. OpenRouter series (#8): only #37 is left (curated shortlist; tiers done in #65/#66). Asked
+   `kun-ren` on 2026-10-11 whether they are still on it; no answer yet. Roadmap: #15.
 
 ## Decisions
 - Agents read `AGENTS.md` directly; agent state lives in `.agents/` (not in the sdist).
