@@ -20,6 +20,15 @@ Built on multi-agent debate, a technique shown to improve AI accuracy by
 including where it does *not* help, are summarised under
 [When it helps — measured](#when-it-helps--measured).
 
+**What this project is for.** LLM Parliament is a learning project built in
+public. I wanted to find out whether a debate between models beats a single
+good model, so I measured it instead of assuming it. The answer is mixed: it
+adds nothing on easy questions, and on contested ones it gives a steadier way
+of deciding rather than a fixed answer. The method, every run and the raw
+numbers are in [`docs/live-test-windows.md`](docs/live-test-windows.md). CI
+runs the tests on Linux, macOS and Windows, and tests pin the configuration
+reference and the shipped example configs to the code.
+
 See [CHANGELOG.md](CHANGELOG.md) for the release history.
 
 ---
