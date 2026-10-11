@@ -19,9 +19,22 @@
 #     provider: google
 #     model: gemini-2.5-flash-lite
 #
+#   # One OpenRouter key covers all three labs (no separate accounts):
+#   - name: Claude
+#     provider: openrouter
+#     model: anthropic/claude-sonnet-4.6
+#
+#   - name: GPT
+#     provider: openrouter
+#     model: openai/gpt-4o-mini
+#
+#   - name: Gemini
+#     provider: openrouter
+#     model: google/gemini-2.5-flash
+#
 # Cloud providers need API keys. Set them via the TUI (saves to
 # ~/.parliament/keys.env, chmod 0600), or export the env var directly:
-#   ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY
+#   OPENROUTER_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY
 
 parliament:
   name: House of AI

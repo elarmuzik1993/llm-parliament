@@ -54,6 +54,19 @@ parliament              # opens the TUI
 
 The mock parliament runs out of the box with no setup.
 
+**Real models with one key.** [OpenRouter](https://openrouter.ai) is one
+account and one API key for Claude, GPT, Gemini and open models, and it also
+lists some free models. Set the key and the first-run wizard proposes a
+three-lab parliament through it:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+parliament doctor       # the wizard detects the key and writes a config
+```
+
+Already have Anthropic, OpenAI or Google keys? Those work directly too. See
+[Optional: Cloud Models](#optional-cloud-models).
+
 ## Installation
 
 The recommended way is **pipx** — it installs the tool into an isolated
@@ -247,8 +260,21 @@ separately, then point a parliament member at it.
 
 ## Optional: Cloud Models
 
-**Easiest path** — export your keys in your shell profile before the first run
-and the wizard picks them up automatically:
+**Easiest path: one OpenRouter key.** One signup and one key reach models from
+several labs, so you do not need a separate account for each. Export the key
+in your shell profile before the first run and the wizard picks it up:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+parliament doctor   # wizard fires, detects the key, proposes a three-lab preset
+```
+
+Usage is billed by OpenRouter. It also lists some free models; check its
+[model list](https://openrouter.ai/models) for what is free today, since that
+changes. See [OpenRouter](#openrouter) below for the config and key commands.
+
+**Direct provider keys** — if you already have them, export them instead; the
+wizard picks those up the same way:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...

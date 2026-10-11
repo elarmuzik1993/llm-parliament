@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **README and example config lead with the one-key OpenRouter path** — Quick
+  Start and "Optional: Cloud Models" now start with a single
+  `OPENROUTER_API_KEY` (one signup, several labs) and keep direct provider keys
+  as the alternative; `config.example.yaml` gains a commented three-member
+  OpenRouter parliament. `parliament doctor` already reports OpenRouter's SDK
+  and key status, so it is unchanged.
 - **Capability assessments across providers** — distinguish assessed large gaps,
   comparable rated members and missing ratings. Unassessed models are reported
   explicitly in warnings and Hansard JSON's `unrated_members`, rather than
