@@ -112,7 +112,6 @@ parliament doctor
 - All cloud provider SDKs (Anthropic, Google, OpenAI) are bundled. No extras needed.
 - Ollama (for local models) is a separate native daemon — install from <https://ollama.com> if you want local models. The `parliament doctor` command tells you what's detected.
 - On Windows, the install pulls in `windows-curses` automatically so the TUI works out of the box. Windows Terminal is recommended over `cmd.exe` (better VT/UTF-8 support); legacy `cmd.exe` is supported.
-- On Windows, redirecting `parliament doctor` or `parliament ask` output to a file (`> out.txt`) currently crashes with `UnicodeEncodeError` ([#74](https://github.com/elarmuzik1993/llm-parliament/issues/74)). Until it's fixed, run `$env:PYTHONIOENCODING = "utf-8"` first. `parliament ask --json` is not affected.
 - Keys are stored in the OS native credential store (Windows Credential Manager, macOS Keychain, GNOME Keyring) via `parliament keys set`. Falls back to `~/.parliament/keys.env` if no keyring is available.
 
 ## Verify your install

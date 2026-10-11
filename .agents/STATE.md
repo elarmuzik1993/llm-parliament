@@ -1,9 +1,11 @@
 # State
 
-_Updated 2026-10-10_
+_Updated 2026-10-11_
 
 ## Now
-- `main` is 0.2.0 plus unreleased changes (CHANGELOG `[Unreleased]`). verify.sh green: 731 tests.
+- `main` is 0.2.0 plus unreleased changes (CHANGELOG `[Unreleased]`). verify.sh green: 736 tests.
+  Merged #81 (bold markers in synthesis parsing, #72) and #82 (UTF-8 stdio, #74); the duplicates
+  #76 and #77 are closed.
 - Speaker neutrality (#73): the Division prompt anonymises members (`Member 1..n`, names
   scrubbed from the text, restored after parsing), and an optional `parliament.speaker`
   (provider/model/name) is an outside Speaker that did not debate. If it fails, a member takes
@@ -18,24 +20,18 @@ _Updated 2026-10-10_
   The README summarises this under "When it helps — measured" and "Choosing the Speaker".
 
 ## Next
-1. #72 and #74 now each have two PRs. cryptonikav's #81 (parser) and #82 (UTF-8 stdio) are
-   real fixes; changes requested 2026-10-10. #81: `**CONSENSUS:** text` parses as `** text`
-   (suggested tail `\s*:?(?:[ \t]*\*+(?=\s))?[ \t]*\n?`, add that test). #82: add a test that
-   runs `doctor` with cp1252 stdout, drop the needless console rebuild. Both: CHANGELOG line.
-   Re-review when they push. CI on fork PRs waits for the owner to approve the run. Merge one
-   per issue, close the other (#76 / #77). When a #74 fix merges, drop the README's Windows note.
-2. Test a second contested question to see if "stable procedure, unstable letter" generalises.
+1. Test a second contested question to see if "stable procedure, unstable letter" generalises.
    The analytics-database question in the doc's screen is the next candidate. Run debates
    **one at a time**; check the OpenRouter balance first (about $4.60 on 2026-10-10).
-3. Live test step 5 and the Windows checks (TUI rendering, `Ctrl-C`, saved Hansard), using the
+2. Live test step 5 and the Windows checks (TUI rendering, `Ctrl-C`, saved Hansard), using the
    same config; record them in the doc.
-4. Small follow-up, not filed yet: with `parliament.speaker` set, the unrated-members warning
+3. Small follow-up, not filed yet: with `parliament.speaker` set, the unrated-members warning
    still says "Speaker selection assumes tier 3".
-5. #56 follow-ups: AGENTS.md row **C** says "not the matrix", now stale; derive
+4. #56 follow-ups: AGENTS.md row **C** says "not the matrix", now stale; derive
    `presets._cloud_openrouter_preset` ids from `GPT_4O_MINI` / `GEMINI_FLASH`.
-6. #67 in order: per-member `tier:` override; Ollama size; family rules. #66 leftovers:
+5. #67 in order: per-member `tier:` override; Ollama size; family rules. #66 leftovers:
    `Member.base_url` vs `tier_base_url` alias; rated gap missing from Hansard JSON (MCP, #9).
-7. OpenRouter series: #37, then #39. Roadmap: #15.
+6. OpenRouter series: #37, then #39. Roadmap: #15.
 
 ## Decisions
 - Agents read `AGENTS.md` directly; agent state lives in `.agents/` (not in the sdist).
@@ -54,11 +50,10 @@ _Updated 2026-10-10_
   containers a stale pipx ruff (0.16.8) in `~/.local/bin` shadows it and reports a false DTZ005
   on `tui.py`; run verify with `PATH="/usr/local/bin:$PATH"`. There, `python -m mypy` then fails on
   the system numpy stubs (needs 3.12); `~/.local/bin/mypy src/parliament` passes. Env-only.
-- Until #74 is fixed, `doctor` and plain `ask` crash on Windows when output is redirected; set
-  `PYTHONIOENCODING=utf-8`. `ask --json` is unaffected.
 - `MODEL_TIERS` stops at Claude 4.6 / `gpt-4o`, so current models are unrated (#67).
 - On Windows, verify.sh picks the system `python`: prefix `PATH="$PWD/.venv/Scripts:$PATH"`.
 - Cloud git defaults to the Claude identity: commit with `git -c user.name="Boris Miscenco"
   -c user.email=aidevblock@gmail.com`.
 - Stale remote branches: `fix/openrouter-tier-resolution`, `chore/review-66-handoff`,
   `docs/state-after-66-review`, three `claude/...` ones. Delete once confirmed unneeded.
+- CI on fork PRs waits for the owner to approve the run; merging needs an approving review.
