@@ -82,8 +82,15 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
     }
 
     # Try to extract sections — match plain headers (CONSENSUS:), markdown
-    # h1-h6 (### CONSENSUS), and bold (**CONSENSUS**) variants.
-    pattern = r"(?:^|\n)\s*#{0,6}\s*\*{0,2}(CONSENSUS|SPLIT|RISKS|RECOMMENDATION)\*{0,2}\s*:?\s*\n?"
+    # h1-h6 (### CONSENSUS), and bold (**CONSENSUS**) variants. The pattern
+    # consumes a trailing star run only when followed by whitespace, so
+    # **CONSENSUS:** on its own line and **CONSENSUS:** All agree. on one
+    # line both yield a clean body, while a body starting on the same line
+    # keeps its own markup.
+    pattern = (
+        r"(?:^|\n)\s*#{0,6}\s*\**(CONSENSUS|SPLIT|RISKS|RECOMMENDATION)\**"
+        r"\s*:?(?:[ \t]*\*+(?=\s))?[ \t]*\n?"
+    )
     parts = re.split(pattern, raw, flags=re.IGNORECASE)
 
     # parts alternates: [preamble, HEADER, content, HEADER, content, ...]
@@ -91,7 +98,16 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
         i = 1
         while i < len(parts) - 1:
             header = parts[i].lower()
-            content = parts[i + 1].strip().strip("*").strip()
+            # No asterisk stripping: any '*' left belongs to the content (e.g.
+            # a bold first or last line) and must be preserved. Only whole
+            # lines made of nothing but stars — degenerate header leftovers,
+            # never meaningful markdown — are dropped.
+            lines = parts[i + 1].strip().split("\n")
+            while lines and not lines[0].strip().strip("*"):
+                lines.pop(0)
+            while lines and not lines[-1].strip().strip("*"):
+                lines.pop()
+            content = "\n".join(lines).strip()
             if header in sections:
                 sections[header] = content
             i += 2
