@@ -29,8 +29,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Hansard as `warnings: [{kind, message}]`, with `kind` one of `tier_gap`,
   `unrated` or `speaker`. A script or agent reading `--json` sees them without
   capturing stderr. Older records read back with an empty list. The TUI result
-  screen and saved `.md` Hansards now show all three warnings, not only the
-  unrated one, and `parliament members` shows the Speaker warning too.
+  screen and saved `.md` Hansards now list all three warnings, not only the
+  unrated one, as one line each below the Recommendation rather than as full
+  blocks above it. `parliament members` shows the Speaker warning too.
 - **Members state their positions (#69)** — First Reading and Debate prompts
   ask each member to end with a `POSITION:` line, and Debate also asks for
   `CHANGED MIND: yes/no`. They are parsed into `Response.position`

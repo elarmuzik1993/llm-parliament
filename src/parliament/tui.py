@@ -38,7 +38,7 @@ from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
 from parliament.model_catalog import picker_data_for
 from parliament.render import build_renderer
-from parliament.render.hansard import HansardLevel, recorded_warnings, warning_titles
+from parliament.render.hansard import HansardLevel, warning_lines
 
 SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
 DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
@@ -1664,10 +1664,6 @@ def _result_lines(hansard: Hansard, level: HansardLevel | None = None, width: in
     calls = len(hansard.members) * 2 + 1
     q = f"Question: {hansard.bill.content}"
     lines = [*_wrap_text(q, width), ""]
-    for warning in recorded_warnings(hansard):
-        _, heading = warning_titles(warning.kind)
-        lines.extend([heading, *_wrap_text(warning.message, width), ""])
-
     for section_key, heading, value in (
         ("consensus",      "CONSENSUS",      synthesis.consensus),
         ("split",          "SPLIT",          synthesis.split),
@@ -1685,6 +1681,12 @@ def _result_lines(hansard: Hansard, level: HansardLevel | None = None, width: in
                 continue
             display = value
         lines.extend([heading, *_wrap_text(display, width), ""])
+
+    if warnings := warning_lines(hansard):
+        lines.append("WARNINGS")
+        for warning in warnings:
+            lines.extend(_wrap_text(f"- {warning}", width))
+        lines.append("")
 
     if includes(resolved, "first_reading"):
         lines.extend(["FIRST READING", ""])

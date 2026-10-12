@@ -13,28 +13,16 @@ superset of the level below.
 
 from __future__ import annotations
 
+import re
 import warnings
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from parliament.core.model_tiers import unrated_warning
-from parliament.core.types import SPEAKER, TIER_GAP, UNRATED, SessionWarning
+from parliament.core.types import UNRATED, SessionWarning
 
 if TYPE_CHECKING:
     from parliament.core.types import Hansard
-
-
-# Heading per warning kind: (Markdown callout title, TUI result-screen heading).
-WARNING_TITLES: dict[str, tuple[str, str]] = {
-    TIER_GAP: ("Capability gap", "CAPABILITY WARNING"),
-    UNRATED: ("Model ratings", "RATING WARNING"),
-    SPEAKER: ("Speaker neutrality", "SPEAKER WARNING"),
-}
-
-
-def warning_titles(kind: str) -> tuple[str, str]:
-    """Headings for a warning; a kind from a newer record gets a generic one."""
-    return WARNING_TITLES.get(kind, ("Warning", "WARNING"))
 
 
 def recorded_warnings(hansard: Hansard) -> list[SessionWarning]:
@@ -48,6 +36,20 @@ def recorded_warnings(hansard: Hansard) -> list[SessionWarning]:
     if hansard.unrated_members:
         return [SessionWarning(UNRATED, unrated_warning(hansard.unrated_members))]
     return []
+
+
+def warning_lines(hansard: Hansard) -> list[str]:
+    """One line per warning, for showing beneath a verdict.
+
+    Only each message's first sentence, which says what is wrong; the advice
+    that follows is in stderr and JSON. Shown after the Recommendation, not
+    above it: with today's unrated models most panels raise two warnings on
+    every run, and they should not push the answer down the screen.
+    """
+    return [
+        re.split(r"(?<=\.)\s+(?=[A-Z])", w.message.strip(), maxsplit=1)[0]
+        for w in recorded_warnings(hansard)
+    ]
 
 
 class HansardLevel(str, Enum):
@@ -142,10 +144,6 @@ def render_markdown(hansard: Hansard, level: HansardLevel) -> str:
 
     s = hansard.synthesis
 
-    for warning in recorded_warnings(hansard):
-        title, _ = warning_titles(warning.kind)
-        parts.append(_callout("warning", title, warning.message))
-
     if includes(level, "consensus") and s.consensus.strip():
         parts.append(_callout("info", "Consensus", s.consensus))
     if includes(level, "split") and s.split.strip():
@@ -155,6 +153,9 @@ def render_markdown(hansard: Hansard, level: HansardLevel) -> str:
     if includes(level, "recommendation"):
         body = s.recommendation.strip() or "(no recommendation parsed)"
         parts.append(_callout("success", "Recommendation", body))
+
+    if lines := warning_lines(hansard):
+        parts.append(_callout("warning", "Warnings", "\n".join(f"- {line}" for line in lines)))
 
     if includes(level, "first_reading"):
         parts.append("## First Reading\n")
