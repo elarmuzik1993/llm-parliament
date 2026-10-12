@@ -239,8 +239,8 @@ def ask(
             outside_speaker=build_speaker_from_config(config),
         )
 
-        for warning in p.check_gaps() + p.check_speaker():
-            diag.print(f"[yellow]Warning: {warning}[/yellow]")
+        for warning in p.warnings():
+            diag.print(f"[yellow]Warning: {warning.message}[/yellow]")
 
         if not json_output:
             member_names = " | ".join(m.name for m in members)

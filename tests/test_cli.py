@@ -24,7 +24,9 @@ def test_ask_json_preserves_unrated_flag_and_warns_on_stderr(monkeypatch):
     )
     result = CliRunner().invoke(cli.main, ["ask", "--json", "Test question"])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout)["unrated_members"] == ["Mystery"]
+    data = json.loads(result.stdout)
+    assert data["unrated_members"] == ["Mystery"]
+    assert [w["kind"] for w in data["warnings"]] == ["unrated"]
     assert "Unrated members:" in result.stderr
     assert "assumed tier 3" in " ".join(result.stderr.split())
 

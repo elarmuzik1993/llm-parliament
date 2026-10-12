@@ -6,7 +6,14 @@ import time
 from collections.abc import Callable
 
 from parliament.core.model_tiers import calculate_gap, canonical_model_id, resolve_member_tier
-from parliament.core.types import Bill, Hansard, Member, ProgressEvent, Synthesis
+from parliament.core.types import (
+    Bill,
+    Hansard,
+    Member,
+    ProgressEvent,
+    SessionWarning,
+    Synthesis,
+)
 from parliament.procedures.debate import run_debate
 from parliament.procedures.division import run_division
 from parliament.procedures.first_reading import run_first_reading
@@ -97,6 +104,9 @@ class Parliament:
         """Run a full parliamentary session. Returns a Hansard record."""
         start = time.monotonic()
         bill = Bill(content=question)
+        # Taken from the configured panel before anyone speaks, so the record
+        # carries the same warnings the caller was shown up front.
+        warnings = self.warnings()
 
         # Phase 1: First Reading
         first_reading = await run_first_reading(
@@ -203,7 +213,13 @@ class Parliament:
             duration_ms=duration_ms,
             degraded=degraded,
             unrated_members=[m.name for m in calculate_gap(self.members).unrated_members],
+            warnings=warnings,
         )
+
+    def warnings(self) -> list[SessionWarning]:
+        """Every panel warning, tagged by kind: tier gaps, ratings, Speaker. Never blocks."""
+        speaker = [SessionWarning("speaker", w) for w in self.check_speaker()]
+        return calculate_gap(self.members).session_warnings() + speaker
 
     def check_gaps(self) -> list[str]:
         """Report assessed gaps and missing ratings. Never blocks."""

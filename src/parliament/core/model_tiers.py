@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from parliament.core.types import Member
+from parliament.core.types import Member, SessionWarning
 from parliament.model_catalog import OPENAI_COMPATIBLE
 
 # Tier 1 = frontier, Tier 4 = small
@@ -168,11 +168,17 @@ class TierAssessment:
     def comparable(self) -> bool:
         return self.rated_count >= 2 and self.gap is None and not self.unrated_members
 
-    def warnings(self) -> list[str]:
-        warnings = [self.gap.warning()] if self.gap is not None else []
+    def session_warnings(self) -> list[SessionWarning]:
+        warnings = []
+        if self.gap is not None:
+            warnings.append(SessionWarning("tier_gap", self.gap.warning()))
         if self.unrated_members:
-            warnings.append(unrated_warning([m.name for m in self.unrated_members]))
+            names = [m.name for m in self.unrated_members]
+            warnings.append(SessionWarning("unrated", unrated_warning(names)))
         return warnings
+
+    def warnings(self) -> list[str]:
+        return [w.message for w in self.session_warnings()]
 
 
 def calculate_gap(members: list[Member]) -> TierAssessment:

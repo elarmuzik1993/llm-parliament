@@ -220,3 +220,14 @@ def test_a_single_strongest_member_is_not_warned():
 def test_a_mock_panel_is_not_warned():
     members, providers = _panel(("mock", "mock-v1"), ("mock", "mock-v2"))
     assert Parliament(members, providers).check_speaker() == []
+
+
+async def test_hansard_records_the_warnings_the_caller_was_shown():
+    members, providers = _panel(*TIED)
+    parliament = Parliament(members, providers)
+    hansard = await parliament.ask("Q")
+    assert [w.kind for w in hansard.warnings] == ["unrated", "speaker"]
+    assert hansard.warnings == parliament.warnings()
+    assert [w.message for w in hansard.warnings] == (
+        parliament.check_gaps() + parliament.check_speaker()
+    )
