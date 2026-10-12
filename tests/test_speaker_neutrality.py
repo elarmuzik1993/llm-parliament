@@ -146,6 +146,12 @@ def test_outside_speaker_is_built_from_config():
     assert provider.model == "judge-v1"
 
 
+@pytest.mark.parametrize("speaker", [{"provider": "mock"}, {"model": "judge-v1"}, "judge-v1"])
+def test_an_incomplete_speaker_block_says_what_is_missing(speaker):
+    with pytest.raises(ValueError, match="needs a provider and a model"):
+        build_speaker_from_config(_config(speaker))
+
+
 def test_outside_speaker_cannot_share_a_member_name():
     config = _config({"name": "alpha", "provider": "mock", "model": "judge-v1"})
     with pytest.raises(ValueError, match="Alpha"):

@@ -351,6 +351,8 @@ def build_speaker_member_from_config(config: dict[str, Any]) -> Member | None:
     sc = config.get("parliament", {}).get("speaker")
     if not sc:
         return None
+    if not isinstance(sc, dict) or not sc.get("provider") or not sc.get("model"):
+        raise ValueError("parliament.speaker needs a provider and a model.")
     name = sc.get("name", "Speaker")
     for mc in config["parliament"]["members"]:
         if mc["name"].lower() == name.lower():
