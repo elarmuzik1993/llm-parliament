@@ -72,9 +72,14 @@ class Position:
     changed_mind: bool | None = None
 
 
-# Every value `SessionWarning.kind` can take. docs/hansard-schema.md lists the
-# same set, and tests/test_docs_match_code.py fails when the two disagree.
-WARNING_KINDS = ("tier_gap", "unrated", "speaker")
+# Every value `SessionWarning.kind` can take. Code raising a warning uses these
+# names, never a string literal, so a misspelt kind fails at import rather than
+# reaching JSON. docs/hansard-schema.md lists the same set, and
+# tests/test_docs_match_code.py fails when the two disagree.
+TIER_GAP = "tier_gap"
+UNRATED = "unrated"
+SPEAKER = "speaker"
+WARNING_KINDS = (TIER_GAP, UNRATED, SPEAKER)
 
 
 @dataclass

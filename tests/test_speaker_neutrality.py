@@ -231,3 +231,13 @@ async def test_hansard_records_the_warnings_the_caller_was_shown():
     assert [w.message for w in hansard.warnings] == (
         parliament.check_gaps() + parliament.check_speaker()
     )
+
+
+def test_panel_warnings_need_no_provider_clients():
+    from parliament.core.parliament import panel_warnings
+
+    members, providers = _panel(*TIED)
+    parliament = Parliament(members, providers)
+    assert panel_warnings(members) == parliament.warnings()
+    outside, _ = _outside("openrouter", "anthropic/claude-sonnet-5.5")
+    assert [w.kind for w in panel_warnings(members, outside)] == ["unrated", "speaker"]

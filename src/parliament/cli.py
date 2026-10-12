@@ -19,6 +19,7 @@ from parliament.config import (
     KEYS_FILE,
     build_parliament_from_config,
     build_speaker_from_config,
+    build_speaker_member_from_config,
     get_keyring_key,
     load_config,
     load_keys,
@@ -28,8 +29,8 @@ from parliament.config import (
     resolve_show_debate,
     save_key,
 )
-from parliament.core.model_tiers import calculate_gap, get_member_tier_label
-from parliament.core.parliament import Parliament
+from parliament.core.model_tiers import get_member_tier_label
+from parliament.core.parliament import Parliament, panel_warnings
 from parliament.presets import build_mock_preset
 from parliament.render import JsonDiagnosticsRenderer, build_renderer
 from parliament.render.hansard import HansardLevel, render_terminal
@@ -286,6 +287,7 @@ def members(config_path: Path | None):
     try:
         config = load_config(config_path)
         member_list, _ = build_parliament_from_config(config)
+        outside_speaker = build_speaker_member_from_config(config)
     except Exception as e:
         # The catch-all is where an unexpected failure lands, so the cause is
         # kept: `Error: {e}` alone is often one line about something three
@@ -304,8 +306,8 @@ def members(config_path: Path | None):
 
     console.print(table)
 
-    for warning in calculate_gap(member_list).warnings():
-        console.print(f"[yellow]Warning: {warning}[/yellow]")
+    for warning in panel_warnings(member_list, outside_speaker):
+        console.print(f"[yellow]Warning: {warning.message}[/yellow]")
 
 
 @main.command()

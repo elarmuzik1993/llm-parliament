@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from parliament.core.types import Member, SessionWarning
+from parliament.core.types import TIER_GAP, UNRATED, Member, SessionWarning
 from parliament.model_catalog import OPENAI_COMPATIBLE
 
 # Tier 1 = frontier, Tier 4 = small
@@ -171,10 +171,10 @@ class TierAssessment:
     def session_warnings(self) -> list[SessionWarning]:
         warnings = []
         if self.gap is not None:
-            warnings.append(SessionWarning("tier_gap", self.gap.warning()))
+            warnings.append(SessionWarning(TIER_GAP, self.gap.warning()))
         if self.unrated_members:
             names = [m.name for m in self.unrated_members]
-            warnings.append(SessionWarning("unrated", unrated_warning(names)))
+            warnings.append(SessionWarning(UNRATED, unrated_warning(names)))
         return warnings
 
     def warnings(self) -> list[str]:

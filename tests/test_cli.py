@@ -517,3 +517,24 @@ def test_doctor_survives_cp1252_stdout(monkeypatch, tmp_path):
         assert e.code == 0
     fake_out.flush()
     assert "✓".encode() in fake_out.buffer.getvalue()
+
+
+def test_members_shows_the_speaker_warning_ask_would_print(monkeypatch):
+    from parliament.core.types import Member
+
+    config = {"parliament": {
+        "members": [{"name": "M1"}, {"name": "M2"}],
+        "speaker": {"name": "Judge", "provider": "openrouter",
+                    "model": "anthropic/claude-sonnet-5.5"},
+    }}
+    members = [
+        Member("M1", "openrouter", "anthropic/claude-sonnet-5.5"),
+        Member("M2", "openrouter", "openai/gpt-5.6-sol"),
+    ]
+    monkeypatch.setattr(cli, "load_config", lambda _: config)
+    monkeypatch.setattr(cli, "build_parliament_from_config", lambda _: (members, {}))
+    result = CliRunner().invoke(cli.main, ["members"])
+    assert result.exit_code == 0, result.output
+    output = " ".join(result.output.split())
+    assert "Speaker Judge uses the same model as M1" in output
+    assert "Unrated members:" in output

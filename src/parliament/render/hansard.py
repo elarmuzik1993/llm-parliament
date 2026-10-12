@@ -18,9 +18,36 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from parliament.core.model_tiers import unrated_warning
+from parliament.core.types import SPEAKER, TIER_GAP, UNRATED, SessionWarning
 
 if TYPE_CHECKING:
     from parliament.core.types import Hansard
+
+
+# Heading per warning kind: (Markdown callout title, TUI result-screen heading).
+WARNING_TITLES: dict[str, tuple[str, str]] = {
+    TIER_GAP: ("Capability gap", "CAPABILITY WARNING"),
+    UNRATED: ("Model ratings", "RATING WARNING"),
+    SPEAKER: ("Speaker neutrality", "SPEAKER WARNING"),
+}
+
+
+def warning_titles(kind: str) -> tuple[str, str]:
+    """Headings for a warning; a kind from a newer record gets a generic one."""
+    return WARNING_TITLES.get(kind, ("Warning", "WARNING"))
+
+
+def recorded_warnings(hansard: Hansard) -> list[SessionWarning]:
+    """The warnings to show with a verdict.
+
+    Records written before `warnings` existed still carry `unrated_members`,
+    so that one warning is rebuilt for them rather than lost.
+    """
+    if hansard.warnings:
+        return list(hansard.warnings)
+    if hansard.unrated_members:
+        return [SessionWarning(UNRATED, unrated_warning(hansard.unrated_members))]
+    return []
 
 
 class HansardLevel(str, Enum):
@@ -115,8 +142,9 @@ def render_markdown(hansard: Hansard, level: HansardLevel) -> str:
 
     s = hansard.synthesis
 
-    if hansard.unrated_members:
-        parts.append(_callout("warning", "Model ratings", unrated_warning(hansard.unrated_members)))
+    for warning in recorded_warnings(hansard):
+        title, _ = warning_titles(warning.kind)
+        parts.append(_callout("warning", title, warning.message))
 
     if includes(level, "consensus") and s.consensus.strip():
         parts.append(_callout("info", "Consensus", s.consensus))

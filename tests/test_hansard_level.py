@@ -28,6 +28,35 @@ def test_unrated_warning_survives_every_display_level(make_hansard, level):
     assert all(len(line) <= 40 for line in warning_lines[:warning_end])
 
 
+@pytest.mark.parametrize("level", list(HansardLevel))
+def test_every_recorded_warning_is_shown_with_the_verdict(make_hansard, level):
+    from parliament.core.types import SessionWarning
+    from parliament.render.hansard import render_markdown
+    from parliament.tui import _result_lines
+
+    hansard = make_hansard()
+    hansard.warnings = [
+        SessionWarning("tier_gap", "Large capability gap between Alpha and Beta."),
+        SessionWarning("speaker", "Speaker Alpha may favour its own position."),
+    ]
+    markdown = render_markdown(hansard, level)
+    lines = _result_lines(hansard, level, width=40)
+    for text in (markdown, " ".join(" ".join(lines).split())):
+        assert "Large capability gap between Alpha and Beta." in text
+        assert "Speaker Alpha may favour its own position." in text
+    assert "Capability gap" in markdown and "Speaker neutrality" in markdown
+    assert "CAPABILITY WARNING" in lines and "SPEAKER WARNING" in lines
+
+
+def test_every_warning_kind_has_its_own_heading():
+    from parliament.core.types import WARNING_KINDS
+    from parliament.render.hansard import WARNING_TITLES, warning_titles
+
+    assert set(WARNING_TITLES) == set(WARNING_KINDS)
+    # A kind written by a newer version still renders, under a generic heading.
+    assert warning_titles("from_the_future") == ("Warning", "WARNING")
+
+
 def test_levels_exist():
     assert HansardLevel.MINIMAL.value == "minimal"
     assert HansardLevel.VERDICT.value == "verdict"
