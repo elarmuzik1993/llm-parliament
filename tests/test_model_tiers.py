@@ -1,17 +1,24 @@
 """Test model tier system."""
 
+import re
+from pathlib import Path
+
 import pytest
 
 from parliament.config import KEY_PROVIDERS
 from parliament.core.model_tiers import (
+    FAMILY_RULES,
     MODEL_ALIASES,
     MODEL_TIERS,
     calculate_gap,
     canonical_model_id,
     detect_gap,
+    get_member_tier_label,
     get_tier,
     get_tier_label,
     has_known_tier,
+    inferred_tier,
+    is_inferred_tier,
     resolve_member_tier,
 )
 from parliament.core.types import Member
@@ -299,3 +306,94 @@ def test_all_unrated_and_insufficient_members_are_not_comparable():
     assert not result.comparable
     for members in ([], [Member("GPT", "openai", "gpt-4o")]):
         assert not calculate_gap(members).comparable
+
+
+# Family rules (#67). Every rule needs at least one id here, so a pattern
+# cannot be added, or widened, without saying what it is meant to rate.
+@pytest.mark.parametrize(("model", "provider", "tier"), [
+    ("claude-opus-4-1", "anthropic", 1),
+    ("claude-opus-5-5", "anthropic", 1),
+    ("anthropic/claude-opus-5.5", "openrouter", 1),
+    ("claude-sonnet-4-5", "anthropic", 2),
+    ("anthropic/claude-sonnet-5.5:nitro", "openrouter", 2),
+    ("claude-haiku-5-5", "anthropic", 3),
+    ("anthropic/claude-haiku-4.5", "openrouter", 3),
+    ("gpt-5", "openai", 1),
+    ("openai/gpt-5.1", "openrouter", 1),
+    ("gpt-5-mini", "openai", 2),
+    ("openai/gpt-5.1-mini:free", "openrouter", 2),
+    ("gpt-5-nano", "openai", 3),
+    ("gemini-3-pro-preview", "google", 1),
+    ("google/gemini-3.5-pro", "openrouter", 1),
+    ("gemini-3-flash", "google", 2),
+    ("gemini-3-flash-lite-preview", "google", 3),
+])
+def test_family_rules_rate_newer_releases_as_inferred(model, provider, tier):
+    assert get_tier(model, provider) == tier
+    assert has_known_tier(model, provider)
+    assert is_inferred_tier(model, provider)
+    member = resolve_member_tier(Member("M", provider, model))
+    assert get_member_tier_label(member).endswith("(inferred)")
+    assert member.model == model  # the API id is never rewritten
+
+
+def test_every_family_rule_has_an_example():
+    examples = [
+        "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
+        "gpt-5", "gpt-5-mini", "gpt-5-nano",
+        "gemini-3-pro", "gemini-3-flash", "gemini-3-flash-lite",
+    ]
+    matched = {
+        pattern for pattern, _ in FAMILY_RULES
+        if any(re.fullmatch(pattern, example) for example in examples)
+    }
+    assert matched == {pattern for pattern, _ in FAMILY_RULES}
+
+
+@pytest.mark.parametrize("model", [
+    "claude-3-opus",            # superseded generation, old naming
+    "claude-opus-3",            # below the current major version
+    "claude-opus-5-5-custom",   # a fine-tune keeps nothing of the family rating
+    "claude-opus-4-5-20251101",  # dated snapshot: pin it in MODEL_TIERS instead
+    "gpt-4.1",                  # below the current major version
+    "gpt-5-codex",              # unknown variant
+    "gpt-5.6-sol",
+    "gpt-5-2025-08-07",
+    "gemini-1.5-pro",
+    "gemini-2.0-flash-002",     # revision suffix, as the OpenRouter rule
+    "gemini-3-pro-exp",
+    "my-gpt-5",
+])
+def test_family_rules_leave_variants_and_old_generations_unrated(model):
+    assert inferred_tier(model) is None
+    assert not has_known_tier(model, "anthropic")
+    assert not has_known_tier(model, "openai")
+
+
+def test_family_rules_agree_with_the_table_wherever_both_apply():
+    """MODEL_TIERS wins, so a disagreement would be invisible without this."""
+    for model, tier in MODEL_TIERS.items():
+        inferred = inferred_tier(model)
+        assert inferred in (None, tier), (model, tier, inferred)
+
+
+def test_assessed_ratings_are_not_labelled_inferred():
+    member = resolve_member_tier(Member("M", "anthropic", "claude-opus-4-6"))
+    assert get_member_tier_label(member) == "frontier"
+    assert not is_inferred_tier("claude-opus-4-6", "anthropic")
+
+
+def test_every_model_a_preset_ships_with_is_rated():
+    from parliament import presets
+
+    shipped = [
+        ("anthropic", presets.CLAUDE_SONNET), ("anthropic", presets.CLAUDE_HAIKU),
+        ("openai", presets.GPT_4O), ("openai", presets.GPT_4O_MINI),
+        ("google", presets.GEMINI_FLASH), ("google", presets.GEMINI_FLASH_LITE),
+    ]
+    # The OpenRouter preset lists its ids inline rather than as constants.
+    source = Path(presets.__file__).read_text(encoding="utf-8")
+    shipped += [("openrouter", m) for m in re.findall(r'"openrouter", "([^"]+)"', source)]
+    assert len(shipped) > 6
+    for provider, model in shipped:
+        assert has_known_tier(model, provider), (provider, model)

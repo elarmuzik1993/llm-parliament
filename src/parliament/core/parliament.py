@@ -5,7 +5,12 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from parliament.core.model_tiers import calculate_gap, canonical_model_id, resolve_member_tier
+from parliament.core.model_tiers import (
+    calculate_gap,
+    canonical_model_id,
+    is_rated,
+    resolve_member_tier,
+)
 from parliament.core.types import (
     SPEAKER,
     Bill,
@@ -29,20 +34,32 @@ def _noop_progress(event: ProgressEvent) -> None:
     pass
 
 
+def _speaker_pool(members: list[Member]) -> list[Member]:
+    """Members eligible for automatic Speaker selection.
+
+    An unrated member's tier 3 is a guess, so it is not allowed to outrank or
+    tie a rated member by that guess (#67). Unrated members are picked only
+    when no member is rated.
+    """
+    rated = [m for m in members if is_rated(m)]
+    return rated or members
+
+
 def _pick_speaker(
     members: list[Member],
     override: str | None = None,
     last_speaker: str | None = None,
 ) -> Member:
-    """Explicit override > strongest tier > rotation among equal tier."""
+    """Explicit override > strongest rated tier > rotation among equal tier."""
     if override:
         for m in members:
             if m.name.lower() == override.lower():
                 return m
         raise ValueError(f"Speaker override '{override}' not found in members")
 
-    top_tier = min(m.tier for m in members)
-    top_members = [m for m in members if m.tier == top_tier]
+    pool = _speaker_pool(members)
+    top_tier = min(m.tier for m in pool)
+    top_members = [m for m in pool if m.tier == top_tier]
 
     if len(top_members) == 1:
         return top_members[0]
@@ -102,8 +119,9 @@ def speaker_warnings(
         return []
     if all(m.provider_name == "mock" for m in members):
         return []
-    top_tier = min(m.tier for m in members)
-    if sum(m.tier == top_tier for m in members) < 2:
+    pool = _speaker_pool(members)
+    top_tier = min(m.tier for m in pool)
+    if sum(m.tier == top_tier for m in pool) < 2:
         return []
     speaker = _pick_speaker(members)
     warning = (

@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Speaker is chosen from rated members (#67)** — an unrated member's
+  tier 3 is a guess, so automatic Speaker selection now picks an unrated
+  member only when no member is rated. Before, the guess could outrank a
+  rated tier-4 member, or tie with rated tier-3 members and win by order.
 - **README and example config lead with the one-key OpenRouter path** — Quick
   Start and "Optional: Cloud Models" now start with a single
   `OPENROUTER_API_KEY` (one signup, several labs) and keep direct provider keys
@@ -24,6 +28,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Newer models are rated by family (#67)** — `claude-opus-*`, `gpt-5*`,
+  `gemini-*-pro` and their smaller siblings are rated from vendor naming, so
+  releases newer than the curated table no longer show as unrated. These
+  ratings are labelled `(inferred)`; fine-tunes, dated snapshots and unknown
+  variants still show as unrated. The Anthropic preset's dated Haiku id, which
+  was unrated, is now in the table.
 - **Panel warnings in Hansard JSON** — the tier-gap, unrated-model and Speaker
   warnings that `parliament ask` prints to stderr are now also recorded in the
   Hansard as `warnings: [{kind, message}]`, with `kind` one of `tier_gap`,
