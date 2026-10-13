@@ -44,6 +44,8 @@ MODEL_TIERS: dict[str, int] = {
     "mistral:7b": 3,
     "qwen2:7b": 3,
     "gemini-2.5-flash-lite": 3,
+    # The dated id the Anthropic preset ships with; family rules match no dates.
+    "claude-haiku-4-5-20251001": 3,
     "mistral-small-latest": 3,
     "llama-3.1-8b-instant": 3,
     "qwen-2.5-32b": 3,
@@ -54,6 +56,34 @@ MODEL_TIERS: dict[str, int] = {
 }
 
 DEFAULT_TIER = 3
+
+# Family rules (#67): rate releases newer than MODEL_TIERS from vendor naming,
+# which has stayed stable across versions. A rating found here is *inferred*,
+# and labelled so; MODEL_TIERS wins wherever both apply.
+#
+# Each pattern must match the whole tier identity (see canonical_model_id), so
+# a fine-tune, snapshot or unknown variant (`claude-opus-5-5-custom`,
+# `gpt-5-codex`, `gemini-2.0-flash-002`) stays unrated rather than inheriting
+# its family's rating. Major versions start where the family is current, so a
+# superseded generation (`claude-3-opus`, `gemini-1.5-pro`) stays unrated too.
+# tests/test_model_tiers.py pins every rule with example ids, and fails when a
+# MODEL_TIERS entry disagrees with the rule that also covers it.
+_CLAUDE = r"(?:[4-9]|[1-9]\d)(?:-\d{1,2})?"  # claude-opus-4, -4-1, -5-5
+_GPT = r"(?:[5-9]|[1-9]\d)(?:\.\d{1,2})?"  # gpt-5, gpt-5.1
+_GEMINI = r"(?:[2-9]|[1-9]\d)(?:\.\d)?"  # gemini-2.5, gemini-3
+FAMILY_RULES: tuple[tuple[str, int], ...] = (
+    (rf"claude-opus-{_CLAUDE}", 1),
+    (rf"claude-sonnet-{_CLAUDE}", 2),
+    (rf"claude-haiku-{_CLAUDE}", 3),
+    (rf"gpt-{_GPT}", 1),
+    (rf"gpt-{_GPT}-mini", 2),
+    (rf"gpt-{_GPT}-nano", 3),
+    # Google ships its newest models as `-preview` for months at a time.
+    (rf"gemini-{_GEMINI}-pro(?:-preview)?", 1),
+    (rf"gemini-{_GEMINI}-flash(?:-preview)?", 2),
+    (rf"gemini-{_GEMINI}-flash-lite(?:-preview)?", 3),
+)
+_FAMILY_PATTERNS = tuple((re.compile(pattern), tier) for pattern, tier in FAMILY_RULES)
 
 MODEL_ALIASES: dict[str, dict[str, str]] = {
     "openrouter": {
@@ -113,14 +143,37 @@ def canonical_model_id(model: str, provider: str, base_url: str | None = None) -
     return MODEL_ALIASES.get(provider, {}).get(model, model)
 
 
+def inferred_tier(model_id: str) -> int | None:
+    """The tier a family rule gives a tier identity, or None when none matches."""
+    for pattern, tier in _FAMILY_PATTERNS:
+        if pattern.fullmatch(model_id):
+            return tier
+    return None
+
+
+def _rating(model: str, provider: str, base_url: str | None) -> tuple[int, bool] | None:
+    """(tier, inferred) from MODEL_TIERS, then the family rules; None when unrated."""
+    model_id = canonical_model_id(model, provider, base_url)
+    if model_id in MODEL_TIERS:
+        return MODEL_TIERS[model_id], False
+    tier = inferred_tier(model_id)
+    return (tier, True) if tier is not None else None
+
+
 def has_known_tier(model: str, provider: str, base_url: str | None = None) -> bool:
-    """Distinguish classified tier-3 models from the unknown-model fallback."""
-    return canonical_model_id(model, provider, base_url) in MODEL_TIERS
+    """Distinguish rated models, assessed or inferred, from the unknown-model fallback."""
+    return _rating(model, provider, base_url) is not None
+
+
+def is_inferred_tier(model: str, provider: str, base_url: str | None = None) -> bool:
+    rating = _rating(model, provider, base_url)
+    return rating is not None and rating[1]
 
 
 def get_tier(model: str, provider: str, base_url: str | None = None) -> int:
-    """Return tier for a model name. Unknown models default to tier 3."""
-    return MODEL_TIERS.get(canonical_model_id(model, provider, base_url), DEFAULT_TIER)
+    """Return tier for a model name. Unrated models default to tier 3."""
+    rating = _rating(model, provider, base_url)
+    return rating[0] if rating is not None else DEFAULT_TIER
 
 
 def get_tier_label(tier: int) -> str:
@@ -130,9 +183,19 @@ def get_tier_label(tier: int) -> str:
 def get_member_tier_label(member: Member) -> str:
     if member.provider_name == "mock":
         return get_tier_label(member.tier)
-    if not has_known_tier(member.model, member.provider_name, member.tier_base_url):
+    rating = _rating(member.model, member.provider_name, member.tier_base_url)
+    if rating is None:
         return f"unrated (assumed tier {DEFAULT_TIER})"
-    return get_tier_label(get_tier(member.model, member.provider_name, member.tier_base_url))
+    tier, inferred = rating
+    return f"{get_tier_label(tier)} (inferred)" if inferred else get_tier_label(tier)
+
+
+def is_rated(member: Member) -> bool:
+    """Whether a member's tier is a rating rather than the unrated fallback."""
+    # Mock tiers are supplied synthetic ratings, not unknown-model defaults.
+    return member.provider_name == "mock" or has_known_tier(
+        member.model, member.provider_name, member.tier_base_url
+    )
 
 
 def unrated_warning(names: list[str]) -> str:
@@ -190,12 +253,11 @@ def calculate_gap(members: list[Member]) -> TierAssessment:
         if member.provider_name == "mock":
             tier = member.tier
         else:
-            model = canonical_model_id(member.model, member.provider_name, member.tier_base_url)
-            known_tier = MODEL_TIERS.get(model)
-            if known_tier is None:
+            rating = _rating(member.model, member.provider_name, member.tier_base_url)
+            if rating is None:
                 unrated.append(member)
                 continue
-            tier = known_tier
+            tier = rating[0]
         comparisons.append((member, tier))
     gap = None
     if len(comparisons) >= 2:

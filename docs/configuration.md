@@ -195,11 +195,26 @@ example, `anthropic/claude-opus-4.6` resolves to tier 1 both with
 | 3 | capable |
 | 4 | small |
 
-Unknown models receive `DEFAULT_TIER`, which is 3. This fallback is a default,
+A model missing from `MODEL_TIERS` can still be rated by a **family rule**,
+from vendor naming that has stayed stable across releases: `claude-opus-*` is
+tier 1, `claude-sonnet-*` 2, `claude-haiku-*` 3; `gpt-5*` is 1, `*-mini` 2,
+`*-nano` 3; `gemini-*-pro` is 1, `*-flash` 2, `*-flash-lite` 3. A rule matches
+the whole model ID, from the current major version onwards (Claude 4, GPT-5,
+Gemini 2), so new releases such as `claude-opus-5-5` or `gpt-5.1` are rated
+without a code change. A rating found this way is an inference, not an
+assessment, and CLI/TUI labels say so: `frontier (inferred)`. `MODEL_TIERS`
+wins wherever both apply. The rules are `FAMILY_RULES` in the same file.
+
+Fine-tunes, dated snapshots and unfamiliar variants (`gpt-5-codex`,
+`claude-opus-4-5-20251101`, `gemini-2.0-flash-002`) match no rule and stay
+unrated, rather than borrow their family's rating.
+
+Any other model receives `DEFAULT_TIER`, which is 3. This fallback is a default,
 not an assessed capability rating: an unlisted model could be frontier-level
 or much weaker. CLI/TUI labels show `unrated (assumed tier 3)`, and warnings
-explain that Speaker selection uses this assumption. These models remain
-eligible for automatic Speaker selection using that fallback tier.
+explain that Speaker selection uses this assumption. Automatic Speaker
+selection picks an unrated member only when no member is rated, so a guessed
+tier never outranks or ties a rating.
 
 Capability-gap warnings compare **only models with known ratings, for every
 provider**, including Ollama and Anthropic. Unknown models do

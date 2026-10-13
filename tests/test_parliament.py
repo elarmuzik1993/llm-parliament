@@ -192,7 +192,8 @@ def test_gap_warnings_exclude_fallback_ratings_for_every_provider(provider):
     assert "Unknown" not in warnings[0]
 
 
-def test_unknown_model_remains_eligible_for_speaker_with_fallback_tier():
+def test_rated_member_is_preferred_as_speaker_over_a_guessed_tier():
+    """An unrated member's tier 3 is a guess; it must not outrank a rating (#67)."""
     members = [
         Member(name="Unknown", provider_name="ollama", model="unassessed-model"),
         Member(name="Tiny", provider_name="ollama", model="tinyllama"),
@@ -201,7 +202,18 @@ def test_unknown_model_remains_eligible_for_speaker_with_fallback_tier():
     parliament = Parliament(members, providers)
     assert [m.tier for m in parliament.members] == [3, 4]
     assert "Unknown (unrated, assumed tier 3)" in parliament.check_gaps()[0]
-    assert select_speaker(parliament.members, providers)[0].name == "Unknown"
+    assert select_speaker(parliament.members, providers)[0].name == "Tiny"
+
+
+def test_an_all_unrated_panel_still_gets_a_speaker():
+    members = [
+        Member(name="A", provider_name="ollama", model="unassessed-a"),
+        Member(name="B", provider_name="ollama", model="unassessed-b"),
+    ]
+    providers = {m.name: MockProvider(model=m.model) for m in members}
+    parliament = Parliament(members, providers)
+    assert select_speaker(parliament.members, providers)[0].name == "A"
+    assert select_speaker(parliament.members, providers, last_speaker="A")[0].name == "B"
 
 
 def test_gap_warning_uses_comparison_tiers_even_if_member_tiers_are_stale():
@@ -243,11 +255,11 @@ def test_runtime_reads_endpoint_from_programmatically_created_providers():
     assert len(parliament.check_gaps()) == 1
 
 
-async def test_hansard_reports_unrated_members_and_assumed_speaker():
+async def test_hansard_reports_unrated_members_and_the_rated_speaker():
     members = [Member("Mystery", "ollama", "unassessed"), Member("Tiny", "ollama", "tinyllama")]
     providers = {m.name: MockProvider(model=m.model) for m in members}
     hansard = await Parliament(members, providers).ask("Q")
-    assert hansard.synthesis.speaker_name == "Mystery"
+    assert hansard.synthesis.speaker_name == "Tiny"
     assert hansard.to_dict()["unrated_members"] == ["Mystery"]
 
 

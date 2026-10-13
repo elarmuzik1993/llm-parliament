@@ -183,12 +183,13 @@ def _outside(provider: str, model: str):
     return (Member(name="Judge", provider_name=provider, model=model), MockProvider(model=model))
 
 
-TIED = (("openrouter", "anthropic/claude-sonnet-5.5"), ("openrouter", "openai/gpt-5.6-sol"))
+# Two different models, both rated tier 1 by family rules.
+TIED = (("openrouter", "anthropic/claude-opus-5.5"), ("openrouter", "openai/gpt-5.6"))
 
 
 def test_outside_speaker_sharing_a_member_model_is_warned():
     members, providers = _panel(*TIED)
-    outside = _outside("openrouter", "anthropic/claude-sonnet-5.5")
+    outside = _outside("openrouter", "anthropic/claude-opus-5.5")
     (warning,) = Parliament(members, providers, outside_speaker=outside).check_speaker()
     assert "Judge" in warning and "M1" in warning and "M2" not in warning
 
@@ -232,7 +233,7 @@ async def test_hansard_records_the_warnings_the_caller_was_shown():
     members, providers = _panel(*TIED)
     parliament = Parliament(members, providers)
     hansard = await parliament.ask("Q")
-    assert [w.kind for w in hansard.warnings] == ["unrated", "speaker"]
+    assert [w.kind for w in hansard.warnings] == ["speaker"]
     assert hansard.warnings == parliament.warnings()
     assert [w.message for w in hansard.warnings] == (
         parliament.check_gaps() + parliament.check_speaker()
@@ -245,5 +246,5 @@ def test_panel_warnings_need_no_provider_clients():
     members, providers = _panel(*TIED)
     parliament = Parliament(members, providers)
     assert panel_warnings(members) == parliament.warnings()
-    outside, _ = _outside("openrouter", "anthropic/claude-sonnet-5.5")
-    assert [w.kind for w in panel_warnings(members, outside)] == ["unrated", "speaker"]
+    outside, _ = _outside("openrouter", "anthropic/claude-opus-5.5")
+    assert [w.kind for w in panel_warnings(members, outside)] == ["speaker"]

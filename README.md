@@ -217,7 +217,8 @@ does not cover.
 ### Choosing the Speaker
 
 The Speaker writes the final verdict. By default it is one of the members: the
-strongest by tier, or the first listed when they tie. In our tests a member
+strongest by tier, or the first listed when they tie. A model the tool cannot
+rate is picked only when no member is rated. In our tests a member
 Speaker tended to side with its own position, even with member names hidden
 from it. A Speaker that did not debate has no position to defend:
 
