@@ -25,6 +25,7 @@ parliament ask "Should we split this service?" --mock --json
 | `duration_ms` | `number` | Total wall-clock duration in milliseconds. |
 | `degraded` | `boolean` | `true` when the verdict came from fewer members than configured, because one or more members failed with a provider error. |
 | `unrated_members` | `string[]` | Names of configured members without an assessed capability rating. Their tier 3 is a Speaker-selection assumption. |
+| `warnings` | `SessionWarning[]` | Cautions about the panel, the same ones `parliament ask` prints to stderr. Empty when there are none. |
 
 ### `unrated_members`
 
@@ -43,6 +44,28 @@ present; neither warning clears the other. An empty array means all configured
 members had ratings. Older records omit this field; the reader defaults it to
 an empty list for compatibility, but absence in old JSON is not proof of rating
 coverage. Endpoint context is runtime-only and excluded from member JSON.
+
+### `warnings`
+
+Each warning is a judgement about the panel, made before the debate starts:
+the members may be too far apart in capability, some may be unrated, or the
+Speaker may favour a position it argued (#73). None of them stops a debate, so
+a verdict can arrive with every one of them attached. Before this field, they
+only reached stderr, and a script reading `--json` never saw them.
+
+Filter on `kind`, not on `message`; the wording may change:
+
+```bash
+parliament ask "Should we split this service?" --json \
+  | jq -e '[.warnings[].kind] | index("speaker")' >/dev/null \
+  && echo "warning: the Speaker may not be neutral"
+```
+
+Warnings describe the configured panel, not the members who finished. A
+Speaker warning names the Speaker the panel would pick; if that member later
+drops out, another one writes the synthesis — read `synthesis.speaker_name`
+for who did. Records written before this field existed omit it and read back
+as an empty list, which is not proof there was nothing to warn about.
 
 ### `degraded`
 
@@ -110,6 +133,21 @@ existed omit it, and read back as `null`.
 
 `null` is not "no". A missing position or answer means the member did not
 say, so do not count it as agreement or as an unchanged mind.
+
+## `SessionWarning`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `kind` | `string` | What the warning is about, one of the kinds below. |
+| `message` | `string` | One human-readable sentence, as printed to stderr. |
+
+### Warning kinds
+
+| Kind | Raised when |
+| --- | --- |
+| `tier_gap` | The strongest and weakest rated members are more than one tier apart. |
+| `unrated` | One or more members have no assessed rating; the same names are in `unrated_members`. |
+| `speaker` | The Speaker may favour a position: an outside Speaker shares a member's model, or a member Speaker was picked only by order among equally rated members. |
 
 ## `Synthesis`
 
@@ -199,7 +237,8 @@ jq -e '(.members | length) == (.first_reading | length)' hansard.json >/dev/null
   "created_at": "2026-01-01T12:00:00+00:00",
   "duration_ms": 1234,
   "degraded": false,
-  "unrated_members": []
+  "unrated_members": [],
+  "warnings": []
 }
 ```
 

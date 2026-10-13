@@ -146,6 +146,12 @@ def test_outside_speaker_is_built_from_config():
     assert provider.model == "judge-v1"
 
 
+@pytest.mark.parametrize("speaker", [{"provider": "mock"}, {"model": "judge-v1"}, "judge-v1"])
+def test_an_incomplete_speaker_block_says_what_is_missing(speaker):
+    with pytest.raises(ValueError, match="needs a provider and a model"):
+        build_speaker_from_config(_config(speaker))
+
+
 def test_outside_speaker_cannot_share_a_member_name():
     config = _config({"name": "alpha", "provider": "mock", "model": "judge-v1"})
     with pytest.raises(ValueError, match="Alpha"):
@@ -220,3 +226,24 @@ def test_a_single_strongest_member_is_not_warned():
 def test_a_mock_panel_is_not_warned():
     members, providers = _panel(("mock", "mock-v1"), ("mock", "mock-v2"))
     assert Parliament(members, providers).check_speaker() == []
+
+
+async def test_hansard_records_the_warnings_the_caller_was_shown():
+    members, providers = _panel(*TIED)
+    parliament = Parliament(members, providers)
+    hansard = await parliament.ask("Q")
+    assert [w.kind for w in hansard.warnings] == ["unrated", "speaker"]
+    assert hansard.warnings == parliament.warnings()
+    assert [w.message for w in hansard.warnings] == (
+        parliament.check_gaps() + parliament.check_speaker()
+    )
+
+
+def test_panel_warnings_need_no_provider_clients():
+    from parliament.core.parliament import panel_warnings
+
+    members, providers = _panel(*TIED)
+    parliament = Parliament(members, providers)
+    assert panel_warnings(members) == parliament.warnings()
+    outside, _ = _outside("openrouter", "anthropic/claude-sonnet-5.5")
+    assert [w.kind for w in panel_warnings(members, outside)] == ["unrated", "speaker"]

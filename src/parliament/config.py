@@ -342,15 +342,17 @@ def build_parliament_from_config(
     return members, providers
 
 
-def build_speaker_from_config(config: dict[str, Any]) -> tuple[Member, Provider] | None:
-    """Build the outside Speaker from `parliament.speaker`, if one is configured.
+def build_speaker_member_from_config(config: dict[str, Any]) -> Member | None:
+    """The outside Speaker from `parliament.speaker`, without creating its client.
 
-    An outside Speaker writes the synthesis without having debated, so it has
-    no position of its own to favour (#73).
+    Enough to check it against the panel; `build_speaker_from_config` adds the
+    provider a debate needs.
     """
     sc = config.get("parliament", {}).get("speaker")
     if not sc:
         return None
+    if not isinstance(sc, dict) or not sc.get("provider") or not sc.get("model"):
+        raise ValueError("parliament.speaker needs a provider and a model.")
     name = sc.get("name", "Speaker")
     for mc in config["parliament"]["members"]:
         if mc["name"].lower() == name.lower():
@@ -358,12 +360,22 @@ def build_speaker_from_config(config: dict[str, Any]) -> tuple[Member, Provider]
                 f"parliament.speaker is named '{name}', the same as member '{mc['name']}'. "
                 "Give the Speaker a different name."
             )
-    provider_configs = config.get("providers", {})
-    speaker = resolve_member_tier(Member(
+    return resolve_member_tier(Member(
         name=name,
         provider_name=sc["provider"],
         model=sc["model"],
-        base_url=provider_configs.get(sc["provider"], {}).get("base_url"),
+        base_url=config.get("providers", {}).get(sc["provider"], {}).get("base_url"),
     ))
-    extra = dict(provider_configs.get(sc["provider"], {}))
+
+
+def build_speaker_from_config(config: dict[str, Any]) -> tuple[Member, Provider] | None:
+    """Build the outside Speaker from `parliament.speaker`, if one is configured.
+
+    An outside Speaker writes the synthesis without having debated, so it has
+    no position of its own to favour (#73).
+    """
+    speaker = build_speaker_member_from_config(config)
+    if speaker is None:
+        return None
+    extra = dict(config.get("providers", {}).get(speaker.provider_name, {}))
     return speaker, create_provider(speaker.provider_name, speaker.model, **extra)

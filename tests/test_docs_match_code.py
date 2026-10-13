@@ -20,7 +20,15 @@ from pathlib import Path
 
 import pytest
 
-from parliament.core.types import Hansard, Member, Position, Response, Synthesis
+from parliament.core.types import (
+    WARNING_KINDS,
+    Hansard,
+    Member,
+    Position,
+    Response,
+    SessionWarning,
+    Synthesis,
+)
 
 
 @pytest.mark.parametrize(
@@ -30,6 +38,7 @@ from parliament.core.types import Hansard, Member, Position, Response, Synthesis
         (Member, "`Member`"),
         (Response, "`Response`"),
         (Position, "`Position`"),
+        (SessionWarning, "`SessionWarning`"),
         (Synthesis, "`Synthesis`"),
     ],
 )
@@ -43,6 +52,17 @@ def test_hansard_schema_documents_public_fields(record, header):
     documented = set(re.findall(r"^\| `([^`]+)` \|", table, re.MULTILINE))
     public = {field.name for field in fields(record) if field.metadata.get("serialize", True)}
     assert documented == public
+
+
+def test_hansard_schema_documents_every_warning_kind():
+    root = _repo_root()
+    if root is None:
+        pytest.skip("not running from a source checkout")
+    markdown = (root / "docs" / "hansard-schema.md").read_text(encoding="utf-8")
+    section = markdown.split("\n### Warning kinds\n", 1)[1]
+    table = re.split(r"\n#{2,3} ", section, maxsplit=1)[0]
+    documented = set(re.findall(r"^\| `([^`]+)` \|", table, re.MULTILINE))
+    assert documented == set(WARNING_KINDS)
 
 
 def _repo_root() -> Path | None:

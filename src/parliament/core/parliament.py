@@ -6,7 +6,15 @@ import time
 from collections.abc import Callable
 
 from parliament.core.model_tiers import calculate_gap, canonical_model_id, resolve_member_tier
-from parliament.core.types import Bill, Hansard, Member, ProgressEvent, Synthesis
+from parliament.core.types import (
+    SPEAKER,
+    Bill,
+    Hansard,
+    Member,
+    ProgressEvent,
+    SessionWarning,
+    Synthesis,
+)
 from parliament.procedures.debate import run_debate
 from parliament.procedures.division import run_division
 from parliament.procedures.first_reading import run_first_reading
@@ -21,6 +29,34 @@ def _noop_progress(event: ProgressEvent) -> None:
     pass
 
 
+def _pick_speaker(
+    members: list[Member],
+    override: str | None = None,
+    last_speaker: str | None = None,
+) -> Member:
+    """Explicit override > strongest tier > rotation among equal tier."""
+    if override:
+        for m in members:
+            if m.name.lower() == override.lower():
+                return m
+        raise ValueError(f"Speaker override '{override}' not found in members")
+
+    top_tier = min(m.tier for m in members)
+    top_members = [m for m in members if m.tier == top_tier]
+
+    if len(top_members) == 1:
+        return top_members[0]
+
+    # Rotate among equal-tier members
+    if last_speaker:
+        names = [m.name for m in top_members]
+        if last_speaker in names:
+            idx = names.index(last_speaker)
+            return top_members[(idx + 1) % len(top_members)]
+
+    return top_members[0]
+
+
 def select_speaker(
     members: list[Member],
     providers: dict[str, Provider],
@@ -28,29 +64,70 @@ def select_speaker(
     last_speaker: str | None = None,
 ) -> tuple[Member, Provider]:
     """Select Speaker: explicit override > strongest tier > rotation among equal tier."""
-    if override:
-        for m in members:
-            if m.name.lower() == override.lower():
-                return m, providers[m.name]
-        raise ValueError(f"Speaker override '{override}' not found in members")
-
-    top_tier = min(m.tier for m in members)
-    top_members = [m for m in members if m.tier == top_tier]
-
-    if len(top_members) == 1:
-        m = top_members[0]
-        return m, providers[m.name]
-
-    # Rotate among equal-tier members
-    if last_speaker:
-        names = [m.name for m in top_members]
-        if last_speaker in names:
-            idx = names.index(last_speaker)
-            m = top_members[(idx + 1) % len(top_members)]
-            return m, providers[m.name]
-
-    m = top_members[0]
+    m = _pick_speaker(members, override, last_speaker)
     return m, providers[m.name]
+
+
+def speaker_warnings(
+    members: list[Member],
+    outside_speaker: Member | None = None,
+    speaker_override: str | None = None,
+) -> list[str]:
+    """Warn when the Speaker may favour a position it argued (#73). Never blocks.
+
+    In a live judge swap, a Speaker sharing a member's model sided with that
+    member even with anonymised input. A member chosen only by its place
+    among equally rated members is an insider nobody picked.
+    """
+    if outside_speaker is not None:
+        identity = canonical_model_id(
+            outside_speaker.model, outside_speaker.provider_name, outside_speaker.base_url
+        )
+        twins = [
+            m.name for m in members
+            if canonical_model_id(m.model, m.provider_name, m.base_url) == identity
+        ]
+        if not twins:
+            return []
+        warning = (
+            f"Speaker {outside_speaker.name} uses the same model as {', '.join(twins)}, "
+            "so it may favour that member's position. Use a model not on the panel."
+        )
+        return [warning]
+
+    if not members:
+        return []
+    requested = (speaker_override or "").lower()
+    if any(m.name.lower() == requested for m in members):
+        return []
+    if all(m.provider_name == "mock" for m in members):
+        return []
+    top_tier = min(m.tier for m in members)
+    if sum(m.tier == top_tier for m in members) < 2:
+        return []
+    speaker = _pick_speaker(members)
+    warning = (
+        f"Speaker {speaker.name} is a member, picked by order among equally rated "
+        "members, and may favour its own position. Set parliament.speaker to a model "
+        "not on the panel."
+    )
+    return [warning]
+
+
+def panel_warnings(
+    members: list[Member],
+    outside_speaker: Member | None = None,
+    speaker_override: str | None = None,
+) -> list[SessionWarning]:
+    """Every panel warning, tagged by kind: tier gaps, ratings, Speaker. Never blocks.
+
+    Needs no provider clients, so `parliament members` can show the same
+    warnings `parliament ask` prints and records.
+    """
+    speaker = speaker_warnings(members, outside_speaker, speaker_override)
+    return calculate_gap(members).session_warnings() + [
+        SessionWarning(SPEAKER, w) for w in speaker
+    ]
 
 
 class Parliament:
@@ -88,6 +165,10 @@ class Parliament:
             if base_url is not None:
                 m.tier_base_url = base_url
             resolve_member_tier(m)
+        if outside_speaker is not None:
+            outside, outside_provider = outside_speaker
+            if outside_provider.base_url is not None:
+                outside.tier_base_url = outside_provider.base_url
 
     async def ask(
         self,
@@ -97,6 +178,9 @@ class Parliament:
         """Run a full parliamentary session. Returns a Hansard record."""
         start = time.monotonic()
         bill = Bill(content=question)
+        # Taken from the configured panel before anyone speaks, so the record
+        # carries the same warnings the caller was shown up front.
+        warnings = self.warnings()
 
         # Phase 1: First Reading
         first_reading = await run_first_reading(
@@ -203,48 +287,21 @@ class Parliament:
             duration_ms=duration_ms,
             degraded=degraded,
             unrated_members=[m.name for m in calculate_gap(self.members).unrated_members],
+            warnings=warnings,
         )
+
+    def warnings(self) -> list[SessionWarning]:
+        """Every panel warning, tagged by kind: tier gaps, ratings, Speaker. Never blocks."""
+        return panel_warnings(self.members, self._outside_member, self.speaker_override)
 
     def check_gaps(self) -> list[str]:
         """Report assessed gaps and missing ratings. Never blocks."""
         return calculate_gap(self.members).warnings()
 
     def check_speaker(self) -> list[str]:
-        """Warn when the Speaker may favour a position it argued (#73). Never blocks.
+        """Warn when the Speaker may favour a position it argued (#73). Never blocks."""
+        return speaker_warnings(self.members, self._outside_member, self.speaker_override)
 
-        In a live judge swap, a Speaker sharing a member's model sided with that
-        member even with anonymised input. A member chosen only by its place
-        among equally rated members is an insider nobody picked.
-        """
-        if self.outside_speaker is not None:
-            outside, outside_provider = self.outside_speaker
-            identity = canonical_model_id(
-                outside.model, outside.provider_name, outside_provider.base_url
-            )
-            twins = [
-                m.name for m in self.members
-                if canonical_model_id(m.model, m.provider_name, m.base_url) == identity
-            ]
-            if not twins:
-                return []
-            warning = (
-                f"Speaker {outside.name} uses the same model as {', '.join(twins)}, so it may "
-                "favour that member's position. Use a model not on the panel."
-            )
-            return [warning]
-
-        requested = (self.speaker_override or "").lower()
-        if any(m.name.lower() == requested for m in self.members):
-            return []
-        if all(m.provider_name == "mock" for m in self.members):
-            return []
-        top_tier = min(m.tier for m in self.members)
-        if sum(m.tier == top_tier for m in self.members) < 2:
-            return []
-        speaker, _ = select_speaker(self.members, self.providers)
-        warning = (
-            f"Speaker {speaker.name} is a member, picked by order among equally rated "
-            "members, and may favour its own position. Set parliament.speaker to a model "
-            "not on the panel."
-        )
-        return [warning]
+    @property
+    def _outside_member(self) -> Member | None:
+        return self.outside_speaker[0] if self.outside_speaker is not None else None

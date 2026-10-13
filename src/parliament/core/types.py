@@ -72,6 +72,28 @@ class Position:
     changed_mind: bool | None = None
 
 
+# Every value `SessionWarning.kind` can take. Code raising a warning uses these
+# names, never a string literal, so a misspelt kind fails at import rather than
+# reaching JSON. docs/hansard-schema.md lists the same set, and
+# tests/test_docs_match_code.py fails when the two disagree.
+TIER_GAP = "tier_gap"
+UNRATED = "unrated"
+SPEAKER = "speaker"
+WARNING_KINDS = (TIER_GAP, UNRATED, SPEAKER)
+
+
+@dataclass
+class SessionWarning:
+    """A caution about the panel, raised before the debate and kept in the Hansard.
+
+    `kind` is one of WARNING_KINDS, for a consumer to filter on; `message` is
+    the same sentence `parliament ask` prints to stderr. Never blocks a debate.
+    """
+
+    kind: str
+    message: str
+
+
 @dataclass
 class Response:
     """A single member's output from a phase."""
@@ -138,6 +160,7 @@ class Hansard:
     # three-member verdict from a two-member one — see #34.
     degraded: bool = False
     unrated_members: list[str] = field(default_factory=list)
+    warnings: list[SessionWarning] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return _public_value(self)
@@ -159,4 +182,5 @@ class Hansard:
             # Absent in Hansards written before the field existed.
             degraded=data.get("degraded", False),
             unrated_members=data.get("unrated_members", []),
+            warnings=[SessionWarning(**w) for w in data.get("warnings", [])],
         )

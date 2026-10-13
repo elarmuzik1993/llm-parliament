@@ -13,14 +13,43 @@ superset of the level below.
 
 from __future__ import annotations
 
+import re
 import warnings
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from parliament.core.model_tiers import unrated_warning
+from parliament.core.types import UNRATED, SessionWarning
 
 if TYPE_CHECKING:
     from parliament.core.types import Hansard
+
+
+def recorded_warnings(hansard: Hansard) -> list[SessionWarning]:
+    """The warnings to show with a verdict.
+
+    Records written before `warnings` existed still carry `unrated_members`,
+    so that one warning is rebuilt for them rather than lost.
+    """
+    if hansard.warnings:
+        return list(hansard.warnings)
+    if hansard.unrated_members:
+        return [SessionWarning(UNRATED, unrated_warning(hansard.unrated_members))]
+    return []
+
+
+def warning_lines(hansard: Hansard) -> list[str]:
+    """One line per warning, for showing beneath a verdict.
+
+    Only each message's first sentence, which says what is wrong; the advice
+    that follows is in stderr and JSON. Shown after the Recommendation, not
+    above it: with today's unrated models most panels raise two warnings on
+    every run, and they should not push the answer down the screen.
+    """
+    return [
+        re.split(r"(?<=\.)\s+(?=[A-Z])", w.message.strip(), maxsplit=1)[0]
+        for w in recorded_warnings(hansard)
+    ]
 
 
 class HansardLevel(str, Enum):
@@ -115,9 +144,6 @@ def render_markdown(hansard: Hansard, level: HansardLevel) -> str:
 
     s = hansard.synthesis
 
-    if hansard.unrated_members:
-        parts.append(_callout("warning", "Model ratings", unrated_warning(hansard.unrated_members)))
-
     if includes(level, "consensus") and s.consensus.strip():
         parts.append(_callout("info", "Consensus", s.consensus))
     if includes(level, "split") and s.split.strip():
@@ -127,6 +153,9 @@ def render_markdown(hansard: Hansard, level: HansardLevel) -> str:
     if includes(level, "recommendation"):
         body = s.recommendation.strip() or "(no recommendation parsed)"
         parts.append(_callout("success", "Recommendation", body))
+
+    if lines := warning_lines(hansard):
+        parts.append(_callout("warning", "Warnings", "\n".join(f"- {line}" for line in lines)))
 
     if includes(level, "first_reading"):
         parts.append("## First Reading\n")

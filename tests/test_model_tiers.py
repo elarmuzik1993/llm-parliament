@@ -287,6 +287,7 @@ def test_assessed_gap_and_unrated_members_both_remain_visible():
     assert not result.comparable
     assert [m.name for m in result.unrated_members] == ["Mystery"]
     assert len(result.warnings()) == 2
+    assert [w.kind for w in result.session_warnings()] == ["tier_gap", "unrated"]
 
 
 def test_all_unrated_and_insufficient_members_are_not_comparable():

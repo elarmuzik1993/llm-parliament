@@ -3,7 +3,7 @@
 import json
 from dataclasses import replace
 
-from parliament.core.types import Bill, Hansard, Member, Response, Synthesis
+from parliament.core.types import Bill, Hansard, Member, Response, SessionWarning, Synthesis
 
 
 def test_bill_auto_title():
@@ -107,3 +107,13 @@ def test_unrated_members_json_roundtrip_and_old_records():
     assert Hansard.from_dict(data).unrated_members == ["Mystery"]
     data.pop("unrated_members")
     assert Hansard.from_dict(data).unrated_members == []
+
+
+def test_warnings_json_roundtrip_and_old_records():
+    warning = SessionWarning("speaker", "Speaker M1 may favour its own position.")
+    hansard = Hansard(Bill("Q"), [], [], [], Synthesis("M1"), warnings=[warning])
+    data = json.loads(hansard.to_json())
+    assert data["warnings"] == [{"kind": "speaker", "message": warning.message}]
+    assert Hansard.from_dict(data).warnings == [warning]
+    data.pop("warnings")
+    assert Hansard.from_dict(data).warnings == []

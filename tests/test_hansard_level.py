@@ -11,6 +11,7 @@ from parliament.render.hansard import DEFAULT_LEVEL, HansardLevel, includes
 
 @pytest.mark.parametrize("level", list(HansardLevel))
 def test_unrated_warning_survives_every_display_level(make_hansard, level):
+    """A record from before `warnings` existed still shows its unrated warning."""
     from parliament.render.hansard import render_markdown
     from parliament.tui import _result_lines
 
@@ -20,12 +21,44 @@ def test_unrated_warning_survives_every_display_level(make_hansard, level):
     lines = _result_lines(hansard, level, width=40)
     tui_text = " ".join(" ".join(lines).split())
     for text in (markdown, tui_text):
-        assert "Unrated members: Alpha (unrated, assumed tier 3)" in text
-        assert "Speaker selection assumes tier 3" in text
-    warning_start = lines.index("RATING WARNING")
+        assert "Unrated members: Alpha (unrated, assumed tier 3)." in text
+    warning_start = lines.index("WARNINGS")
     warning_lines = lines[warning_start + 1:]
     warning_end = warning_lines.index("")
     assert all(len(line) <= 40 for line in warning_lines[:warning_end])
+
+
+@pytest.mark.parametrize("level", list(HansardLevel))
+def test_warnings_are_one_line_each_below_the_verdict(make_hansard, level):
+    from parliament.core.types import SessionWarning
+    from parliament.render.hansard import render_markdown
+    from parliament.tui import _result_lines
+
+    hansard = make_hansard()
+    hansard.warnings = [
+        SessionWarning("tier_gap", "Large capability gap between Alpha (tier 1) and Beta "
+                       "(tier 4). Debate quality is limited by the weakest member."),
+        SessionWarning("speaker", "Speaker Alpha is a member and may favour its own "
+                       "position. Set parliament.speaker to a model not on the panel."),
+    ]
+    markdown = render_markdown(hansard, level)
+    lines = _result_lines(hansard, level, width=200)
+    for text in (markdown, "\n".join(lines)):
+        assert "- Large capability gap between Alpha (tier 1) and Beta (tier 4)." in text
+        assert "- Speaker Alpha is a member and may favour its own position." in text
+        # The advice stays in stderr and JSON, off the result screen.
+        assert "weakest member" not in text and "parliament.speaker" not in text
+    assert markdown.index("Recommendation") < markdown.index("Warnings")
+    assert lines.index("RECOMMENDATION") < lines.index("WARNINGS")
+
+
+def test_no_warnings_heading_without_warnings(make_hansard):
+    from parliament.render.hansard import render_markdown
+    from parliament.tui import _result_lines
+
+    hansard = make_hansard()
+    assert "Warnings" not in render_markdown(hansard, HansardLevel.FULL)
+    assert "WARNINGS" not in _result_lines(hansard, HansardLevel.FULL)
 
 
 def test_levels_exist():
