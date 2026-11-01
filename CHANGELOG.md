@@ -28,6 +28,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The Speaker says whether the debate is still contested (#9)** — the
+  Division prompt ends with `CONTESTED: yes/no` and `ON WHAT: <one line>`,
+  parsed into `synthesis.contested` and `synthesis.contested_on`. "Yes" means
+  members still recommend different courses of action; differing only on
+  details is "no". A missing or unclear answer is `null` (unknown), never
+  `false`. The two lines are kept out of the Recommendation. This is the flag
+  an agent will read from the MCP `debate` tool.
 - **Newer models are rated by family (#67)** — `claude-opus-*`, `gpt-5*`,
   `gemini-*-pro` and their smaller siblings are rated from vendor naming, so
   releases newer than the curated table no longer show as unrated. These

@@ -120,6 +120,10 @@ class Synthesis:
     split: str = ""
     risks: str = ""
     recommendation: str = ""
+    # The Speaker's call on whether members still recommend different courses
+    # of action (#9). None when it gave no clear yes or no: unknown, not False.
+    contested: bool | None = None
+    contested_on: str = ""  # set only when contested is True
     raw: str = ""  # full Speaker output before parsing
 
 

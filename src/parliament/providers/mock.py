@@ -38,5 +38,6 @@ class MockProvider(Provider):
             "CONSENSUS:\nAll analysts agree on the core approach.\n\n"
             "SPLIT:\nMinor disagreement on implementation details.\n\n"
             "RISKS:\n- Integration complexity\n- Timeline pressure\n\n"
-            "RECOMMENDATION:\nProceed with the majority approach."
+            "RECOMMENDATION:\nProceed with the majority approach.\n\n"
+            "CONTESTED: no\nON WHAT: none"
         )
