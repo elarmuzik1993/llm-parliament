@@ -1,52 +1,51 @@
 # State
 
-_Updated 2026-10-12_
+_Updated 2026-11-01_
 
 ## Now
-- `main` is 0.2.0 plus unreleased changes (CHANGELOG `[Unreleased]`). 806 tests.
-- Members self-report positions (#69): a `POSITION:` line, plus `CHANGED MIND: yes/no` in Debate,
-  parsed into `Response.position` (`null` when absent). Not yet seen with real models.
-- Speaker neutrality (#73): anonymised Division input; optional outside Speaker
-  (`parliament.speaker`).
-- Panel warnings (`tier_gap`, `unrated`, `speaker`) come from one function,
-  `core/parliament.py::panel_warnings()`, which needs no provider clients. `ask` prints them,
-  `members` prints them, and the Hansard records them as `warnings: [{kind, message}]`
-  (schema doc updated). The TUI and saved `.md` list them one line each below the Recommendation.
-- Tiers (#67): `MODEL_TIERS`, then `FAMILY_RULES` (Claude 4+, GPT-5+, Gemini 2+, whole-id matches,
-  labelled `(inferred)`), else unrated. Automatic Speaker selection picks from rated members
-  first. Still unrated: xAI, DeepSeek, Qwen, o-series, Claude Fable, fine-tunes, dated snapshots.
-- OpenRouter works end to end. #37 (curated shortlist) is polish.
+- `main` is 0.2.0 plus unreleased changes (CHANGELOG `[Unreleased]`). 833 tests.
+- `parliament mcp` (#9, optional `[mcp]` extra, `mcp>=2.3,<3`): stdio server, one blocking `debate`
+  tool. Returns `schema`, `summary` (contested, positions, warnings, degraded), `verdict`, `members`,
+  `hansard_path` (~5 KB); the full Hansard (~60 KB) is saved as JSON under `~/.parliament/hansards/`.
+  Progress per member answer, a heartbeat while queued, one debate at a time. README section
+  "Use it from a coding agent (MCP)" has the client snippets; none tried in a real client yet.
+- The Speaker ends with `CONTESTED:` / `ON WHAT:`, parsed into `Synthesis.contested`
+  (`bool | None`) and `contested_on`. Correct on all 5 live debates of 2026-11-01.
+- Self-reported positions, family tier rules, outside Speaker: all checked live 2026-11-01
+  (Opus 5.5, GPT-5.1, Gemini 3.1 Pro; Grok 4.7 Speaker). Results in `docs/live-test-windows.md`.
+- What the evidence supports: the debate catches a member's factual error and reports a real
+  split; it does not give a more correct letter than one model on contested questions.
 
 ## Next
-1. One live OpenRouter debate (Opus 5.5 / GPT-5.1 / Gemini 3 Pro): do members emit the
-   `POSITION:` trailer, do the family rules rate them, how do the warnings read on screen?
-   New prompts make these runs not comparable with `docs/live-test-windows.md`.
-2. Record on #15 (and #8) that OpenRouter counts as shipped and MCP (#9) is the chosen fork;
-   draft the comment for the owner to check before posting.
-3. Settle #9's return shape with the owner: full Hansard (warnings included) plus a flat
-   "contested / on what" summary, flags only. Then `parliament mcp`, one `debate` tool.
-4. #67 remainder, each its own PR: per-member `tier:` override (reverses "tier is not
-   configurable" in `docs/configuration.md`), then Ollama size metadata.
-5. Later: indent wrapped warning lines in the TUI; second contested question; Windows live checks.
+1. Merge #91 (Speaker model in the Hansard) before #92: they conflict in CHANGELOG and the
+   Synthesis table of `docs/hansard-schema.md`; keep both sets of rows. #90 is docs only.
+2. Try each README client snippet (Claude Code, Cursor, Codex) for real, then release 0.3.0
+   (`RELEASING.md`) and drop the README "Not released yet" note.
+3. A known-answer test: questions where one model tends to be wrong; count how often the panel
+   corrects it. Fix the risk list before the run and grade blind.
+4. Draft the #15/#8 comment (OpenRouter shipped, MCP is the chosen fork) for the owner to check.
+5. #67 remainder, each its own PR: per-member `tier:` override, then Ollama size metadata.
+6. Later: report an unrated outside Speaker (noted on #89); see panel warnings live; indent
+   wrapped warning lines in the TUI.
 
 ## Decisions
-- Positions are self-reported, never inferred by the Speaker; a missing answer is `null` (#73).
-- The Speaker must not judge a position it holds; anonymising alone is not enough (#73, #79).
-- Unrated models are reported, never silently excluded (#66); tier 3 is an assumption, so an
-  unrated member becomes Speaker only when no member is rated (#67).
-- Family rules match the whole id: a wrong rating is worse than "unrated". Pin exceptions
-  (e.g. a preset's dated id) in `MODEL_TIERS`; tests fail when the two disagree.
-- Warnings describe the configured panel, taken before the debate. Filter on `kind`, never on
-  wording. On screen only each message's first sentence shows; the advice stays in JSON/stderr.
+- Positions are self-reported, never inferred; a missing answer is `null` (#73). The Speaker
+  decides `contested`; `null` when it gives no line.
+- The Speaker must not judge a position it holds; use an outside Speaker (#73, #79).
+- Unrated models are reported, never silently excluded (#66, #67). Family rules match whole ids.
+- MCP returns a trimmed result plus a saved file: the members' answers exceed client tool-output
+  limits. Debates are serialised: OpenRouter reserves credit per request in flight (HTTP 402).
+  Codex needs `tool_timeout_sec = 600`; the Cursor CLI (fixed 60 s) is unsupported.
 - Ruff is unpinned on purpose: fix a new release's finding rather than pin.
 
 ## Known issues
-- Cloud containers: `verify.sh` fails on env only. System ruff (0.16.x) flags a false DTZ005
-  on `tui.py` (CI runs 0.17.0), and `python -m mypy` trips on numpy stubs. Run ruff from a
-  scratch venv with the newest ruff, `~/.local/bin/mypy src/parliament`, `python -m pytest -q`.
-- A tied top tier still raises the Speaker warning on most real panels; `parliament.speaker`
-  with a model off the panel clears it. That is intended (#73).
-- Windows: prefix verify.sh with `PATH="$PWD/.venv/Scripts:$PATH"`.
-- Cloud git defaults to the Claude identity: commit with `git -c user.name="Boris Miscenco"
-  -c user.email=aidevblock@gmail.com`.
+- The 2026-09-04 comment on #9 carries an AI footer; editing it is the owner's call.
+- Windows: prefix verify.sh with `PATH="$PWD/.venv/Scripts:$PATH"`. pipx (uv backend) can't
+  `--force` over an install: uninstall, then install.
+- Cloud containers: system ruff 0.16.x flags a false DTZ005 and `python -m mypy` trips on numpy
+  stubs; use a scratch-venv ruff and `~/.local/bin/mypy`. Cloud git defaults to the Claude
+  identity: commit with `git -c user.name="Boris Miscenco" -c user.email=aidevblock@gmail.com`.
 - Merging needs an approving review; fork PR CI waits for owner approval.
+- Owner's PC, as of 2026-11-01: pipx runs editable from worktree `../llm-parliament-mcp`
+  (`chore/local-mcp`) until the MCP PRs merge; Claude Code has `parliament` at user scope, and
+  each call spends OpenRouter credit.
