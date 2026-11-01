@@ -282,3 +282,36 @@ a weaker form.
   model as a member, and when tied members leave the Speaker to be picked by
   order.
 
+
+## Results: 2026-11-01, self-reported positions
+
+One debate to check #69 (self-reported positions), #87 (panel warnings) and the
+family tier rules from #88 against real models. `main` at `1556618`. Members:
+`anthropic/claude-opus-5.5`, `openai/gpt-5.1`, `google/gemini-3.1-pro-preview`.
+Speaker: `x-ai/grok-4.7`, outside the panel. The question is the memory-safety
+rewrite above. The member prompts have changed since those runs (the
+`POSITION:` and `CHANGED MIND:` lines), and two members are different models,
+so this run cannot be counted with the eight above.
+
+| Wall | First Reading | After Debate | Verdict | Degraded | Cost |
+|---|---|---|---|---|---|
+| 112s | Claude A, GPT C, Gemini C | Claude A, GPT C, Gemini C → A | A | no | $0.17 |
+
+| Check | Result |
+|---|---|
+| `POSITION:` line | Pass. All six responses end with it, and it parses into `position.stance`. |
+| `CHANGED MIND:` | Pass. All three Debate responses carry it. Gemini said yes, and its stance moved from C to A; the other two said no and kept theirs. |
+| Split section | Pass. Names who chose what, each side's strongest argument, and that Gemini switched on the IPC-cost and "second parser" points. This agrees with Gemini's own `CHANGED MIND: yes`. |
+| Family tier rules | Pass. All three members resolve to tier 1 `frontier (inferred)`; `unrated_members` is empty. |
+| Panel warnings | Not tested. This panel raises none, so `warnings` is `[]` and there was nothing to see on screen. A mixed-tier panel or an insider Speaker is needed for that. |
+| Speaker fairness | Pass. The verdict follows the final 2–1 majority, and the Recommendation gives the conditions for switching to C. |
+
+The plan matches the eight runs above: the verdict starts with a first-week
+review of where the six past bugs were, and both A and C are gated on it.
+
+**Found:**
+- #89: the Hansard records the Speaker only as `speaker_name: "Speaker"`, so the
+  file does not say that `x-ai/grok-4.7` judged it. Comparing judges (see the
+  judge swap above) needs the model.
+- The outside Speaker is from an unrated vendor (xAI), but nothing reports it:
+  `unrated_members` and `warnings` cover members only. Noted on #89.
