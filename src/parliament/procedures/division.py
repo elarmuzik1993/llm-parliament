@@ -180,6 +180,8 @@ async def run_division(
 
     duration_ms = int((time.monotonic() - start) * 1000)
     synthesis = parse_synthesis(_restore_names(raw, labels), speaker.name)
+    synthesis.speaker_provider = speaker.provider_name
+    synthesis.speaker_model = speaker.model
     on_progress(
         ProgressEvent(
             phase="division",

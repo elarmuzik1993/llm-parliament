@@ -117,3 +117,15 @@ def test_warnings_json_roundtrip_and_old_records():
     assert Hansard.from_dict(data).warnings == [warning]
     data.pop("warnings")
     assert Hansard.from_dict(data).warnings == []
+
+
+def test_speaker_model_json_roundtrip_and_old_records():
+    synthesis = Synthesis("Judge", speaker_provider="openrouter", speaker_model="x-ai/grok-4.7")
+    hansard = Hansard(Bill("Q"), [], [], [], synthesis)
+    data = json.loads(hansard.to_json())
+    assert data["synthesis"]["speaker_provider"] == "openrouter"
+    assert data["synthesis"]["speaker_model"] == "x-ai/grok-4.7"
+    assert Hansard.from_dict(data).synthesis == synthesis
+    del data["synthesis"]["speaker_provider"], data["synthesis"]["speaker_model"]
+    old = Hansard.from_dict(data).synthesis
+    assert (old.speaker_provider, old.speaker_model) == ("", "")

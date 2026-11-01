@@ -95,6 +95,10 @@ async def test_outside_speaker_writes_the_synthesis():
     outside = (Member(name="Judge", provider_name="mock", model="judge"), judge)
     hansard = await Parliament(members, providers, outside_speaker=outside).ask("Which?")
     assert hansard.synthesis.speaker_name == "Judge"
+    # The judge did not debate, so only the synthesis can say which model it was (#89).
+    assert (hansard.synthesis.speaker_provider, hansard.synthesis.speaker_model) == (
+        "mock", "judge"
+    )
     assert len(judge.prompts) == 1
     assert [m.name for m in hansard.members] == ["Alpha", "Beta"]
 
@@ -107,6 +111,8 @@ async def test_failed_outside_speaker_falls_back_to_a_member():
     )
     hansard = await Parliament(members, providers, outside_speaker=outside).ask("Which?")
     assert hansard.synthesis.speaker_name == "Alpha"
+    # The member who took over, not the judge that failed.
+    assert hansard.synthesis.speaker_model == "mock-v1"
 
 
 async def test_speaker_flag_naming_a_member_beats_the_outside_speaker():
@@ -116,6 +122,7 @@ async def test_speaker_flag_naming_a_member_beats_the_outside_speaker():
     parliament = Parliament(members, providers, speaker_override="beta", outside_speaker=outside)
     hansard = await parliament.ask("Which?")
     assert hansard.synthesis.speaker_name == "Beta"
+    assert hansard.synthesis.speaker_model == "mock-v2"
     assert judge.prompts == []
 
 
