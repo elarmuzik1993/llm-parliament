@@ -28,6 +28,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`parliament mcp`: an MCP server for coding agents (#9)** — a stdio server
+  with one tool, `debate(question)`, that runs the configured panel and
+  returns `schema`, `summary` (`contested`, `contested_on`, `degraded`,
+  `warnings`, final `positions`), `verdict` (the synthesis without its raw
+  text), `members` and `hansard_path`. The full Hansard is saved as JSON in
+  `~/.parliament/hansards/`, because the members' answers are larger than
+  clients accept from a tool. Progress is reported per phase; debates run one
+  at a time, and a queued call keeps reporting while it waits. A failed debate
+  is a tool error, never a verdict. A mock-only panel is refused unless
+  `--mock` is passed. Needs the optional extra:
+  `pip install "llm-parliament[mcp]"`.
 - **The Speaker says whether the debate is still contested (#9)** — the
   Division prompt ends with `CONTESTED: yes/no` and `ON WHAT: <one line>`,
   parsed into `synthesis.contested` and `synthesis.contested_on`. "Yes" means

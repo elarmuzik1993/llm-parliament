@@ -57,7 +57,14 @@ dev = [
     # a green job red without a line of source changing.
     "mypy>=1.0,<1.21",
     "types-PyYAML>=6,<7",
+    # So CI tests the MCP server; named by extra, not copied, so the pin below
+    # is the only one.
+    "llm-parliament[mcp]",
 ]
+# `parliament mcp` (#9). Optional: the SDK brings a web stack (starlette, pyjwt,
+# pywin32 on Windows) that the CLI and TUI never use. Capped below 3 because
+# 2.0 broke the 1.x server API wholesale.
+mcp = ["mcp>=2.3,<3"]
 
 [project.scripts]
 parliament = "parliament.cli:main"
