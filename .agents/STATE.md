@@ -8,7 +8,7 @@ _Updated 2026-11-02_
   tool. Returns `schema`, `summary` (contested, positions, warnings, degraded), `verdict`, `members`,
   `hansard_path` (~5 KB); the full Hansard (~60 KB) is saved as JSON under `~/.parliament/hansards/`.
   Progress per member answer, a heartbeat while queued, one debate at a time. README section
-  "Use it from a coding agent (MCP)" has the client snippets; none tried in a real client yet.
+  "Use it from a coding agent (MCP)" has the client snippets; first real use 2026-11-02 from Claude Code (user scope): see `docs/live-test-windows.md`. Cursor and Codex untried.
 - The Speaker ends with `CONTESTED:` / `ON WHAT:`, parsed into `Synthesis.contested`
   (`bool | None`) and `contested_on`. Correct on all 5 live debates of 2026-11-01.
 - Self-reported positions, family tier rules, outside Speaker: all checked live 2026-11-01
@@ -37,6 +37,12 @@ _Updated 2026-11-02_
 - Ruff is unpinned on purpose: fix a new release's finding rather than pin.
 
 ## Known issues
+- A member can drop out of a debate silently. 2026-11-02, first real MCP use: GPT (openai/gpt-6-astra)
+  has no First Reading or Debate entry, the Speaker wrote "the two analysts", `degraded` is true, yet
+  `warnings` lists only "unrated" and `summary` gives no sign a seat was empty. Cause not yet found
+  (no error kept in the Hansard). Fixed on `fix/record-member-failure` (#95): a `member_failed`
+  warning per failure; the cause of GPT's failure is still unknown.
+- Grok 4.7, GPT-6 Astra and Gemini 4 Argon are unrated, so the panel is assumed tier 3.
 - The 2026-09-04 comment on #9 carries an AI footer; editing it is the owner's call.
 - Windows: prefix verify.sh with `PATH="$PWD/.venv/Scripts:$PATH"`. pipx (uv backend) can't
   `--force` over an install: uninstall, then install.
