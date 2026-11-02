@@ -35,8 +35,11 @@ def is_abort(exc: BaseException) -> bool:
 def partition_results(
     results: list[Response | BaseException],
     members: list[Member],
-) -> tuple[list[Response], list[str]]:
-    """Split ``gather()`` results into surviving responses and failure lines.
+) -> tuple[list[Response], list[str], list[tuple[str, str]]]:
+    """Split ``gather()`` results into responses, failure lines and failures.
+
+    The failure lines are for an error message; the ``(member, error)`` pairs
+    are for recording why a member dropped out (#95).
 
     Abort-worthy BaseExceptions are re-raised rather than returned, so one
     cancelled member aborts the debate instead of silently shrinking it.
@@ -49,11 +52,14 @@ def partition_results(
 
     responses: list[Response] = []
     failures: list[str] = []
+    failed: list[tuple[str, str]] = []
 
     for member, result in zip(members, results):
         if isinstance(result, BaseException):
-            failures.append(f"  - {member.name}: {format_provider_error(result)}")
+            error = format_provider_error(result)
+            failures.append(f"  - {member.name}: {error}")
+            failed.append((member.name, error))
             continue
         responses.append(result)
 
-    return responses, failures
+    return responses, failures, failed

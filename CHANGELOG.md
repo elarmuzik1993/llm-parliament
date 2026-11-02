@@ -12,7 +12,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   member lost in First Reading or Debate was only counted in `degraded`; its
   error reached the live view and nothing else. Each one is now a
   `member_failed` warning naming the phase, the member and the provider error,
-  shown with the verdict and carried in the MCP `summary.warnings`.
+  shown whole with the verdict and carried in the MCP `summary.warnings`. A
+  Speaker that failed and was replaced in Division is recorded the same way.
 
 ### Changed
 

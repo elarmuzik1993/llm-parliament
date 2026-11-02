@@ -120,11 +120,11 @@ async def run_debate(
     providers: dict[str, Provider],
     first_reading: list[Response],
     on_progress: Callable,
-    failures_out: list[str] | None = None,
+    failures_out: list[tuple[str, str]] | None = None,
 ) -> list[Response]:
     """Run Debate for all members in parallel. Each critiques their peers.
 
-    Failure lines are appended to ``failures_out`` when given (see First Reading).
+    ``(member, error)`` pairs are appended to ``failures_out`` when given.
     """
     # Build lookup: member_name -> first_reading content
     readings = {r.member_name: r.content for r in first_reading}
@@ -143,9 +143,9 @@ async def run_debate(
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # A cancelled member aborts the debate; a failed provider degrades it.
-    responses, failures = partition_results(results, active_members)
+    responses, failures, failed = partition_results(results, active_members)
     if failures_out is not None:
-        failures_out.extend(failures)
+        failures_out.extend(failed)
 
     if len(responses) < 2:
         raise RuntimeError(

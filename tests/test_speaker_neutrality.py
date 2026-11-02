@@ -113,6 +113,9 @@ async def test_failed_outside_speaker_falls_back_to_a_member():
     assert hansard.synthesis.speaker_name == "Alpha"
     # The member who took over, not the judge that failed.
     assert hansard.synthesis.speaker_model == "mock-v1"
+    # The failed Speaker is on the record, not only replaced (#95).
+    failed = [w for w in hansard.warnings if w.kind == "member_failed"]
+    assert [w.message.split(":")[0:2] for w in failed] == [["Division", " Judge"]]
 
 
 async def test_speaker_flag_naming_a_member_beats_the_outside_speaker():
