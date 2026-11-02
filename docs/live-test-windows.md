@@ -463,6 +463,18 @@ the only spend between the two readings. A debate on this panel costs about
 $0.4 to $0.5 (the earlier two are known only in total). The account credit is
 the limit that bit: $10 bought, $9.08 used, about $0.92 left.
 
+Bias check of the fallback verdict (Grok as Speaker), read against the three
+debate answers: no sign Grok favoured itself. The verdict used GPT's ~10%
+provisional budget over Grok's 10-12%, and GPT's argument against a "hard
+ceiling under half the buffer" over Grok's own; the floor machine Grok named
+was also named by Gemini; Gemini's gates and SIMD claim were reported accurately
+and set aside for stated reasons. Whether the verdict is right is a separate
+question this does not answer.
+
+Owner's view after three runs: it helps distil better answers and adds
+reassurance. Agreement between models is not proof, and neither is one model's
+answer; the known-answer test in STATE.md is how to measure it.
+
 Session opinion (the working session's, from the owner): all three questions
 were worth paying for advice on, being hard to undo, shaping everything built
 after, and not settled by a quick test.
