@@ -415,5 +415,28 @@ Speaker Opus 5.5 (outside the panel). All unrated.
 | Debate effect | Gemini changed its mind in the debate: it dropped its two-parameter design for one trim of -36 to +36 dB. |
 | Speaker | Caught a numeric error in the bill (+8 to +12 dBu is 2.8 to 4.4 V peak, not 2 to 3.5) and split the baseline from the default, rather than picking a side. |
 
-The decision itself is the owner's; the Hansard is the record. Cost was not
-read from OpenRouter, so it is unrecorded.
+The decision itself is the owner's; the Hansard is the record. Cost: see the
+second real decision below, which covers both debates.
+
+## Results: 2026-11-02, second real decision, full panel
+
+A real question again, through `parliament mcp` from Claude Code, after #95:
+which DSP method to use for a component-level valve amp plugin (stage-by-stage
+method, where to cut between stages, the power amp with global feedback,
+oversampling, CPU, the first spike). The bill was long: it gave the signal path,
+the test tolerances and seven numbered questions. Hansard
+`20261102-214743-d187f52e`. Panel: Grok 4.7, GPT-6.1 Sol Pro, Gemini 4 Argon;
+Speaker Opus 5.5 (outside the panel). All unrated. 407 s.
+
+| Check | Result |
+|---|---|
+| Panel complete | Pass. All three answered in both phases, `degraded` false. GPT-6.1 Sol Pro works; the dropout of 2026-11-02 was GPT-6 Astra. |
+| `contested` flag | Judgement call. False, because all three chose the same architecture, yet the verdict lists seven detailed splits (stage cuts, power-amp reduction, tone stacks, speed-ups, CPU numbers, WDF). The flag follows the headline choice, not the detail. |
+| Debate effect | Pass. Gemini withdrew three claims: its grid-lookahead cut (fails with an unbypassed cathode), "8x everywhere", and "WDF allows only one nonlinearity". Nobody changed the choice of architecture. |
+| Speaker | Sided openly with two members ("Grok's and GPT's positions are the more defensible") and set Gemini's speed-ups as later experiments. Not checked: whether that lean follows the evidence or the 2-1 count. |
+| Decision | The owner's. Recommended: nodal/DK-centred hybrid, analytic first; a spike of in-house Newton against `chowdsp_wdf`. |
+
+Cost: OpenRouter's key endpoint shows $0.95 spent on this key, all of it on
+2026-11-02 (the key is that day's). That covers both real debates and the Astra
+call that failed in the first. The split per debate is not known, because the
+Hansard keeps no token usage (#70). Roughly $0.45 each if they cost the same.
