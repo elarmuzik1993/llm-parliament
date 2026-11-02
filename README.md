@@ -513,6 +513,9 @@ parliament --mock
 
 # Browse the same dashboard with a specific config
 parliament tui --config /path/to/custom-config.yaml
+
+# Serve the parliament to coding agents (see "Use it from a coding agent")
+parliament mcp
 ```
 
 ### Live debate view
@@ -601,6 +604,91 @@ remain derived and read-only. Model pickers include supported presets plus a
 Inside the member editor, `Enter` opens provider/model pickers when those
 fields are focused and saves the edit when the base URL field is focused.
 
+## Use it from a coding agent (MCP)
+
+`parliament mcp` runs the parliament as an
+[MCP](https://modelcontextprotocol.io) server. A coding agent (Claude Code,
+Cursor, Codex) can then convene a debate itself when it reaches a decision
+with real trade-offs. The server has one tool, `debate`: it takes a question,
+runs the full debate on your configured panel, and returns a short result.
+
+- `summary.contested`: whether the members still recommend different courses
+  of action after the debate (`null` if the Speaker didn't say), and
+  `summary.contested_on`: what they disagree on.
+- `summary.positions`, `summary.warnings` and `summary.degraded`.
+- `verdict`: the Speaker's consensus, split, risks and recommendation.
+- `hansard_path`: the full record, saved under `~/.parliament/hansards/` as
+  the same JSON `parliament ask --json` prints
+  ([schema](docs/hansard-schema.md)). The members' answers stay in that file:
+  together they are larger than agents accept from one tool call.
+
+**Install.** The server needs an optional extra:
+
+```bash
+pipx install --force "llm-parliament[mcp]"
+parliament doctor        # the server uses the same config and keys
+```
+
+> **Not released yet.** The `[mcp]` extra and `parliament mcp` arrive in the
+> first release after 0.2.0; 0.2.0 on PyPI has neither. Until then, install
+> from a clone: `git clone` the repo, then run `pipx install --force ".[mcp]"`
+> inside it.
+
+Store keys with `parliament keys set` rather than in your shell profile: an
+editor started from a desktop icon does not see variables your shell exports.
+
+**Connect your agent.**
+
+Claude Code:
+
+```bash
+claude mcp add --scope user parliament -- parliament mcp
+```
+
+Cursor, in `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "parliament": { "command": "parliament", "args": ["mcp"] }
+  }
+}
+```
+
+Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.parliament]
+command = "parliament"
+args = ["mcp"]
+tool_timeout_sec = 600
+```
+
+If the agent reports that `parliament` is not found, use the full path that
+`which parliament` (`where parliament` on Windows) prints. `--config PATH` and
+`--speaker NAME` work as they do for `parliament ask`; add them after `mcp`.
+
+**Timeouts.** A debate takes one to three minutes, which is longer than some
+agents wait for a tool. The server reports progress after each member's answer.
+
+| Agent | Works? |
+|-------|--------|
+| Claude Code | Yes. A call that runs past two minutes moves to the background and finishes there. |
+| Cursor (editor) | Yes. It waits up to an hour while progress keeps arriving. |
+| Codex | Only with `tool_timeout_sec` raised, as above. The default is 60 seconds. |
+| Cursor CLI | No. It stops every tool call after 60 seconds, and the limit can't be changed. |
+
+**Cost.** Each call makes 2n+1 model calls (7 for three members) at your
+panel's prices; see [Does it cost 3× more?](#does-it-cost-3-more). The tool's
+description tells the agent this, and to save it for consequential choices,
+not facts or small edits. A live run on 2026-11-01 (Opus 5.5, GPT-5.1 and
+Gemini 3.1 Pro, with Grok 4.7 as outside Speaker) took three minutes and cost
+about $0.20. Debates run one at a time: a second call waits for the first.
+
+**Try it free.** `parliament mcp --mock` serves a mock panel, to check the
+connection; its verdicts are fake. Without `--mock` the server refuses to start
+on a panel made only of mock members, so an agent never acts on a fake verdict.
+
 ## Development
 
 Clone the repo and create a virtual environment.
@@ -653,11 +741,12 @@ parliament ask "What should we test first?" --mock
 
 ```text
 src/parliament/
-  cli.py                  Click CLI (parliament ask / doctor / keys / members / tui / update)
+  cli.py                  Click CLI (parliament ask / doctor / keys / members / mcp / tui / update)
   commands.py             Slash commands (/help, /update, /doctor, /history, /copy, …)
   config.py               YAML config loading, key management, resolve_* precedence helpers
   doctor.py               Health-check logic (Python, curses, terminal, providers, Ollama)
   model_catalog.py        Provider model presets + tier data for pickers
+  mcp_server.py           `parliament mcp`: MCP server with one `debate` tool (optional [mcp] extra)
   tui.py                  Curses TUI — all screens, key handling, main loop
   core/                   Parliament orchestrator, dataclasses, ProgressEvent
   procedures/             First Reading, Debate, and Division phases
