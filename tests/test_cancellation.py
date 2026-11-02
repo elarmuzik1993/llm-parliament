@@ -327,3 +327,37 @@ def test_degraded_defaults_to_false():
 
     assert hansard.degraded is False
     assert hansard.to_dict()["degraded"] is False
+
+
+# ── Failed members are recorded (#95) ──────────────────────────────────────────
+
+
+async def test_hansard_records_why_a_member_failed():
+    """A dropped member leaves its error in the Hansard, not only `degraded`."""
+    parliament = Parliament(
+        members=MEMBERS,
+        providers={
+            "Alpha": _mock("mock-v1"),
+            "Beta": ErrorProvider(),
+            "Gamma": _mock("mock-v3"),
+        },
+    )
+
+    hansard = await parliament.ask("Should we use Postgres?")
+
+    failed = [w for w in hansard.warnings if w.kind == "member_failed"]
+    assert len(failed) == 1
+    assert "First Reading" in failed[0].message
+    assert "Beta" in failed[0].message
+    assert "quota" in failed[0].message.lower()
+
+
+async def test_hansard_has_no_failure_warning_when_all_respond():
+    parliament = Parliament(
+        members=MEMBERS,
+        providers={m.name: _mock(m.model) for m in MEMBERS},
+    )
+
+    hansard = await parliament.ask("Should we use Postgres?")
+
+    assert not [w for w in hansard.warnings if w.kind == "member_failed"]

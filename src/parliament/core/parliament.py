@@ -12,6 +12,7 @@ from parliament.core.model_tiers import (
     resolve_member_tier,
 )
 from parliament.core.types import (
+    MEMBER_FAILED,
     SPEAKER,
     Bill,
     Hansard,
@@ -201,21 +202,35 @@ class Parliament:
         warnings = self.warnings()
 
         # Phase 1: First Reading
+        reading_failures: list[str] = []
         first_reading = await run_first_reading(
             bill=bill,
             members=self.members,
             providers=self.providers,
             on_progress=self.on_progress,
+            failures_out=reading_failures,
         )
 
         # Phase 2: Debate
+        debate_failures: list[str] = []
         debate = await run_debate(
             bill=bill,
             members=self.members,
             providers=self.providers,
             first_reading=first_reading,
             on_progress=self.on_progress,
+            failures_out=debate_failures,
         )
+        # A dropped member is recorded with its error (#95), not only counted
+        # in `degraded`.
+        warnings += [
+            SessionWarning(MEMBER_FAILED, f"{phase}: {line.strip().removeprefix('- ')}")
+            for phase, lines in (
+                ("First Reading", reading_failures),
+                ("Debate", debate_failures),
+            )
+            for line in lines
+        ]
 
         # Phase 3: Division
         debating_member_names = {r.member_name for r in debate}

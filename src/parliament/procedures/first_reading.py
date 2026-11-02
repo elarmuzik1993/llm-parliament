@@ -96,8 +96,13 @@ async def run_first_reading(
     members: list[Member],
     providers: dict[str, Provider],
     on_progress: Callable,
+    failures_out: list[str] | None = None,
 ) -> list[Response]:
-    """Run First Reading for all members in parallel."""
+    """Run First Reading for all members in parallel.
+
+    Failure lines ("  - name: error") are appended to ``failures_out`` when given,
+    so the caller can record why a member dropped out.
+    """
     tasks = [
         _read_one(bill, m, providers[m.name], len(members), on_progress)
         for m in members
@@ -106,6 +111,8 @@ async def run_first_reading(
 
     # A cancelled member aborts the debate; a failed provider degrades it.
     responses, failures = partition_results(results, members)
+    if failures_out is not None:
+        failures_out.extend(failures)
 
     if len(responses) < 2:
         raise RuntimeError(

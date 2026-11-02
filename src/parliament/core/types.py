@@ -79,7 +79,8 @@ class Position:
 TIER_GAP = "tier_gap"
 UNRATED = "unrated"
 SPEAKER = "speaker"
-WARNING_KINDS = (TIER_GAP, UNRATED, SPEAKER)
+MEMBER_FAILED = "member_failed"
+WARNING_KINDS = (TIER_GAP, UNRATED, SPEAKER, MEMBER_FAILED)
 
 
 @dataclass
