@@ -282,3 +282,119 @@ a weaker form.
   model as a member, and when tied members leave the Speaker to be picked by
   order.
 
+
+## Results: 2026-11-01, self-reported positions
+
+One debate to check #69 (self-reported positions), #87 (panel warnings) and the
+family tier rules from #88 against real models. `main` at `1556618`. Members:
+`anthropic/claude-opus-5.5`, `openai/gpt-5.1`, `google/gemini-3.1-pro-preview`.
+Speaker: `x-ai/grok-4.7`, outside the panel. The question is the memory-safety
+rewrite above. The member prompts have changed since those runs (the
+`POSITION:` and `CHANGED MIND:` lines), and two members are different models,
+so this run cannot be counted with the eight above.
+
+| Wall | First Reading | After Debate | Verdict | Degraded | Cost |
+|---|---|---|---|---|---|
+| 112s | Claude A, GPT C, Gemini C | Claude A, GPT C, Gemini C → A | A | no | $0.17 |
+
+| Check | Result |
+|---|---|
+| `POSITION:` line | Pass. All six responses end with it, and it parses into `position.stance`. |
+| `CHANGED MIND:` | Pass. All three Debate responses carry it. Gemini said yes, and its stance moved from C to A; the other two said no and kept theirs. |
+| Split section | Pass. Names who chose what, each side's strongest argument, and that Gemini switched on the IPC-cost and "second parser" points. This agrees with Gemini's own `CHANGED MIND: yes`. |
+| Family tier rules | Pass. All three members resolve to tier 1 `frontier (inferred)`; `unrated_members` is empty. |
+| Panel warnings | Not tested. This panel raises none, so `warnings` is `[]` and there was nothing to see on screen. A mixed-tier panel or an insider Speaker is needed for that. |
+| Speaker fairness | Pass. The verdict follows the final 2–1 majority, and the Recommendation gives the conditions for switching to C. |
+
+The plan matches the eight runs above: the verdict starts with a first-week
+review of where the six past bugs were, and both A and C are gated on it.
+
+**Found:**
+- #89: the Hansard records the Speaker only as `speaker_name: "Speaker"`, so the
+  file does not say that `x-ai/grok-4.7` judged it. Comparing judges (see the
+  judge swap above) needs the model.
+- The outside Speaker is from an unrated vendor (xAI), but nothing reports it:
+  `unrated_members` and `warnings` cover members only. Noted on #89.
+
+## Results: 2026-11-01, debate against single calls
+
+Same panel and outside Speaker as the run above. Four more debates and 18
+single calls, to compare the debate with each model asked alone. Single calls
+use the bare question with no system prompt, three tries per model, as in the
+contested-questions section. Picks were read by hand from each answer's opening.
+
+**Memory-safety rewrite.** Two more debates: one on the code from #92 (the
+`contested` flag), and one through `parliament mcp` from #93.
+
+| Run | Wall | First Reading | After Debate | Verdict | `contested` |
+|---|---|---|---|---|---|
+| Positions run above | 112s | Claude A, GPT C, Gemini C | Gemini C → A | A | (not yet recorded) |
+| #92 | 99s | Claude A, GPT C, Gemini A | no change | A | true: "A versus C" |
+| `parliament mcp` | 175s | Claude A, GPT C, Gemini A | no change | A | true: "A versus C" |
+
+| | Claude | GPT | Gemini |
+|---|---|---|---|
+| Bare question, alone | A, A, A | B, B, B | B, B, B |
+
+The parliament chose A every time, against the B that two of the three models
+give alone. That is mostly the wording, not persuasion. Under the First Reading
+prompt GPT and Gemini open on C or A, never B, and only one member in three
+debates changed its mind. This matches the contested-questions section: on this
+question the letter moves with the wording and the panel, and the plan does
+not.
+
+**Analytics database.** A new question. The 2026-10-10 screen split the
+earlier panel on this topic, but it had no full debate yet.
+
+> We are a 12-person B2B SaaS company on one Postgres database (400 GB, growing 20 GB a month). Customers now want in-app analytics dashboards over the last 2 years of their own event data, with queries answering in under 2 seconds. Two engineers can work on it for one quarter. Choose exactly one: (A) keep Postgres and add partitioning, materialized views and a read replica, (B) add ClickHouse, fed from Postgres by change data capture, (C) use a managed warehouse (BigQuery or Snowflake) with an hourly sync, and cache results in the app. Pick one, justify it, and say what would change your mind.
+
+| | Claude | GPT | Gemini | Verdict | `contested` |
+|---|---|---|---|---|---|
+| Alone, three tries | B, B, B | B, B, B | A, A, A | | |
+| Debate 1 (93s) | B | B | A → B | B | false |
+| Debate 2 (103s) | B | B | A → B | B | false |
+
+Gemini switched in both debates, and for a true reason it had missed: native
+Postgres materialized views only refresh in full, so option A turns into
+hand-built rollups as the data grows. Its peers made that point; it named it in
+its reply. The `contested: false` is correct, since all three ended on B.
+
+**Risk coverage.** Eight risks from the first verdict were searched for in the
+nine single calls by keyword:
+- a stalled replication slot retaining WAL until the primary fills;
+- full-refresh materialized views;
+- cross-tenant leaks;
+- deletes, GDPR and dedup in CDC;
+- a week-one benchmark as the kill criterion;
+- replica replay conflicts;
+- partition count;
+- warehouse cold start and per-query cost.
+
+The best single answer covered 6 of them, and Gemini's alone covered 0 to 2.
+The two verdicts covered 8 and 6, at about 2,800 characters each against
+2,700 to 9,100 for the single answers. The replay-conflict risk was in 1 of 9
+single answers, the WAL risk in 2, and partition count in none.
+
+This check favours the verdict: the list comes from the verdict, so the
+first verdict covers all eight by construction. Nor was it checked what the
+single answers raised that the verdicts dropped. A fair score needs a risk
+list fixed beforehand and a blind grader.
+
+| Check | Result |
+|---|---|
+| Debate effect | Pass on the analytics question: a member corrected a factual error after a peer's critique, twice. Weak on the rewrite: one change in three debates. |
+| `contested` flag | Pass. True on the 2–1 rewrite debates and false on the unanimous analytics debates, and `contested_on` names the real choice. |
+| Verdict vs baseline | Mixed. On the analytics question, the same decision as the single-call majority, with a fuller risk list and a kill criterion. On the rewrite, a different decision from two of three models, driven by the prompt. |
+| Stability | Pass. A in 3 of 3 for the rewrite, B in 2 of 2 for the analytics question. |
+
+**Verdict:** the debate does not give a more correct letter than one model. Its
+value here is narrower: it catches a member's factual error, it reports when
+strong models still disagree and on what, and it gathers risks that the single
+answers each cover only in part. A test on questions with a known right answer,
+where one model tends to be wrong, would measure the first of these directly.
+
+**Found:** the installed tool ran from a branch without #91, so these
+Hansards have no `speaker_model`.
+
+Cost: the rewrite debates about $0.20 each; the single calls and analytics
+debates $1.25 together, more than estimated, mostly the Opus single calls.
