@@ -206,7 +206,10 @@ def _render_footer(hansard: Hansard) -> str:
     duration = hansard.duration_ms / 1000
     member_count = len(hansard.members)
     calls = member_count * 2 + 1
-    speaker = hansard.synthesis.speaker_name
+    synthesis = hansard.synthesis
+    speaker = synthesis.speaker_name
+    if synthesis.speaker_model:  # empty in records written before #89
+        speaker += f" ({synthesis.speaker_provider}/{synthesis.speaker_model})"
     members = ", ".join(f"{m.name} ({m.provider_name}/{m.model})" for m in hansard.members)
     return (
         "## Session\n\n"
