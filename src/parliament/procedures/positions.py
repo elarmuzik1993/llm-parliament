@@ -22,12 +22,13 @@ POSITION: <your revised recommendation, in one sentence>
 CHANGED MIND: <yes or no — did the debate change your recommendation?>"""
 
 # Tolerates markdown around a label: "**POSITION:** ...", "- Position: ...".
-_LABEL_END = r"[*_]*[ \t]*:[*_]*"
+# Shared with the Speaker's CONTESTED / ON WHAT lines (division.py).
+LABEL_END = r"[*_]*[ \t]*:[*_]*"
 _POSITION = re.compile(
-    r"^[ \t>*_#-]*POSITION" + _LABEL_END, re.IGNORECASE | re.MULTILINE
+    r"^[ \t>*_#-]*POSITION" + LABEL_END, re.IGNORECASE | re.MULTILINE
 )
 # Not anchored to a line start: a member may put both answers on one line.
-_CHANGED_MIND_LABEL = re.compile(r"[*_]*CHANGED[ _-]MIND" + _LABEL_END, re.IGNORECASE)
+_CHANGED_MIND_LABEL = re.compile(r"[*_]*CHANGED[ _-]MIND" + LABEL_END, re.IGNORECASE)
 _CHANGED_MIND = re.compile(
     _CHANGED_MIND_LABEL.pattern + r"\s*[*_]*\s*(yes|no)\b", re.IGNORECASE
 )
@@ -37,7 +38,7 @@ _CHANGED_MIND = re.compile(
 _TAIL_LINES = 6
 
 
-def _tail(content: str) -> str:
+def answer_tail(content: str) -> str:
     lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     nonblank = [i for i, line in enumerate(lines) if line.strip()]
     return "\n".join(lines[nonblank[-_TAIL_LINES:][0]:]) if nonblank else ""
@@ -63,7 +64,7 @@ def parse_position(content: str, *, with_changed_mind: bool = True) -> Position 
     `with_changed_mind=False` for First Reading, which does not ask it. The
     last POSITION label wins: the instructions put it after the member's prose.
     """
-    tail = _tail(content)
+    tail = answer_tail(content)
     labels = list(_POSITION.finditer(tail))
     if not labels:
         return None

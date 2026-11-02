@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable
 
 from parliament.core.types import Bill, Member, ProgressEvent, Response, Synthesis
+from parliament.procedures.positions import LABEL_END, answer_tail
 from parliament.procedures.results import CANCELLED_MESSAGE
 from parliament.providers.base import Provider
 
@@ -27,7 +28,55 @@ Produce a structured synthesis with exactly these sections:
 CONSENSUS: Points the analysts agree on.
 SPLIT: Where they disagree, and the reasoning on each side.
 RISKS: Any risks or concerns flagged by any analyst.
-RECOMMENDATION: Your recommendation based on the weight of the debate."""
+RECOMMENDATION: Your recommendation based on the weight of the debate.
+
+Then end with these two lines, on their own:
+CONTESTED: <yes or no: after the debate, do the analysts still recommend different courses of action? Differing only on details is no.>
+ON WHAT: <if yes, what they disagree on, in one line; if no, write none>"""
+
+# The Speaker's closing lines (#9). Read only from the end of its answer, like
+# members' POSITION lines: the synthesis may quote the members' own text.
+_TRAILER_LABEL = re.compile(
+    r"^[ \t>*_#-]*(CONTESTED|ON[ \t]+WHAT)" + LABEL_END, re.IGNORECASE | re.MULTILINE
+)
+_YES_NO = re.compile(r"(yes|no)\b", re.IGNORECASE)
+_NOTHING = {"", "none", "n/a", "-"}
+
+
+def _split_trailer(raw: str) -> tuple[str, str]:
+    """(body, trailer): the trailer starts at the first closing label near the end."""
+    text = raw.replace("\r\n", "\n").replace("\r", "\n")
+    tail = answer_tail(text)
+    label = _TRAILER_LABEL.search(tail)
+    if label is None:
+        return raw, ""
+    start = len(text) - len(tail) + label.start()
+    return text[:start], text[start:]
+
+
+def _answer_after(trailer: str, label: re.Match[str]) -> str:
+    """The answer on the label's line, or else on the next non-label line."""
+    first, *rest = trailer[label.end():].split("\n")
+    answer = first.strip().strip("*_").strip()
+    if answer:
+        return answer
+    following = next((line for line in rest if line.strip()), "")
+    if _TRAILER_LABEL.match(following):
+        return ""
+    return following.strip().strip("*_").strip()
+
+
+def _parse_contested(trailer: str) -> tuple[bool | None, str]:
+    # The last of each label wins, as with POSITION.
+    labels = {m.group(1).split()[0].upper(): m for m in _TRAILER_LABEL.finditer(trailer)}
+    contested = None
+    if "CONTESTED" in labels:
+        word = _YES_NO.match(_answer_after(trailer, labels["CONTESTED"]))
+        contested = word.group(1).lower() == "yes" if word else None
+    on_what = _answer_after(trailer, labels["ON"]) if "ON" in labels else ""
+    if contested is not True or on_what.lower().rstrip(".") in _NOTHING:
+        on_what = ""
+    return contested, on_what
 
 
 def _member_labels(debate_responses: list[Response]) -> dict[str, str]:
@@ -73,7 +122,11 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
 
     Looks for CONSENSUS:, SPLIT:, RISKS:, RECOMMENDATION: headers.
     Fallback: if parsing fails, entire response goes into recommendation.
+    The closing CONTESTED / ON WHAT lines are parsed apart, so they never show
+    up inside the Recommendation; `raw` keeps the answer as the Speaker sent it.
     """
+    body, trailer = _split_trailer(raw)
+    contested, contested_on = _parse_contested(trailer)
     sections = {
         "consensus": "",
         "split": "",
@@ -91,7 +144,7 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
         r"(?:^|\n)\s*#{0,6}\s*\**(CONSENSUS|SPLIT|RISKS|RECOMMENDATION)\**"
         r"\s*:?(?:[ \t]*\*+(?=\s))?[ \t]*\n?"
     )
-    parts = re.split(pattern, raw, flags=re.IGNORECASE)
+    parts = re.split(pattern, body, flags=re.IGNORECASE)
 
     # parts alternates: [preamble, HEADER, content, HEADER, content, ...]
     if len(parts) >= 3:
@@ -113,7 +166,7 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
             i += 2
     else:
         # Parsing failed — fallback: entire response into recommendation
-        sections["recommendation"] = raw.strip()
+        sections["recommendation"] = body.strip()
 
     return Synthesis(
         speaker_name=speaker_name,
@@ -121,6 +174,8 @@ def parse_synthesis(raw: str, speaker_name: str) -> Synthesis:
         split=sections["split"],
         risks=sections["risks"],
         recommendation=sections["recommendation"],
+        contested=contested,
+        contested_on=contested_on,
         raw=raw,
     )
 

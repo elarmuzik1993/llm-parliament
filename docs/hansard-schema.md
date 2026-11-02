@@ -163,6 +163,8 @@ four parts shown in the normal terminal verdict.
 | `split` | `string` | Material disagreements or trade-offs. |
 | `risks` | `string` | Risks, caveats, and failure modes. |
 | `recommendation` | `string` | Final recommended course of action. |
+| `contested` | `boolean \| null` | The Speaker's call: `true` when members still recommend different courses of action after the Debate, `false` when they differ only on details. `null` when the Speaker gave no clear yes or no, which means unknown, not settled. Also `null` in records written before the field existed. |
+| `contested_on` | `string` | What they still disagree on, in one line. Set only when `contested` is `true`; empty otherwise. |
 | `raw` | `string` | Full unparsed Speaker output before the four fields above were extracted. |
 
 ## Degraded sessions
@@ -235,6 +237,8 @@ jq -e '(.members | length) == (.first_reading | length)' hansard.json >/dev/null
     "split": "...",
     "risks": "...",
     "recommendation": "...",
+    "contested": true,
+    "contested_on": "Split out billing now, or after the launch.",
     "raw": "..."
   },
   "id": "b0a5f3b0-1111-4222-8333-444455556666",
@@ -281,4 +285,13 @@ List who changed their mind during the debate:
 ```bash
 parliament ask "Should we split this service?" --json \
   | jq -r '.debate[] | select(.position.changed_mind == true) | .member_name'
+```
+
+Stop a script when the panel is still split, and say on what. `null` (unknown)
+does not stop it, so test for `true`, not for "not false":
+
+```bash
+parliament ask "Should we split this service?" --json \
+  | jq -e '.synthesis | select(.contested == true) | .contested_on' \
+  && exit 1
 ```

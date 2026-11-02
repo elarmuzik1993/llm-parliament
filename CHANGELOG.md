@@ -28,6 +28,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The Speaker says whether the debate is still contested (#9)** — the
+  Division prompt ends with `CONTESTED: yes/no` and `ON WHAT: <one line>`,
+  parsed into `synthesis.contested` and `synthesis.contested_on`. "Yes" means
+  members still recommend different courses of action; differing only on
+  details is "no". A missing or unclear answer is `null` (unknown), never
+  `false`. The two lines are kept out of the Recommendation. This is the flag
+  an agent will read from the MCP `debate` tool.
 - **The Hansard records which model the Speaker was (#89)** —
   `synthesis.speaker_provider` and `synthesis.speaker_model` sit next to
   `speaker_name`. An outside Speaker is not in `members`, so a saved Hansard
