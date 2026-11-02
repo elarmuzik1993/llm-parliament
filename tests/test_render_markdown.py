@@ -169,3 +169,14 @@ def test_full_transcripts_appear_after_verdict(make_hansard):
     debate_idx = md.index("## Debate")
     assert rec_idx < fr_idx
     assert fr_idx < debate_idx
+
+
+def test_archive_footer_names_the_speaker_model(make_hansard):
+    # A saved .md is a Hansard too: an outside Speaker is not in the members
+    # list, so the footer is the only place its model can appear (#89).
+    hansard = make_hansard()
+    hansard.synthesis.speaker_name = "Judge"
+    hansard.synthesis.speaker_provider = "openrouter"
+    hansard.synthesis.speaker_model = "x-ai/grok-4.7"
+    md = render_markdown(hansard, HansardLevel.ARCHIVE)
+    assert "- Speaker: Judge (openrouter/x-ai/grok-4.7)" in md
