@@ -20,6 +20,9 @@ from parliament.providers.base import Provider
 PARLIAMENT_DIR = Path.home() / ".parliament"
 KEYS_FILE = PARLIAMENT_DIR / "keys.env"
 USER_CONFIG = PARLIAMENT_DIR / "config.yaml"
+# Saved debates: the TUI's default save folder, and where `parliament mcp`
+# writes each full Hansard.
+HANSARDS_DIR = PARLIAMENT_DIR / "hansards"
 EXAMPLE_CONFIG = Path(__file__).parent.parent.parent / "config.example.yaml"
 KEYRING_SERVICE = "llm-parliament"
 

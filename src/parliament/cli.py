@@ -310,6 +310,41 @@ def members(config_path: Path | None):
         console.print(f"[yellow]Warning: {warning.message}[/yellow]")
 
 
+@main.command("mcp")
+@click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
+@click.option("--speaker", default=None, help="Override Speaker selection")
+@click.option("--mock", is_flag=True, help="Serve a mock panel (testing only: its verdicts are fake)")
+def mcp_command(config_path: Path | None, speaker: str | None, mock: bool):
+    """Serve the parliament to coding agents over MCP (stdio)."""
+    # stdout carries the protocol, so everything here goes to stderr, as plain
+    # text: Rich would read "[mcp]" in the install hint as markup.
+    try:
+        from parliament.mcp_server import create_server, is_mock_only
+    except ImportError:
+        click.echo('parliament mcp needs the MCP SDK: pip install "llm-parliament[mcp]"', err=True)
+        raise SystemExit(1) from None
+    try:
+        config = _mock_config() if mock else load_config(config_path)
+        members, providers = build_parliament_from_config(config)
+        outside = build_speaker_from_config(config)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        raise SystemExit(1) from e
+    if not mock and is_mock_only(members):
+        click.echo(
+            "Every member of this panel is a mock provider, so its verdicts are fake. "
+            "Configure real members (see `parliament doctor`), or pass --mock to serve "
+            "the mock panel for testing.",
+            err=True,
+        )
+        raise SystemExit(1)
+    for warning in panel_warnings(members, outside[0] if outside else None, speaker):
+        click.echo(f"Warning: {warning.message}", err=True)
+    create_server(members, providers, outside_speaker=outside, speaker_override=speaker).run(
+        "stdio"
+    )
+
+
 @main.command()
 @click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None)
 @click.option("--speaker", default=None, help="Override Speaker selection")

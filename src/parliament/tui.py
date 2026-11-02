@@ -20,6 +20,7 @@ import yaml
 
 from parliament.commands import COMMANDS, Command, CommandContext, SpeakerOp, dispatch
 from parliament.config import (
+    HANSARDS_DIR,
     KEY_PROVIDERS,
     PARLIAMENT_DIR,
     USER_CONFIG,
@@ -41,7 +42,7 @@ from parliament.render import build_renderer
 from parliament.render.hansard import HansardLevel, warning_lines
 
 SETTINGS_FILE = PARLIAMENT_DIR / "settings.json"
-DEFAULT_SAVE_DIR = PARLIAMENT_DIR / "hansards"
+DEFAULT_SAVE_DIR = HANSARDS_DIR
 SUPPORTED_PROVIDERS = ["ollama", "anthropic", "openai", "google", "openrouter", "groq", "mistral", "mock"]
 MEMBER_FIELDS = ["provider", "model", "base_url"]
 
