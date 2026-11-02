@@ -46,6 +46,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   details is "no". A missing or unclear answer is `null` (unknown), never
   `false`. The two lines are kept out of the Recommendation. This is the flag
   an agent will read from the MCP `debate` tool.
+- **The Hansard records which model the Speaker was (#89)** —
+  `synthesis.speaker_provider` and `synthesis.speaker_model` sit next to
+  `speaker_name`. An outside Speaker is not in `members`, so a saved Hansard
+  could not say which model judged it. When an outside Speaker fails and a
+  member takes over, the fields name the member. The saved `.md` footer shows
+  the model next to the Speaker's name. Older records read back with both
+  empty.
 - **Newer models are rated by family (#67)** — `claude-opus-*`, `gpt-5*`,
   `gemini-*-pro` and their smaller siblings are rated from vendor naming, so
   releases newer than the curated table no longer show as unrated. These
