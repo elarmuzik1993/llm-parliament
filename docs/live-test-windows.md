@@ -398,3 +398,22 @@ Hansards have no `speaker_model`.
 
 Cost: the rewrite debates about $0.20 each; the single calls and analytics
 debates $1.25 together, more than estimated, mostly the Opus single calls.
+
+## Results: 2026-11-02, first real decision through MCP
+
+First use of `parliament mcp` from Claude Code on a real question (not a test
+question): how a component-level guitar-amp plugin should map digital level to
+input-jack volts. The bill asked five questions and was about 3,000 characters.
+Hansard `20261102-202244-434b54bd`. Panel: Grok 4.7, GPT-6 Astra, Gemini 4 Argon;
+Speaker Opus 5.5 (outside the panel). All unrated.
+
+| Check | Result |
+|---|---|
+| Server in a real client | Pass. Registered at user scope, debate ran to a verdict in 446 s. |
+| Panel complete | **Fail.** GPT has no answer in either phase; the Speaker refers to "the two analysts". `degraded` is true but `warnings` only says "unrated"; no failure reason is kept. |
+| `contested` flag | Pass. True; `contested_on` names the split: 0 dBFS = 1 V peak (Grok) or +12.2 dBu / 4.47 V peak (Gemini). |
+| Debate effect | Gemini changed its mind in the debate: it dropped its two-parameter design for one trim of -36 to +36 dB. |
+| Speaker | Caught a numeric error in the bill (+8 to +12 dBu is 2.8 to 4.4 V peak, not 2 to 3.5) and split the baseline from the default, rather than picking a side. |
+
+The decision itself is the owner's; the Hansard is the record. Cost was not
+read from OpenRouter, so it is unrecorded.

@@ -152,3 +152,15 @@ def test_levels_are_monotonic():
 
 def test_unknown_section_returns_false():
     assert not includes(HansardLevel.FULL, "nonsense_section")
+
+
+def test_member_failed_warning_is_shown_whole(make_hansard):
+    """The provider's error is the point of the warning; do not cut it at a full stop (#95)."""
+    from parliament.core.types import SessionWarning
+    from parliament.render.hansard import warning_lines
+
+    hansard = make_hansard()
+    message = "First Reading: GPT: Model v1. Quota exceeded for this key"
+    hansard.warnings = [SessionWarning("member_failed", message)]
+
+    assert warning_lines(hansard) == [message]

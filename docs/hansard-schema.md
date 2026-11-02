@@ -148,6 +148,7 @@ say, so do not count it as agreement or as an unchanged mind.
 | `tier_gap` | The strongest and weakest rated members are more than one tier apart. |
 | `unrated` | One or more members have no assessed rating; the same names are in `unrated_members`. |
 | `speaker` | The Speaker may favour a position: an outside Speaker shares a member's model, or a member Speaker was picked only by order among equally rated members. |
+| `member_failed` | A member dropped out of First Reading or Debate, or a Speaker failed and was replaced in Division. One per failure; the message names the phase, the member and the provider error. Not recorded when the run aborts, since no Hansard is written. |
 
 ## `Synthesis`
 

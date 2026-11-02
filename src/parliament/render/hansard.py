@@ -19,7 +19,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from parliament.core.model_tiers import unrated_warning
-from parliament.core.types import UNRATED, SessionWarning
+from parliament.core.types import MEMBER_FAILED, UNRATED, SessionWarning
 
 if TYPE_CHECKING:
     from parliament.core.types import Hansard
@@ -42,12 +42,15 @@ def warning_lines(hansard: Hansard) -> list[str]:
     """One line per warning, for showing beneath a verdict.
 
     Only each message's first sentence, which says what is wrong; the advice
-    that follows is in stderr and JSON. Shown after the Recommendation, not
+    that follows is in stderr and JSON. A `member_failed` message is shown whole:
+    its sentence is the provider's error, and cutting it loses the reason. Shown after the Recommendation, not
     above it: with today's unrated models most panels raise two warnings on
     every run, and they should not push the answer down the screen.
     """
     return [
-        re.split(r"(?<=\.)\s+(?=[A-Z])", w.message.strip(), maxsplit=1)[0]
+        w.message.strip()
+        if w.kind == MEMBER_FAILED
+        else re.split(r"(?<=\.)\s+(?=[A-Z])", w.message.strip(), maxsplit=1)[0]
         for w in recorded_warnings(hansard)
     ]
 

@@ -12,6 +12,7 @@ from parliament.core.model_tiers import (
     resolve_member_tier,
 )
 from parliament.core.types import (
+    MEMBER_FAILED,
     SPEAKER,
     Bill,
     Hansard,
@@ -148,6 +149,16 @@ def panel_warnings(
     ]
 
 
+def _failure_warnings(
+    phase: str, failures: list[tuple[str, str]]
+) -> list[SessionWarning]:
+    """One `member_failed` warning per (member, error) pair from a phase (#95)."""
+    return [
+        SessionWarning(MEMBER_FAILED, f"{phase}: {name}: {error}")
+        for name, error in failures
+    ]
+
+
 class Parliament:
     """Main orchestrator. Stateless per call.
 
@@ -201,21 +212,29 @@ class Parliament:
         warnings = self.warnings()
 
         # Phase 1: First Reading
+        reading_failures: list[tuple[str, str]] = []
         first_reading = await run_first_reading(
             bill=bill,
             members=self.members,
             providers=self.providers,
             on_progress=self.on_progress,
+            failures_out=reading_failures,
         )
 
         # Phase 2: Debate
+        debate_failures: list[tuple[str, str]] = []
         debate = await run_debate(
             bill=bill,
             members=self.members,
             providers=self.providers,
             first_reading=first_reading,
             on_progress=self.on_progress,
+            failures_out=debate_failures,
         )
+        # A dropped member is recorded with its error (#95), not only counted
+        # in `degraded`.
+        warnings += _failure_warnings("First Reading", reading_failures)
+        warnings += _failure_warnings("Debate", debate_failures)
 
         # Phase 3: Division
         debating_member_names = {r.member_name for r in debate}
@@ -223,6 +242,7 @@ class Parliament:
             m for m in self.members if m.name in debating_member_names
         ]
         division_failures: list[str] = []
+        division_failed: list[tuple[str, str]] = []
         synthesis: Synthesis | None = None
 
         # A configured outside Speaker did not debate, so it has no position
@@ -243,9 +263,9 @@ class Parliament:
                     on_progress=self.on_progress,
                 )
             except Exception as exc:
-                division_failures.append(
-                    f"  - {outside.name}: {format_provider_error(exc)}"
-                )
+                error = format_provider_error(exc)
+                division_failures.append(f"  - {outside.name}: {error}")
+                division_failed.append((outside.name, error))
 
         while synthesis is None:
             if len(surviving_members) < 2:
@@ -279,12 +299,15 @@ class Parliament:
                 )
                 break
             except Exception as exc:
-                division_failures.append(
-                    f"  - {speaker.name}: {format_provider_error(exc)}"
-                )
+                error = format_provider_error(exc)
+                division_failures.append(f"  - {speaker.name}: {error}")
+                division_failed.append((speaker.name, error))
                 surviving_members = [
                     m for m in surviving_members if m.name != speaker.name
                 ]
+
+        # A Speaker that failed and was replaced is recorded the same way.
+        warnings += _failure_warnings("Division", division_failed)
 
         duration_ms = int((time.monotonic() - start) * 1000)
 

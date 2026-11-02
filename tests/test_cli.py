@@ -312,7 +312,11 @@ def test_ask_json_reports_dropped_member_on_stderr(monkeypatch):
     # The drop-out is reported, and the diagnostic stays off stdout.
     assert "Mock-C" in result.stderr
     assert "failed" in result.stderr
-    assert "failed" not in result.stdout
+    # ...and the record itself says who failed and why (#95).
+    failed = [w for w in data["warnings"] if w["kind"] == "member_failed"]
+    assert len(failed) == 1
+    assert "Mock-C" in failed[0]["message"]
+    assert "synthetic provider outage" in failed[0]["message"]
 
 
 def test_ask_json_keeps_errors_off_stdout(monkeypatch):
