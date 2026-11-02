@@ -157,6 +157,8 @@ four parts shown in the normal terminal verdict.
 | Field | Type | Description |
 | --- | --- | --- |
 | `speaker_name` | `string` | Who wrote the final synthesis: a member, or the outside Speaker from `parliament.speaker`. Not in `members` means it did not debate. |
+| `speaker_provider` | `string` | Provider of the Speaker that wrote the synthesis, e.g. `openrouter`. If an outside Speaker failed and a member took over, this is the member's. Empty in records written before the field existed. |
+| `speaker_model` | `string` | Model ID of that Speaker, as sent to the provider. An outside Speaker is never chosen by tier, so it is not rated and does not appear in `unrated_members`. Empty in records written before the field existed. |
 | `consensus` | `string` | Points the members mostly agreed on. |
 | `split` | `string` | Material disagreements or trade-offs. |
 | `risks` | `string` | Risks, caveats, and failure modes. |
@@ -229,6 +231,8 @@ jq -e '(.members | length) == (.first_reading | length)' hansard.json >/dev/null
   ],
   "synthesis": {
     "speaker_name": "Mock-1",
+    "speaker_provider": "mock",
+    "speaker_model": "mock-v1",
     "consensus": "...",
     "split": "...",
     "risks": "...",

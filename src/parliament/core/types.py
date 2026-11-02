@@ -116,6 +116,10 @@ class Synthesis:
     """Speaker's structured synthesis from Division."""
 
     speaker_name: str
+    # An outside Speaker is not in `members`, so without these a saved Hansard
+    # cannot say which model judged it (#89). Empty in records written before.
+    speaker_provider: str = ""
+    speaker_model: str = ""
     consensus: str = ""
     split: str = ""
     risks: str = ""
