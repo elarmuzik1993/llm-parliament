@@ -440,3 +440,49 @@ Cost: OpenRouter's key endpoint shows $0.95 spent on this key, all of it on
 2026-11-02 (the key is that day's). That covers both real debates and the Astra
 call that failed in the first. The split per debate is not known, because the
 Hansard keeps no token usage (#70). Roughly $0.45 each if they cost the same.
+
+## Results: 2026-11-02, third real decision, CPU and latency budget
+
+Third real question through `parliament mcp`: the CPU and latency budget for the
+valve-amp plugin, given the architecture the second debate chose. The bill
+proposed a CPU target, a stop-rule, an oversampling and latency plan, and asked
+what could go wrong. Hansard `20261102-221046-ac64cefb`. Same panel as the
+second (Grok 4.7, GPT-6.1 Sol Pro, Gemini 4 Argon, all unrated); 267 s.
+
+| Check | Result |
+|---|---|
+| Panel complete | Pass. All three answered in both phases. |
+| Failure recorded (#95) | Pass, first live catch. The configured Speaker, Opus 5.5, failed in Division with HTTP 402 (OpenRouter: the request reserved up to 65,536 output tokens and the account's remaining credit, about $1.3, was less than that reservation). The Hansard has a `member_failed` warning naming Division, Claude and the error. Before #95 this would have been invisible. |
+| Outside Speaker | **Fail, by fallback.** A member took over: the Speaker was Grok, a debater. Nothing in the Hansard says the verdict now comes from a participant; only the `member_failed` line hints at it. |
+| `contested` flag | Judgement call, as before. False; the verdict says the disagreement is "numerical tightness, not architecture" and then lists five splits (CPU targets, buffer gates, SIMD, latency compensation, stage partition). |
+| Debate effect | Grok and Gemini changed their stance in the debate; GPT did not. The consensus moved off the bill's proposal: 5% became a stretch, the coupled power amp is profiled first, and an automatic offline switch to FIR or higher oversampling is rejected. |
+| Decision | The owner's. |
+
+Cost: the key's usage went from $0.95 to $1.34, so about $0.39 for this debate,
+the only spend between the two readings. A debate on this panel costs about
+$0.4 to $0.5 (the earlier two are known only in total). The account credit is
+the limit that bit: $10 bought, $9.08 used, about $0.92 left.
+
+Bias check of the fallback verdict (Grok as Speaker), read against the three
+debate answers: no sign Grok favoured itself. The verdict used GPT's ~10%
+provisional budget over Grok's 10-12%, and GPT's argument against a "hard
+ceiling under half the buffer" over Grok's own; the floor machine Grok named
+was also named by Gemini; Gemini's gates and SIMD claim were reported accurately
+and set aside for stated reasons. Whether the verdict is right is a separate
+question this does not answer.
+
+Owner's view after three runs: it helps distil better answers and adds
+reassurance. Agreement between models is not proof, and neither is one model's
+answer; the known-answer test in STATE.md is how to measure it.
+
+Session opinion (the working session's, from the owner): all three questions
+were worth paying for advice on, being hard to undo, shaping everything built
+after, and not settled by a quick test.
+- Input level: once released it cannot change without changing how saved
+  sounds play, and the advisers caught wrong numbers in the brief.
+- Circuit to code: it shapes all later work, and the advisers fixed the plan for
+  the first trial build.
+- CPU budget: the limit in the brief was unrealistic, and the advisers moved the
+  riskiest part to the front so problems show early.
+- The next question, which speaker cabinet to include, is about licence terms
+  and listening, so the parliament would not help there.
