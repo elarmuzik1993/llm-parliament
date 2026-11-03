@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from parliament.providers.base import Provider
 
+# OpenRouter reserves credit for a request's output limit, and an unset limit
+# reserves 65,536 tokens -- the cause of the HTTP 402s on a small balance.
+# Reasoning tokens count against the limit too, so it is not set lower.
+MAX_OUTPUT_TOKENS = 16_384
+
 
 class OpenAIProvider(Provider):
     name = "openai"
@@ -47,8 +52,25 @@ class OpenAIProvider(Provider):
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
+        # api.openai.com's reasoning models reject `max_tokens`; compatible
+        # endpoints (OpenRouter, Groq, Mistral) take it.
+        limit = (
+            {"max_completion_tokens": MAX_OUTPUT_TOKENS}
+            if self._base_url is None
+            else {"max_tokens": MAX_OUTPUT_TOKENS}
+        )
         response = await client.chat.completions.create(
             model=self.model,
             messages=messages,
+            **limit,
         )
-        return response.choices[0].message.content
+        choice = response.choices[0]
+        content = choice.message.content
+        if not content:
+            if choice.finish_reason == "length":
+                raise RuntimeError(
+                    f"{self.model} hit the {MAX_OUTPUT_TOKENS:,}-token output limit "
+                    "before producing any text"
+                )
+            raise RuntimeError(f"{self.model} returned no text")
+        return content
