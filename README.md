@@ -77,10 +77,6 @@ The three real decisions in the log passed all three:
 | How to turn the amp circuit into code | It shapes all later work. The panel fixed the plan for the first trial build. |
 | The CPU and latency budget | The target in the brief was unrealistic. The panel made it a stretch goal and moved the riskiest part to the front. |
 
-The next question on that project, which speaker cabinet to include, came down
-to licence terms and listening tests. Neither is something models can debate,
-so it went without one.
-
 ## Quick start
 
 ```bash
