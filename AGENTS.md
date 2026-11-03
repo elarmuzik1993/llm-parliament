@@ -77,6 +77,7 @@ src/parliament/
 
 tests/               Unit tests (pytest + pytest-asyncio)
 docs/
+  usage.md            Install per OS, providers, CLI/TUI, MCP details (the README stays short)
   hansard-schema.md   JSON schema emitted by `parliament ask --json`
   superpowers/        Historical design plans and specs (not shipped in the sdist)
 config.example.yaml  Default template — fallback if first-run wizard fails
@@ -195,11 +196,11 @@ loop and `docs/configuration.md` behind.
 
 | | The fact | Where it lives | Guarded by |
 | --- | --- | --- | --- |
-| **A** | Which providers exist, and the key each uses | `model_catalog.OPENAI_COMPATIBLE`, `config.KEY_PROVIDERS`, `providers._OPENAI_COMPATIBLE_PROVIDERS`, `providers._CLOUD_PROVIDERS`, `tui.SUPPORTED_PROVIDERS`, `doctor.PROVIDER_DISPLAY` and its hardcoded loop, `commands.CLOUD_KEY_PROVIDERS`, README, `docs/configuration.md`, this file | partly -- `test_every_wired_provider_has_a_home_for_its_key`, and `tests/test_docs_match_code.py` pins the three copies in `docs/configuration.md` to the code. `CLOUD_KEY_PROVIDERS` is the only derived copy of the seven in code |
+| **A** | Which providers exist, and the key each uses | `model_catalog.OPENAI_COMPATIBLE`, `config.KEY_PROVIDERS`, `providers._OPENAI_COMPATIBLE_PROVIDERS`, `providers._CLOUD_PROVIDERS`, `tui.SUPPORTED_PROVIDERS`, `doctor.PROVIDER_DISPLAY` and its hardcoded loop, `commands.CLOUD_KEY_PROVIDERS`, `docs/usage.md` (provider sections), `docs/configuration.md`, this file | partly -- `test_every_wired_provider_has_a_home_for_its_key`, and `tests/test_docs_match_code.py` pins the three copies in `docs/configuration.md` to the code. `CLOUD_KEY_PROVIDERS` is the only derived copy of the seven in code |
 | **B** | What a model is called | `MODEL_TIERS` (bare ids), `FAMILY_RULES` (patterns), `presets.py` constants, OpenRouter `vendor/slug`, Ollama `name:tag` | `tests/test_model_tiers.py` pins the OpenRouter id folding (`canonical_model_id`), the gap exclusion, every family rule by example, rule/table agreement, and that every model a preset ships with is rated |
 | **C** | Which preset wins for an environment | the `if`/`return` ladder in `presets.select_preset` | partly -- `tests/test_first_run_presets.py` covers chosen cases, not the matrix |
 | **D** | Where an API key comes from | env var, `keys.env`, keyring, `providers.<name>.api_key` | partly -- precedence is stated under **Config precedence**, and tested per path rather than as a whole |
-| **E** | What is true, for a reader | README (five provider sections), `docs/configuration.md`, this file, three shipped YAMLs, `CHANGELOG.md` | the YAMLs (`test_shipped_configs_pin_the_built_in_default_level`) and `docs/configuration.md` (`tests/test_docs_match_code.py`). README, this file and the CHANGELOG are unguarded |
+| **E** | What is true, for a reader | README (pitch, measured results, MCP tools), `docs/usage.md`, `docs/configuration.md`, this file, three shipped YAMLs, `CHANGELOG.md` | the YAMLs (`test_shipped_configs_pin_the_built_in_default_level`) and `docs/configuration.md` (`tests/test_docs_match_code.py`). `tests/test_readme_links.py` checks only that README and usage-guide links resolve; their content, this file and the CHANGELOG are unguarded |
 
 **A** and **B** are load-bearing. **E** is a consequence of A--C rather than an
 independent problem, which is why rewriting docs before the code settles is
