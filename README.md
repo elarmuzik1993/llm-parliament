@@ -609,8 +609,16 @@ fields are focused and saves the edit when the base URL field is focused.
 `parliament mcp` runs the parliament as an
 [MCP](https://modelcontextprotocol.io) server. A coding agent (Claude Code,
 Cursor, Codex) can then convene a debate itself when it reaches a decision
-with real trade-offs. The server has one tool, `debate`: it takes a question,
-runs the full debate on your configured panel, and returns a short result.
+with real trade-offs. The server has two tools:
+
+- `debate(question)` runs the full debate on your configured panel and
+  returns a short result, described below.
+- `ask(member, question)` sends the question to one configured model (a panel
+  member or the outside Speaker) for a quick second opinion: one model call,
+  no debate. It returns the answer and saves a record under
+  `~/.parliament/hansards/asks/`. It does not wait behind a running debate.
+
+The `debate` result:
 
 - `summary.contested`: whether the members still recommend different courses
   of action after the debate (`null` if the Speaker didn't say), and
@@ -678,10 +686,10 @@ agents wait for a tool. The server reports progress after each member's answer.
 | Codex | Only with `tool_timeout_sec` raised, as above. The default is 60 seconds. |
 | Cursor CLI | No. It stops every tool call after 60 seconds, and the limit can't be changed. |
 
-**Cost.** Each call makes 2n+1 model calls (7 for three members) at your
+**Cost.** Each `debate` call makes 2n+1 model calls (7 for three members) at your
 panel's prices; see [Does it cost 3× more?](#does-it-cost-3-more). The tool's
 description tells the agent this, and to save it for consequential choices,
-not facts or small edits. A live run on 2026-11-01 (Opus 5.5, GPT-5.1 and
+not facts or small edits. An `ask` is one model call. A live run on 2026-11-01 (Opus 5.5, GPT-5.1 and
 Gemini 3.1 Pro, with Grok 4.7 as outside Speaker) took three minutes and cost
 about $0.20. Debates run one at a time: a second call waits for the first.
 
@@ -746,7 +754,7 @@ src/parliament/
   config.py               YAML config loading, key management, resolve_* precedence helpers
   doctor.py               Health-check logic (Python, curses, terminal, providers, Ollama)
   model_catalog.py        Provider model presets + tier data for pickers
-  mcp_server.py           `parliament mcp`: MCP server with one `debate` tool (optional [mcp] extra)
+  mcp_server.py           `parliament mcp`: MCP server, `debate` and `ask` tools (optional [mcp] extra)
   tui.py                  Curses TUI — all screens, key handling, main loop
   core/                   Parliament orchestrator, dataclasses, ProgressEvent
   procedures/             First Reading, Debate, and Division phases
