@@ -10,7 +10,8 @@ decision and have no team to argue it with, LLM Parliament puts it to two or
 three models, ideally from different labs. They answer on their own, critique each other, and
 an outside Speaker writes the verdict: what they agree on, where they still
 split, the risks any of them raised, and a recommendation. Your coding agent
-can call it mid-task.
+can call it mid-task.It work easy and instantly through your session with one prompt to you usual LLM and session window with mcp connected and API key.
+Once setup is saved you can recall it everytime.
 
 ## What it does
 
@@ -34,7 +35,7 @@ From a real decision: how an amp plugin should map digital level to input volts.
 The same verdict caught a wrong number in the question itself: +8 to +12 dBu
 is 2.8 to 4.4 V peak, not 2 to 3.5 V.
 
-## Why a solo developer would use it
+## Why use it
 
 Each point comes from a real run, logged in
 [`docs/live-test-windows.md`](https://github.com/elarmuzik1993/llm-parliament/blob/main/docs/live-test-windows.md).
