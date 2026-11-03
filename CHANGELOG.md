@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **OpenAI-compatible replies are capped at 16,384 output tokens (#99)** — an
+  unset limit made OpenRouter reserve credit for 65,536 tokens per request and
+  fail with HTTP 402 on a small balance. A reply with no text now raises (the
+  member drops out with the error) instead of returning nothing.
 - **A member that fails now leaves its error in the Hansard (#95)** — a
   member lost in First Reading or Debate was only counted in `degraded`; its
   error reached the live view and nothing else. Each one is now a
