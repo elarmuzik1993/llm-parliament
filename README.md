@@ -93,7 +93,6 @@ What it doesn't do:
 - **It needs an even panel.** One strong model with two cheap ones just echoes
   the strong one.
 - **Agreement raises confidence; it is not proof.** Models can share a blind spot.
-- **`ask` and `consult` are new** and have not yet been tried on real decisions.
 
 ## Quick start
 
