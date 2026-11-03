@@ -57,11 +57,6 @@ Each point comes from a real run, logged in
   opinion and `consult` gets several independent answers. Hold a full `debate`
   only when they disagree.
 
-It adds nothing on easy or settled questions, and a panel of one strong and two
-cheap models just echoes the strong one. Use it for hard-to-undo decisions with
-real trade-offs. Agreement between models is not proof, and neither is one
-model's answer.
-
 ## Quick start
 
 ```bash
