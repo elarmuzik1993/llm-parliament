@@ -57,19 +57,10 @@ Each point comes from a real run, logged in
   opinion and `consult` gets several independent answers. Hold a full `debate`
   only when they disagree.
 
-## What we measured
-
-| Situation | Result |
-|---|---|
-| Easy or settled question (how to store passwords) | **No gain.** All members agree; one good model gives the same answer faster and cheaper. |
-| Uneven panel (one strong model, two cheap ones) | **Echoes the strongest member.** The cheap members came round to it, at about 3× the time. |
-| Contested judgement call, evenly matched panel, outside Speaker | **A steady plan, not a fixed answer.** 8 debates chose one option 6 times and another twice. All 8 gave the same first step and the same conditions for switching. A single model changed its answer with the wording. |
-| The Speaker | **Matters.** Three outside Speakers re-judging the same 8 debates agreed on 7. A Speaker running a member's model sided with that member. |
-| Three real decisions from Claude Code (2026-11-02) | **Worth it for hard-to-undo choices.** It caught wrong numbers in the brief, reported real splits and gathered the risks. It does not give a more correct answer than one model on contested questions. |
-
-Use it for decisions with real trade-offs that are expensive to reverse. Read
-the Split and the conditions for switching, not only the recommendation.
-Agreement between models is not proof, and neither is one model's answer.
+It adds nothing on easy or settled questions, and a panel of one strong and two
+cheap models just echoes the strong one. Use it for hard-to-undo decisions with
+real trade-offs. Agreement between models is not proof, and neither is one
+model's answer.
 
 ## Quick start
 
