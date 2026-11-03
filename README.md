@@ -57,6 +57,30 @@ Each point comes from a real run, logged in
   opinion and `consult` gets several independent answers. Hold a full `debate`
   only when they disagree.
 
+## When to use it
+
+Use it for hard-to-undo decisions with real trade-offs. A question is worth a
+debate when it passes three tests:
+
+1. **It is expensive to reverse.** Once it ships, changing it breaks users,
+   data or saved work.
+2. **Everything after it depends on it.** An architecture, a data model, a
+   performance budget: a wrong call here costs weeks, not a revert.
+3. **A quick experiment won't settle it.** If an afternoon's prototype or
+   benchmark gives the answer, run that instead.
+
+The three real decisions in the log passed all three:
+
+| Decision | Why it was worth a debate |
+|---|---|
+| How the plugin maps digital level to input volts | Once released, changing it changes how every saved preset sounds. The panel also caught wrong numbers in the brief. |
+| How to turn the amp circuit into code | It shapes all later work. The panel fixed the plan for the first trial build. |
+| The CPU and latency budget | The target in the brief was unrealistic. The panel made it a stretch goal and moved the riskiest part to the front. |
+
+The next question on that project, which speaker cabinet to include, came down
+to licence terms and listening tests. Neither is something models can debate,
+so it went without one.
+
 ## Quick start
 
 ```bash

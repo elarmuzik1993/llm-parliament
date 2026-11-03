@@ -22,7 +22,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **A shorter README, written for solo developers** — down from 863 lines to
-  about 150: what it does, why a solo developer would use it,
+  about 150: what it does, why a solo developer would use it and when,
   the MCP tools, real costs; the full measurements stay in the live-test log. Install per OS, providers, the CLI
   and TUI and MCP details move to `docs/usage.md`. README links are absolute,
   so they work on PyPI, and a test checks that they resolve.
