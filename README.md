@@ -77,6 +77,19 @@ The three real decisions in the log passed all three:
 | How to turn the amp circuit into code | Every later stage of the plugin is built on it. |
 | The CPU and latency budget | Every later feature has to fit inside it. |
 
+## Limits
+
+- **It won't pick a better option than one good model.** Tested side by side
+  on contested questions, the debate's choice was no better than single
+  calls'. What it adds is the
+  caught mistakes, the named split and the gathered risks.
+- **No gain on easy or settled questions.** All members agree, and one model
+  gives the same answer in a fraction of the time and cost.
+- **The panel needs to be even.** One strong model with two cheap ones just
+  echoes the strong one.
+- **Agreement is not proof.** Three models can share the same blind spot.
+- **`ask` and `consult` are new** and have not yet been tried on real decisions.
+
 ## Quick start
 
 ```bash
