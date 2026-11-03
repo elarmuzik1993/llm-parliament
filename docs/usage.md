@@ -12,6 +12,11 @@ platform, the first-run wizard, every provider, the CLI and TUI, and the MCP ser
 
 ## Installation
 
+> **Until 0.3.0, install from git.** The 0.2.0 release on PyPI predates
+> OpenRouter, Groq, Mistral and the MCP server. In the commands below, replace
+> `pipx install llm-parliament` with
+> `pipx install "llm-parliament[mcp] @ git+https://github.com/elarmuzik1993/llm-parliament.git"`.
+
 The recommended way is **pipx** — it installs the tool into an isolated
 environment but exposes `parliament` globally on your PATH, so you don't
 have to think about virtual environments.

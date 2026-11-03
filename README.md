@@ -6,8 +6,8 @@
 [![CI](https://github.com/elarmuzik1993/llm-parliament/actions/workflows/ci.yml/badge.svg)](https://github.com/elarmuzik1993/llm-parliament/actions/workflows/ci.yml)
 
 **A review panel for solo developers.** When you face a hard-to-undo technical
-decision and have no team to argue it with, LLM Parliament puts it to three
-models from different labs. They answer on their own, critique each other, and
+decision and have no team to argue it with, LLM Parliament puts it to two or
+three models, ideally from different labs. They answer on their own, critique each other, and
 an outside Speaker writes the verdict: what they agree on, where they still
 split, the risks any of them raised, and a recommendation. Your coding agent
 can call it mid-task.
@@ -54,8 +54,8 @@ Each point comes from a real run, logged in
   can call it when it reaches a decision. Every verdict is saved as a file, so
   you get a decision log for free.
 - **Start cheap, escalate when it matters.** `ask` gets one model's second
-  opinion and `consult` gets several independent answers. Hold a full `debate`
-  only when they disagree.
+  opinion and `consult` gets several independent answers. You can save a full
+  `debate` for when they disagree.
 
 ## When to use it
 
@@ -73,18 +73,22 @@ The three real decisions in the log passed all three:
 
 | Decision | Why it was worth a debate |
 |---|---|
-| How the plugin maps digital level to input volts | Once released, changing it changes how every saved preset sounds. The panel also caught wrong numbers in the brief. |
-| How to turn the amp circuit into code | It shapes all later work. The panel fixed the plan for the first trial build. |
-| The CPU and latency budget | The target in the brief was unrealistic. The panel made it a stretch goal and moved the riskiest part to the front. |
+| How the plugin maps digital level to input volts | Once released, changing it changes how every saved preset sounds. |
+| How to turn the amp circuit into code | Every later stage of the plugin is built on it. |
+| The CPU and latency budget | Every later feature has to fit inside it. |
 
 ## Quick start
 
 ```bash
-pipx install llm-parliament
+pipx install "llm-parliament[mcp] @ git+https://github.com/elarmuzik1993/llm-parliament.git"
 export OPENROUTER_API_KEY=sk-or-...   # one key for models from several labs
 parliament doctor                     # checks the install; the wizard proposes a panel
-parliament ask "Should our 6-person team split checkout into its own service?"
+parliament ask "Should my app store user uploads in Postgres or in object storage?"
 ```
+
+> **Install from git until 0.3.0.** This README describes `main`. The 0.2.0
+> release on PyPI predates OpenRouter, Groq, Mistral and the MCP server, so
+> `pipx install llm-parliament` does not have them yet.
 
 No key yet? `parliament ask "..." --mock` runs the whole flow on fake models
 for free. Already have Anthropic, OpenAI, Google, Groq or Mistral keys, or a
@@ -105,13 +109,11 @@ server with three tools, from cheapest to most thorough:
 The models cannot see your files, so the agent has to put the context in the
 question. Every answer is saved under `~/.parliament/hansards/`.
 
+The Quick start install includes the server. Then register it with Claude Code:
+
 ```bash
-pipx install --force "llm-parliament[mcp]"
 claude mcp add --scope user parliament -- parliament mcp
 ```
-
-> **Not released yet.** The MCP server arrives in the release after 0.2.0.
-> Until then, clone the repo and run `pipx install --force ".[mcp]"` inside it.
 
 Cursor and Codex setup, result fields and timeouts are in the
 [usage guide](https://github.com/elarmuzik1993/llm-parliament/blob/main/docs/usage.md#coding-agents-mcp-in-detail).
@@ -121,16 +123,15 @@ Cursor and Codex setup, result fields and timeouts are in the
 A debate makes 2n+1 model calls (7 for three members), so it costs about 7×
 one call. Measured on OpenRouter:
 
-| Panel | Per debate | Time |
-|---|---|---|
-| Frontier models, outside Speaker (Grok 4.7, GPT-6.1 Sol Pro, Gemini 4 Argon; Opus 5.5 as Speaker) | about $0.40–0.50 | 4.5–7.5 min |
-| Earlier flagships with an outside Speaker (October 2026) | about $0.25 | 1.5–3 min |
-| Cheap models (Sonnet 4.6, GPT-4o-mini, Gemini 2.5 Flash) | under $0.10 | 1.5–3 min |
-| Local Ollama models | $0 | depends on your hardware |
+| Panel | Speaker | Per debate | Time |
+|---|---|---|---|
+| Grok 4.7, GPT-6.1 Sol Pro, Gemini 4 Argon (November 2026) | Opus 5.5, outside | about $0.40–0.50 | 4.5–7.5 min |
+| Sonnet 5.5, GPT-5.6 Sol, Gemini 3.1 Pro (October 2026) | Grok 4.7, outside | about $0.25 | 1.5–3 min |
+| Sonnet 4.6, GPT-4o-mini, Gemini 2.5 Flash (October 2026) | a member | under $0.10 | 1.5–3 min |
+| Local Ollama models | any | $0 | depends on your hardware |
 
 A single call to one of those models took 20–50 seconds. `ask` is one call.
-`consult` is one call per member asked. If being wrong would cost you more
-than a dollar or an afternoon, a debate is worth it.
+`consult` is one call per member asked.
 
 ## Configure
 
