@@ -149,7 +149,7 @@ def panel_warnings(
     ]
 
 
-def _failure_warnings(
+def failure_warnings(
     phase: str, failures: list[tuple[str, str]]
 ) -> list[SessionWarning]:
     """One `member_failed` warning per (member, error) pair from a phase (#95)."""
@@ -233,8 +233,8 @@ class Parliament:
         )
         # A dropped member is recorded with its error (#95), not only counted
         # in `degraded`.
-        warnings += _failure_warnings("First Reading", reading_failures)
-        warnings += _failure_warnings("Debate", debate_failures)
+        warnings += failure_warnings("First Reading", reading_failures)
+        warnings += failure_warnings("Debate", debate_failures)
 
         # Phase 3: Division
         debating_member_names = {r.member_name for r in debate}
@@ -307,7 +307,7 @@ class Parliament:
                 ]
 
         # A Speaker that failed and was replaced is recorded the same way.
-        warnings += _failure_warnings("Division", division_failed)
+        warnings += failure_warnings("Division", division_failed)
 
         duration_ms = int((time.monotonic() - start) * 1000)
 

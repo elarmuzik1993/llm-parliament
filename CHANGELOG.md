@@ -49,6 +49,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `duration_ms` and `record_path`; the record is saved as JSON under
   `~/.parliament/hansards/asks/`. An unknown name or a provider failure is a
   tool error, as is an empty answer; nothing is saved then.
+- **`consult`: a third MCP tool for several independent answers (#99)** —
+  `consult(question, members)` runs First Reading alone on the whole panel, or
+  on two or more panel members named ignoring case: the same prompt and
+  `POSITION` line as a debate, with no critique and no Speaker. It returns
+  `schema`, `positions`, `answers` (each cut at 8,000 characters, with
+  `truncated`), `degraded`, `warnings` (a lost member is a `member_failed`
+  warning) and `record_path`; the full record is saved as JSON under
+  `~/.parliament/hansards/consults/`. It sets no `contested` flag: the agent
+  compares the stances. It queues behind a running debate. One name, an
+  unknown name or the outside Speaker is a tool error, as is a consultation
+  with fewer than two answers; nothing is saved then.
 - **`parliament mcp`: an MCP server for coding agents (#9)** — a stdio server
   with one tool, `debate(question)`, that runs the configured panel and
   returns `schema`, `summary` (`contested`, `contested_on`, `degraded`,
