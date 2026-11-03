@@ -1,4 +1,4 @@
-"""`parliament mcp`: the `debate` (#9) and `ask` (#99) tools for coding agents.
+"""`parliament mcp`: the `debate` (#9), `ask` and `consult` (#99) tools for coding agents.
 
 The return shape, what is saved, progress, failures and the one-at-a-time rule
 follow the design note and its follow-up on #9.
@@ -19,6 +19,7 @@ from parliament import cli
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
 from parliament.mcp_server import (
+    ANSWER_CHARS,
     ASK_SYSTEM,
     SCHEMA_VERSION,
     build_result,
@@ -230,7 +231,7 @@ def test_ask_is_listed_after_debate_and_names_every_model():
     members, providers = _panel(3)
     server = create_server(members, providers, outside_speaker=_outside())
     tools = asyncio.run(server.list_tools())
-    assert [t.name for t in tools] == ["debate", "ask"]
+    assert [t.name for t in tools] == ["debate", "ask", "consult"]
     ask = tools[1]
     for model in ["mock-0", "mock-1", "mock-2", "mock-outside"]:
         assert model in ask.description
@@ -348,3 +349,209 @@ async def test_ask_does_not_wait_for_a_running_debate(tmp_path):
         assert not result.is_error
         assert not debate.done()
         await debate
+
+
+def _saved_files(tmp_path):
+    return [p for p in tmp_path.rglob("*") if p.is_file()]
+
+
+def test_consult_is_listed_after_ask_and_states_the_cost():
+    members, providers = _panel(3)
+    server = create_server(members, providers, outside_speaker=_outside())
+    tools = asyncio.run(server.list_tools())
+    assert [t.name for t in tools] == ["debate", "ask", "consult"]
+    consult = tools[2]
+    for model in ["mock-0", "mock-1", "mock-2"]:
+        assert model in consult.description
+    # The outside Speaker is not a debater, so it is not consulted.
+    assert "mock-outside" not in consult.description
+    assert "3 model calls" in consult.description
+    assert "costs money" in consult.description
+
+
+async def test_consult_asks_the_whole_panel_by_default(tmp_path):
+    members, providers = _panel(3)
+    server = create_server(members, providers, outside_speaker=_outside(), save_dir=tmp_path)
+    seen: list[str | None] = []
+
+    async def on_progress(progress, total, message):
+        seen.append(message)
+
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "consult", {"question": "Postgres or Mongo?"}, progress_callback=on_progress
+        )
+
+    assert not result.is_error
+    data = result.structured_content
+    assert data["schema"] == SCHEMA_VERSION
+    assert set(data) == {"schema", "positions", "answers", "degraded", "warnings", "record_path"}
+    assert [a["member"] for a in data["answers"]] == ["M0", "M1", "M2"]
+    assert [p["member"] for p in data["positions"]] == ["M0", "M1", "M2"]
+    first = data["answers"][0]
+    assert (first["provider"], first["model"], first["truncated"]) == ("mock", "mock-0", False)
+    # The debate's First Reading prompt, so the answers compare with a debate's.
+    assert "You are one of 3 AI analysts" in first["answer"]
+    assert isinstance(first["duration_ms"], int)
+    assert data["degraded"] is False and data["warnings"] == []
+    assert sorted(m for m in seen if m) == [f"First Reading: M{i} done" for i in range(3)]
+
+    path = Path(data["record_path"])
+    assert path.parent == tmp_path / "consults" and path.suffix == ".json"
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["question"] == "Postgres or Mongo?"
+    assert saved["members"] == ["M0", "M1", "M2"]
+    assert [a["answer"] for a in saved["answers"]] == [a["answer"] for a in data["answers"]]
+    assert saved["positions"] == data["positions"]
+    assert saved["degraded"] is False and "timestamp" in saved
+
+
+async def test_consult_positions_come_from_the_position_line(tmp_path):
+    members, providers = _panel()
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("consult", {"question": "Which?"})
+    positions = result.structured_content["positions"]
+    assert positions == [
+        {"member": "M0", "stance": "Mock mock-0 recommends the simplest option."},
+        {"member": "M1", "stance": "Mock mock-1 recommends the simplest option."},
+    ]
+
+
+async def test_consult_asks_only_the_named_members(tmp_path):
+    members, providers = _panel(3)
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "consult", {"question": "Which?", "members": ["m2", "M0", "M2 "]}
+        )
+    assert not result.is_error
+    data = result.structured_content
+    # Panel order, each member once.
+    assert [a["member"] for a in data["answers"]] == ["M0", "M2"]
+    assert data["degraded"] is False
+    saved = json.loads(Path(data["record_path"]).read_text(encoding="utf-8"))
+    assert saved["members"] == ["M0", "M2"]
+
+
+async def test_consulting_one_member_points_to_ask(tmp_path):
+    members, providers = _panel(3)
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("consult", {"question": "Which?", "members": ["M1", "m1"]})
+    assert result.is_error
+    assert "use ask" in result.content[0].text
+    assert _saved_files(tmp_path) == []
+
+
+async def test_consulting_an_unknown_member_lists_the_panel(tmp_path):
+    members, providers = _panel(3)
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "consult", {"question": "Which?", "members": ["M0", "Nobody"]}
+        )
+    assert result.is_error
+    message = result.content[0].text
+    assert "Nobody" in message
+    assert all(name in message for name in ["M0", "M1", "M2"])
+    assert _saved_files(tmp_path) == []
+
+
+async def test_the_outside_speaker_cannot_be_consulted(tmp_path):
+    members, providers = _panel()
+    server = create_server(members, providers, outside_speaker=_outside(), save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "consult", {"question": "Which?", "members": ["M0", "Outside"]}
+        )
+    assert result.is_error
+    message = result.content[0].text
+    assert "outside Speaker" in message and "ask it with ask" in message
+    assert _saved_files(tmp_path) == []
+
+
+async def test_a_member_lost_in_a_consult_is_a_warning_not_an_error(tmp_path):
+    members, providers = _panel(3)
+    providers["M1"] = FailingProvider()
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("consult", {"question": "Which?"})
+    assert not result.is_error
+    data = result.structured_content
+    assert [a["member"] for a in data["answers"]] == ["M0", "M2"]
+    assert data["degraded"] is True
+    assert len(data["warnings"]) == 1
+    warning = data["warnings"][0]
+    assert warning["kind"] == "member_failed"
+    assert warning["message"].startswith("First Reading: M1: ")
+    saved = json.loads(Path(data["record_path"]).read_text(encoding="utf-8"))
+    assert saved["degraded"] is True and saved["warnings"] == data["warnings"]
+
+
+async def test_a_consult_with_too_few_answers_is_a_tool_error(tmp_path):
+    members, providers = _panel(3)
+    providers["M0"] = FailingProvider()
+    providers["M2"] = FailingProvider()
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("consult", {"question": "Which?"})
+    assert result.is_error
+    assert "The consultation failed" in result.content[0].text
+    assert "Not enough members responded" in result.content[0].text
+    assert _saved_files(tmp_path) == []
+
+
+class LongProvider(MockProvider):
+    async def generate(self, prompt: str, system: str | None = None) -> str:
+        return "x" * (ANSWER_CHARS + 100) + "\n\nPOSITION: Use Postgres."
+
+
+async def test_a_long_answer_is_cut_in_the_result_and_kept_whole_in_the_record(tmp_path):
+    members, providers = _panel()
+    providers["M0"] = LongProvider(model="mock-0", latency_ms=0)
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("consult", {"question": "Which?"})
+    data = result.structured_content
+    long, short = data["answers"]
+    assert len(long["answer"]) == ANSWER_CHARS and long["truncated"] is True
+    assert short["truncated"] is False
+    # The stance is read from the whole answer, not the cut one.
+    assert data["positions"][0]["stance"] == "Use Postgres."
+    saved = json.loads(Path(data["record_path"]).read_text(encoding="utf-8"))
+    assert saved["answers"][0]["answer"].endswith("POSITION: Use Postgres.")
+    assert len(saved["answers"][0]["answer"]) > ANSWER_CHARS
+
+
+async def test_consult_waits_for_a_running_debate(tmp_path):
+    CountingProvider.active = CountingProvider.peak = 0
+    members, _ = _panel()
+    providers = {m.name: CountingProvider(model=m.model, latency_ms=0) for m in members}
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        results = await asyncio.gather(
+            client.call_tool("debate", {"question": "One?"}),
+            client.call_tool("consult", {"question": "Two?"}),
+        )
+    assert not any(r.is_error for r in results)
+    # Each runs its two members in parallel; both at once would be 4.
+    assert CountingProvider.peak == 2
+
+
+async def test_a_waiting_consult_keeps_reporting_progress(tmp_path):
+    members, _ = _panel()
+    providers = {m.name: MockProvider(model=m.model, latency_ms=60) for m in members}
+    server = create_server(members, providers, save_dir=tmp_path, heartbeat_s=0.02)
+    second: list[str | None] = []
+
+    async def on_progress(progress, total, message):
+        second.append(message)
+
+    async with Client(server) as client:
+        first = asyncio.create_task(client.call_tool("debate", {"question": "One?"}))
+        await asyncio.sleep(0.01)
+        await client.call_tool("consult", {"question": "Two?"}, progress_callback=on_progress)
+        await first
+    waiting = [m for m in second if m and "Waiting" in m]
+    assert len(waiting) >= 2

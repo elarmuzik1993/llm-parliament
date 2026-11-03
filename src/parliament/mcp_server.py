@@ -1,4 +1,4 @@
-"""`parliament mcp`: a stdio MCP server with two tools, `debate` (#9) and `ask` (#99).
+"""`parliament mcp`: a stdio MCP server with three tools, `debate` (#9), `ask` and `consult` (#99).
 
 The shape of `debate` follows the design note on #9 and its follow-up. The tool
 blocks for the whole debate, reporting progress per phase. It returns a short
@@ -10,6 +10,10 @@ in flight, and parallel debates on a small balance fail with HTTP 402.
 `ask` is one call to one configured model, for a quick second opinion. It does
 not queue behind a debate: one extra request in flight is not what exhausts the
 credit, and an agent should not wait minutes for a seconds-long answer.
+
+`consult` is First Reading alone: independent answers from several panel
+members in parallel, with no critique and no Speaker. It queues behind a debate
+like another debate would, because it puts as many requests in flight at once.
 """
 
 from __future__ import annotations
@@ -19,7 +23,8 @@ import contextlib
 import json
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -30,8 +35,9 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from parliament import __version__
 from parliament.config import HANSARDS_DIR
-from parliament.core.parliament import Parliament
-from parliament.core.types import Hansard, Member, ProgressEvent
+from parliament.core.parliament import Parliament, failure_warnings
+from parliament.core.types import Bill, Hansard, Member, ProgressEvent
+from parliament.procedures.first_reading import run_first_reading
 from parliament.providers.base import Provider
 from parliament.providers.errors import format_provider_error
 
@@ -41,6 +47,9 @@ SCHEMA_VERSION = 1
 _PHASES = {"first_reading": "First Reading", "debate": "Debate", "division": "Division"}
 # Moved to `summary`, or left to the saved file.
 _NOT_IN_VERDICT = {"raw", "contested", "contested_on"}
+
+# Clients limit tool output; the saved record has the full text.
+ANSWER_CHARS = 8000
 
 # The question goes to the model as written; this is the only framing.
 ASK_SYSTEM = (
@@ -114,8 +123,24 @@ def _describe_ask(members: list[Member], outside: tuple[Member, Provider] | None
         f"member is one of: {', '.join(names)}. "
         "The model cannot see your files or this conversation, so put all the "
         "context it needs in the question. Asking the same model you run on adds "
-        "little. For a consequential decision with real trade-offs, use debate "
-        "instead. Returns the answer and the path of the saved record."
+        "little. To compare several models' answers, use consult. For a "
+        "consequential decision with real trade-offs, use debate instead. Returns "
+        "the answer and the path of the saved record."
+    )
+
+
+def _describe_consult(members: list[Member]) -> str:
+    names = ", ".join(f"{m.name} ({m.model})" for m in members)
+    return (
+        "Get independent answers from several panel members in parallel, with no "
+        "debate and no verdict. By default it asks the whole panel "
+        f"({names}), which makes {len(members)} model calls; members narrows it "
+        "to two or more of those names, one call each. It costs money, takes under "
+        "a minute, and waits for a running debate to finish. The models cannot see "
+        "your files or this conversation, so put all the context they need in the "
+        "question. Returns each member's answer and self-reported stance. Nothing "
+        "judges whether they agree: compare the stances yourself, and use debate "
+        "if they disagree on a consequential decision."
     )
 
 
@@ -133,7 +158,40 @@ def _askable(
     return found
 
 
-def save_ask_json(record: dict[str, Any], directory: Path) -> Path:
+def _consulted(
+    names: list[str] | None,
+    members: list[Member],
+    outside: tuple[Member, Provider] | None,
+) -> list[Member]:
+    """The panel members named, once each and in panel order; None is the whole panel."""
+    if names is None:
+        chosen = list(members)
+    else:
+        panel = {m.name.lower() for m in members}
+        unknown = [n for n in names if n.strip().lower() not in panel]
+        if unknown:
+            message = (
+                f"No panel member named {', '.join(repr(n) for n in unknown)}. "
+                f"Consult two or more of: {', '.join(m.name for m in members)}"
+            )
+            if outside is not None and any(
+                n.strip().lower() == outside[0].name.lower() for n in unknown
+            ):
+                message += (
+                    f". {outside[0].name} is the outside Speaker, not a panel "
+                    "member; ask it with ask"
+                )
+            raise ToolError(message)
+        wanted = {n.strip().lower() for n in names}
+        chosen = [m for m in members if m.name.lower() in wanted]
+    if len(chosen) < 2:
+        raise ToolError(
+            "consult needs at least two different panel members; to ask one model, use ask"
+        )
+    return chosen
+
+
+def save_record_json(record: dict[str, Any], directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     path = directory / f"{stamp}-{uuid.uuid4().hex[:8]}.json"
@@ -145,6 +203,43 @@ async def _heartbeat(report: Callable[[str], Awaitable[None]], every_s: float) -
     while True:
         await asyncio.sleep(every_s)
         await report("Waiting for the previous debate to finish")
+
+
+def _reporter(ctx: Context) -> Callable[[str], Awaitable[None]]:
+    sent = 0
+
+    async def report(message: str) -> None:
+        nonlocal sent
+        sent += 1  # progress must rise with every report
+        await ctx.report_progress(sent, message=message)
+
+    return report
+
+
+@contextlib.asynccontextmanager
+async def _member_progress(
+    report: Callable[[str], Awaitable[None]],
+) -> AsyncIterator[Callable[[ProgressEvent], None]]:
+    """An on_progress callback that reports each member's answer, done or failed."""
+    # Progress events arrive through a plain callback; one sender keeps the
+    # notifications in order.
+    events: asyncio.Queue[str | None] = asyncio.Queue()
+
+    def on_progress(event: ProgressEvent) -> None:
+        if event.kind in ("completed", "failed"):
+            verb = "done" if event.kind == "completed" else "failed"
+            events.put_nowait(f"{_PHASES.get(event.phase, event.phase)}: {event.member_name} {verb}")
+
+    async def send() -> None:
+        while (message := await events.get()) is not None:
+            await report(message)
+
+    sender = asyncio.create_task(send())
+    try:
+        yield on_progress
+    finally:
+        events.put_nowait(None)
+        await sender
 
 
 def create_server(
@@ -161,15 +256,9 @@ def create_server(
     server = MCPServer("parliament", version=__version__, log_level="WARNING")
     lock = asyncio.Lock()
 
-    @server.tool(name="debate", description=_describe(members))
-    async def debate(question: str, ctx: Context) -> dict[str, Any]:
-        sent = 0
-
-        async def report(message: str) -> None:
-            nonlocal sent
-            sent += 1  # progress must rise with every report
-            await ctx.report_progress(sent, message=message)
-
+    @contextlib.asynccontextmanager
+    async def queued(report: Callable[[str], Awaitable[None]]) -> AsyncIterator[None]:
+        """Hold `lock` for the block, one parallel fan-out at a time."""
         # Keep a queued call visibly alive, so idle limits don't cut it off.
         if lock.locked():
             await report("Waiting for the previous debate to finish")
@@ -181,39 +270,25 @@ def create_server(
             with contextlib.suppress(asyncio.CancelledError):
                 await beat
         try:
-            return await _run(question, report)
+            yield
         finally:
             lock.release()
 
-    async def _run(question: str, report: Callable[[str], Awaitable[None]]) -> dict[str, Any]:
-        # Progress events arrive through a plain callback; one sender keeps
-        # the notifications in order.
-        events: asyncio.Queue[str | None] = asyncio.Queue()
-
-        def on_progress(event: ProgressEvent) -> None:
-            if event.kind in ("completed", "failed"):
-                verb = "done" if event.kind == "completed" else "failed"
-                events.put_nowait(f"{_PHASES.get(event.phase, event.phase)}: {event.member_name} {verb}")
-
-        async def send() -> None:
-            while (message := await events.get()) is not None:
-                await report(message)
-
-        sender = asyncio.create_task(send())
-        parliament = Parliament(
-            members,
-            providers,
-            on_progress=on_progress,
-            speaker_override=speaker_override,
-            outside_speaker=outside_speaker,
-        )
-        try:
-            hansard = await parliament.ask(question)
-        except Exception as exc:  # a provider fault the debate could not absorb
-            raise ToolError(f"The debate failed: {exc}") from exc
-        finally:
-            events.put_nowait(None)
-            await sender
+    @server.tool(name="debate", description=_describe(members))
+    async def debate(question: str, ctx: Context) -> dict[str, Any]:
+        report = _reporter(ctx)
+        async with queued(report), _member_progress(report) as on_progress:
+            parliament = Parliament(
+                members,
+                providers,
+                on_progress=on_progress,
+                speaker_override=speaker_override,
+                outside_speaker=outside_speaker,
+            )
+            try:
+                hansard = await parliament.ask(question)
+            except Exception as exc:  # a provider fault the debate could not absorb
+                raise ToolError(f"The debate failed: {exc}") from exc
         return build_result(hansard, save_hansard_json(hansard, save_dir))
 
     askable = _askable(members, providers, outside_speaker)
@@ -245,7 +320,7 @@ def create_server(
             "answer": answer,
             "duration_ms": duration_ms,
         }
-        path = save_ask_json(record, save_dir / "asks")
+        path = save_record_json(record, save_dir / "asks")
         return {
             "schema": SCHEMA_VERSION,
             "member": who.name,
@@ -253,6 +328,73 @@ def create_server(
             "model": who.model,
             "answer": answer,
             "duration_ms": duration_ms,
+            "record_path": str(path),
+        }
+
+    by_name = {m.name: m for m in members}
+
+    # Registered after `ask`: debate, ask, consult.
+    @server.tool(name="consult", description=_describe_consult(members))
+    async def consult(
+        question: str, ctx: Context, members: list[str] | None = None
+    ) -> dict[str, Any]:
+        # A bad name is refused before the call queues behind a debate.
+        chosen = _consulted(members, list(by_name.values()), outside_speaker)
+        failures: list[tuple[str, str]] = []
+        report = _reporter(ctx)
+        async with queued(report), _member_progress(report) as on_progress:
+            try:
+                responses = await run_first_reading(
+                    Bill(content=question),
+                    chosen,
+                    providers,
+                    on_progress,
+                    failures_out=failures,
+                )
+            except Exception as exc:  # too few answers; cancellation still propagates
+                raise ToolError(f"The consultation failed: {exc}") from exc
+        # No `contested`: stances are self-reported, never compared here (#73).
+        positions = [
+            {"member": r.member_name, "stance": r.position.stance if r.position else None}
+            for r in responses
+        ]
+        answers: list[dict[str, Any]] = [
+            {
+                "member": r.member_name,
+                "provider": by_name[r.member_name].provider_name,
+                "model": by_name[r.member_name].model,
+                "answer": r.content,
+                "duration_ms": r.duration_ms,
+            }
+            for r in responses
+        ]
+        warnings = [asdict(w) for w in failure_warnings("First Reading", failures)]
+        degraded = len(responses) < len(chosen)
+        record = {
+            "schema": SCHEMA_VERSION,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "question": question,
+            "members": [m.name for m in chosen],
+            "positions": positions,
+            "answers": answers,
+            "degraded": degraded,
+            "warnings": warnings,
+        }
+        path = save_record_json(record, save_dir / "consults")
+        return {
+            "schema": SCHEMA_VERSION,
+            "positions": positions,
+            "answers": [
+                {
+                    **{k: a[k] for k in ("member", "provider", "model")},
+                    "answer": a["answer"][:ANSWER_CHARS],
+                    "truncated": len(a["answer"]) > ANSWER_CHARS,
+                    "duration_ms": a["duration_ms"],
+                }
+                for a in answers
+            ],
+            "degraded": degraded,
+            "warnings": warnings,
             "record_path": str(path),
         }
 
