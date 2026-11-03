@@ -1,17 +1,24 @@
-"""`parliament mcp`: a stdio MCP server with one tool, `debate` (#9).
+"""`parliament mcp`: a stdio MCP server with two tools, `debate` (#9) and `ask` (#99).
 
-The shape follows the design note on #9 and its follow-up. The tool blocks for
-the whole debate, reporting progress per phase. It returns a short result (the
-summary, the verdict and the panel) and saves the full Hansard as JSON, because
-the members' answers alone are larger than clients accept from a tool. Debates
-run one at a time: OpenRouter reserves credit for every request in flight, and
-parallel debates on a small balance fail with HTTP 402.
+The shape of `debate` follows the design note on #9 and its follow-up. The tool
+blocks for the whole debate, reporting progress per phase. It returns a short
+result (the summary, the verdict and the panel) and saves the full Hansard as
+JSON, because the members' answers alone are larger than clients accept from a
+tool. Debates run one at a time: OpenRouter reserves credit for every request
+in flight, and parallel debates on a small balance fail with HTTP 402.
+
+`ask` is one call to one configured model, for a quick second opinion. It does
+not queue behind a debate: one extra request in flight is not what exhausts the
+credit, and an agent should not wait minutes for a seconds-long answer.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
+import time
+import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +33,7 @@ from parliament.config import HANSARDS_DIR
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member, ProgressEvent
 from parliament.providers.base import Provider
+from parliament.providers.errors import format_provider_error
 
 # Bump on any change an agent parsing the result would notice.
 SCHEMA_VERSION = 1
@@ -33,6 +41,13 @@ SCHEMA_VERSION = 1
 _PHASES = {"first_reading": "First Reading", "debate": "Debate", "division": "Division"}
 # Moved to `summary`, or left to the saved file.
 _NOT_IN_VERDICT = {"raw", "contested", "contested_on"}
+
+# The question goes to the model as written; this is the only framing.
+ASK_SYSTEM = (
+    "A coding agent is consulting you for a second opinion. Answer directly and "
+    "specifically; state your recommendation and the main reasons. Say when you "
+    "are unsure."
+)
 
 
 def is_mock_only(members: list[Member]) -> bool:
@@ -87,6 +102,43 @@ def _describe(members: list[Member]) -> str:
         "summary.contested (whether the members still disagree, null if unknown), "
         "summary.contested_on, the verdict, and the path of the full saved record."
     )
+
+
+def _describe_ask(members: list[Member], outside: tuple[Member, Provider] | None) -> str:
+    names = [f"{m.name} ({m.model})" for m in members]
+    if outside is not None:
+        names.append(f"{outside[0].name} ({outside[0].model}, the outside Speaker)")
+    return (
+        "Ask ONE model directly for a second opinion, with no debate. It makes one "
+        "model call, which costs money and takes seconds. "
+        f"member is one of: {', '.join(names)}. "
+        "The model cannot see your files or this conversation, so put all the "
+        "context it needs in the question. Asking the same model you run on adds "
+        "little. For a consequential decision with real trade-offs, use debate "
+        "instead. Returns the answer and the path of the saved record."
+    )
+
+
+def _askable(
+    members: list[Member],
+    providers: dict[str, Provider],
+    outside: tuple[Member, Provider] | None,
+) -> dict[str, tuple[Member, Provider]]:
+    """Name (lower case) to member and provider; a panel member wins a clash."""
+    found: dict[str, tuple[Member, Provider]] = {}
+    if outside is not None:
+        found[outside[0].name.lower()] = outside
+    for m in members:
+        found[m.name.lower()] = (m, providers[m.name])
+    return found
+
+
+def save_ask_json(record: dict[str, Any], directory: Path) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    path = directory / f"{stamp}-{uuid.uuid4().hex[:8]}.json"
+    path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
 
 
 async def _heartbeat(report: Callable[[str], Awaitable[None]], every_s: float) -> None:
@@ -163,5 +215,45 @@ def create_server(
             events.put_nowait(None)
             await sender
         return build_result(hansard, save_hansard_json(hansard, save_dir))
+
+    askable = _askable(members, providers, outside_speaker)
+
+    # Registered after `debate`, so `debate` stays the first tool listed.
+    @server.tool(name="ask", description=_describe_ask(members, outside_speaker))
+    async def ask(member: str, question: str) -> dict[str, Any]:
+        # No `lock`: an ask must not wait minutes behind a running debate.
+        found = askable.get(member.strip().lower())
+        if found is None:
+            valid = ", ".join(m.name for m, _ in askable.values())
+            raise ToolError(f"No member named {member!r}. Ask one of: {valid}")
+        who, provider = found
+        started = time.perf_counter()
+        try:
+            answer = await provider.generate(question, system=ASK_SYSTEM)
+        except Exception as exc:  # a provider fault; cancellation still propagates
+            raise ToolError(f"{who.name} failed: {format_provider_error(exc)}") from exc
+        if not answer:
+            raise ToolError(f"{who.name} returned no text")
+        duration_ms = round((time.perf_counter() - started) * 1000)
+        record = {
+            "schema": SCHEMA_VERSION,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "member": who.name,
+            "provider": who.provider_name,
+            "model": who.model,
+            "question": question,
+            "answer": answer,
+            "duration_ms": duration_ms,
+        }
+        path = save_ask_json(record, save_dir / "asks")
+        return {
+            "schema": SCHEMA_VERSION,
+            "member": who.name,
+            "provider": who.provider_name,
+            "model": who.model,
+            "answer": answer,
+            "duration_ms": duration_ms,
+            "record_path": str(path),
+        }
 
     return server

@@ -1,4 +1,4 @@
-"""`parliament mcp`: one `debate` tool for coding agents (#9).
+"""`parliament mcp`: the `debate` (#9) and `ask` (#99) tools for coding agents.
 
 The return shape, what is saved, progress, failures and the one-at-a-time rule
 follow the design note and its follow-up on #9.
@@ -19,6 +19,7 @@ from parliament import cli
 from parliament.core.parliament import Parliament
 from parliament.core.types import Hansard, Member
 from parliament.mcp_server import (
+    ASK_SYSTEM,
     SCHEMA_VERSION,
     build_result,
     create_server,
@@ -207,3 +208,143 @@ def test_cli_says_how_to_install_the_extra_when_the_sdk_is_missing(monkeypatch):
     result = CliRunner().invoke(cli.main, ["mcp", "--mock"])
     assert result.exit_code != 0
     assert 'pip install "llm-parliament[mcp]"' in result.stderr
+
+
+class RecordingProvider(MockProvider):
+    def __init__(self, model: str = "rec") -> None:
+        super().__init__(model=model, latency_ms=0)
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def generate(self, prompt: str, system: str | None = None) -> str:
+        self.calls.append((prompt, system))
+        return "Use Postgres."
+
+
+def _outside() -> tuple[Member, Provider]:
+    return Member(name="Outside", provider_name="mock", model="mock-outside"), MockProvider(
+        model="mock-outside", latency_ms=0
+    )
+
+
+def test_ask_is_listed_after_debate_and_names_every_model():
+    members, providers = _panel(3)
+    server = create_server(members, providers, outside_speaker=_outside())
+    tools = asyncio.run(server.list_tools())
+    assert [t.name for t in tools] == ["debate", "ask"]
+    ask = tools[1]
+    for model in ["mock-0", "mock-1", "mock-2", "mock-outside"]:
+        assert model in ask.description
+    assert "outside Speaker" in ask.description
+    assert "costs money" in ask.description
+
+
+async def test_ask_returns_the_answer_and_saves_a_record(tmp_path):
+    members, providers = _panel()
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("ask", {"member": "M1", "question": "Postgres or Mongo?"})
+
+    assert not result.is_error
+    data = result.structured_content
+    assert data["schema"] == SCHEMA_VERSION
+    assert (data["member"], data["provider"], data["model"]) == ("M1", "mock", "mock-1")
+    assert "Postgres or Mongo?" in data["answer"]
+    assert isinstance(data["duration_ms"], int)
+    path = Path(data["record_path"])
+    assert path.parent == tmp_path / "asks" and path.suffix == ".json"
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["question"] == "Postgres or Mongo?"
+    assert saved["answer"] == data["answer"]
+    assert saved["member"] == "M1" and saved["model"] == "mock-1"
+    assert "timestamp" in saved and "duration_ms" in saved
+
+
+async def test_ask_matches_member_names_case_insensitively(tmp_path):
+    members, providers = _panel()
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("ask", {"member": "m0", "question": "Which?"})
+    assert not result.is_error
+    assert result.structured_content["member"] == "M0"
+
+
+async def test_the_outside_speaker_can_be_asked(tmp_path):
+    members, providers = _panel()
+    server = create_server(members, providers, outside_speaker=_outside(), save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("ask", {"member": "outside", "question": "Which?"})
+    assert not result.is_error
+    assert result.structured_content["model"] == "mock-outside"
+
+
+async def test_a_panel_member_wins_a_name_clash_with_the_outside_speaker(tmp_path):
+    members, providers = _panel()
+    clash = (Member(name="M0", provider_name="mock", model="mock-outside"), _outside()[1])
+    server = create_server(members, providers, outside_speaker=clash, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("ask", {"member": "M0", "question": "Which?"})
+    assert result.structured_content["model"] == "mock-0"
+
+
+async def test_asking_an_unknown_member_lists_the_valid_names(tmp_path):
+    members, providers = _panel()
+    server = create_server(members, providers, outside_speaker=_outside(), save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("ask", {"member": "Nobody", "question": "Which?"})
+    assert result.is_error
+    message = result.content[0].text
+    assert "Nobody" in message
+    assert all(name in message for name in ["M0", "M1", "Outside"])
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_a_failed_ask_is_a_tool_error_naming_the_member(tmp_path):
+    members, providers = _panel()
+    providers["M1"] = FailingProvider()
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("ask", {"member": "M1", "question": "Which?"})
+    assert result.is_error
+    assert "M1 failed" in result.content[0].text
+    assert list(tmp_path.iterdir()) == []
+
+
+class EmptyProvider(MockProvider):
+    async def generate(self, prompt: str, system: str | None = None) -> str:
+        return ""
+
+
+async def test_an_empty_answer_is_a_tool_error_not_an_answer(tmp_path):
+    members, providers = _panel()
+    providers["M1"] = EmptyProvider(model="mock-1", latency_ms=0)
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("ask", {"member": "M1", "question": "Which?"})
+    assert result.is_error
+    assert "M1 returned no text" in result.content[0].text
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_ask_sends_the_question_as_written_with_the_ask_system_prompt(tmp_path):
+    members, providers = _panel()
+    recorder = RecordingProvider()
+    providers["M0"] = recorder
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        result = await client.call_tool("ask", {"member": "M0", "question": "Postgres or Mongo?"})
+    assert result.structured_content["answer"] == "Use Postgres."
+    assert recorder.calls == [("Postgres or Mongo?", ASK_SYSTEM)]
+
+
+async def test_ask_does_not_wait_for_a_running_debate(tmp_path):
+    members, providers = _panel(latency_ms=200)
+    members.append(Member(name="Fast", provider_name="mock", model="mock-fast"))
+    providers["Fast"] = MockProvider(model="mock-fast", latency_ms=0)
+    server = create_server(members, providers, save_dir=tmp_path)
+    async with Client(server) as client:
+        debate = asyncio.create_task(client.call_tool("debate", {"question": "One?"}))
+        await asyncio.sleep(0.02)
+        result = await client.call_tool("ask", {"member": "Fast", "question": "Two?"})
+        assert not result.is_error
+        assert not debate.done()
+        await debate

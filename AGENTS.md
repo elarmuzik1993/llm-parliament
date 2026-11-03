@@ -50,7 +50,7 @@ src/parliament/
   first_run.py        First-run environment detection + config wizard
   presets.py          Environment-aware first-run config presets
   model_catalog.py    Known model presets + tier data for pickers
-  mcp_server.py       `parliament mcp`: stdio MCP server, one `debate` tool (optional `[mcp]` extra)
+  mcp_server.py       `parliament mcp`: stdio MCP server, `debate` and `ask` tools (optional `[mcp]` extra)
   core/
     parliament.py     Parliament orchestrator — ask() coroutine, member/provider wiring
     types.py          Dataclasses: Member, Bill, Response, Synthesis, Hansard, ProgressEvent

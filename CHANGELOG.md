@@ -41,6 +41,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`ask`: a second MCP tool for one model's opinion (#99)** —
+  `ask(member, question)` sends the question, as written, to one configured
+  model: a panel member or the outside Speaker, matched by name ignoring case.
+  It is one model call with no debate, and does not wait behind a running
+  debate. It returns `schema`, `member`, `provider`, `model`, `answer`,
+  `duration_ms` and `record_path`; the record is saved as JSON under
+  `~/.parliament/hansards/asks/`. An unknown name or a provider failure is a
+  tool error, as is an empty answer; nothing is saved then.
 - **`parliament mcp`: an MCP server for coding agents (#9)** — a stdio server
   with one tool, `debate(question)`, that runs the configured panel and
   returns `schema`, `summary` (`contested`, `contested_on`, `degraded`,
