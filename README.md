@@ -2,862 +2,162 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/llm-parliament.svg)](https://pypi.org/project/llm-parliament/)
 [![Python](https://img.shields.io/pypi/pyversions/llm-parliament.svg)](https://pypi.org/project/llm-parliament/)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://github.com/elarmuzik1993/llm-parliament/blob/main/LICENSE)
 [![CI](https://github.com/elarmuzik1993/llm-parliament/actions/workflows/ci.yml/badge.svg)](https://github.com/elarmuzik1993/llm-parliament/actions/workflows/ci.yml)
 
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![good first issues](https://img.shields.io/github/issues/elarmuzik1993/llm-parliament/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/elarmuzik1993/llm-parliament/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-[![help wanted](https://img.shields.io/github/issues/elarmuzik1993/llm-parliament/help%20wanted?label=help%20wanted&color=008672)](https://github.com/elarmuzik1993/llm-parliament/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
-
-Multi-agent debate for better AI decisions. Research-backed, local-first.
-
-Three AI models debate your question through a parliamentary process:
-First Reading, Debate, and Division. The result is a structured verdict with
-consensus, split views, risks, and a recommendation.
-
-Built on multi-agent debate, a technique shown to improve AI accuracy by
-7-15% in research (Liang et al. 2023, Chen et al. 2023). Our own live tests,
-including where it does *not* help, are summarised under
-[When it helps — measured](#when-it-helps--measured).
-
-**What this project is for.** LLM Parliament is a learning project built in
-public. I wanted to find out whether a debate between models beats a single
-good model, so I measured it instead of assuming it. The answer is mixed: it
-adds nothing on easy questions, and on contested ones it gives a steadier way
-of deciding rather than a fixed answer. The method, every run and the raw
-numbers are in [`docs/live-test-windows.md`](docs/live-test-windows.md). CI
-runs the tests on Linux, macOS and Windows, and tests pin the configuration
-reference and the shipped example configs to the code.
-
-See [CHANGELOG.md](CHANGELOG.md) for the release history.
-
----
-
-> 👋 **This is my GitHub and developer debut!**
-> `llm-parliament` is the first project I've shipped publicly. I built it to learn,
-> and I'd genuinely love your help making it better.
->
-> Feedback, bug reports, feature ideas, code review, and pull requests are **very
-> welcome** — no contribution is too small. If something feels confusing, doesn't
-> install, breaks on your terminal, or could be more polished, please
-> [open an issue](https://github.com/elarmuzik1993/llm-parliament/issues/new) or
-> say hi in [Discussions](https://github.com/elarmuzik1993/llm-parliament/discussions).
->
-> **Concrete places to start:**
-> [good first issues](https://github.com/elarmuzik1993/llm-parliament/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-> · [help wanted](https://github.com/elarmuzik1993/llm-parliament/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
-> · [roadmap](https://github.com/elarmuzik1993/llm-parliament/issues/15)
-> · [CONTRIBUTING.md](CONTRIBUTING.md)
->
-> Stars also help me see what's resonating. Thanks for taking a look. 🙏
-
----
-
-## Quick Start
-
-```bash
-pipx install llm-parliament
-parliament doctor
-parliament              # opens the TUI
-```
-
-The mock parliament runs out of the box with no setup.
-
-**Real models with one key.** [OpenRouter](https://openrouter.ai) is one
-account and one API key for Claude, GPT, Gemini and open models, and it also
-lists some free models. Set the key and the first-run wizard proposes a
-three-lab parliament through it:
-
-```bash
-export OPENROUTER_API_KEY=sk-or-...
-parliament doctor       # the wizard detects the key and writes a config
-```
-
-Already have Anthropic, OpenAI or Google keys? Those work directly too. See
-[Optional: Cloud Models](#optional-cloud-models).
-
-## Installation
-
-The recommended way is **pipx** — it installs the tool into an isolated
-environment but exposes `parliament` globally on your PATH, so you don't
-have to think about virtual environments.
-
-### Linux
-
-```bash
-# Prereqs (one-time)
-sudo apt install pipx          # Debian/Ubuntu — or `pacman -S python-pipx`, `dnf install pipx`
-pipx ensurepath                # adds ~/.local/bin to PATH
-# Restart your shell.
-
-# Install
-pipx install llm-parliament
-
-# Verify
-parliament doctor
-```
-
-### macOS
-
-```bash
-# Prereqs (one-time)
-brew install pipx
-pipx ensurepath
-# Restart your shell.
-
-# Install
-pipx install llm-parliament
-
-# Verify
-parliament doctor
-```
-
-### Windows
-
-```powershell
-# Prereqs (one-time)
-# 1. Install Python 3.11+ from python.org — check "Add Python to PATH" during install.
-# 2. Install pipx:
-python -m pip install --user pipx
-python -m pipx ensurepath
-# 3. Close and reopen Windows Terminal (recommended) or PowerShell.
-
-# Install
-pipx install llm-parliament
-
-# Verify
-parliament doctor
-```
-
-**Notes:**
-
-- All cloud provider SDKs (Anthropic, Google, OpenAI) are bundled. No extras needed.
-- Ollama (for local models) is a separate native daemon — install from <https://ollama.com> if you want local models. The `parliament doctor` command tells you what's detected.
-- On Windows, the install pulls in `windows-curses` automatically so the TUI works out of the box. Windows Terminal is recommended over `cmd.exe` (better VT/UTF-8 support); legacy `cmd.exe` is supported.
-- Keys are stored in the OS native credential store (Windows Credential Manager, macOS Keychain, GNOME Keyring) via `parliament keys set`. Falls back to `~/.parliament/keys.env` if no keyring is available.
-
-## Verify your install
-
-After install, run:
-
-```bash
-parliament doctor
-```
-
-You'll see something like:
-
-```text
-Environment
-  ✓ Python 3.12.5 (>=3.11 required)
-  ✓ Curses available
-  ✓ Terminal: 142x38
-  ✓ Config: ~/.parliament/config.yaml (initialized)
-
-Providers
-  ✓ Anthropic SDK         ℹ ANTHROPIC_API_KEY not set
-  ✓ Google SDK            ℹ GOOGLE_API_KEY not set
-  ✓ OpenAI SDK            ℹ OPENAI_API_KEY not set
-  ℹ Ollama: not reachable at http://localhost:11434
-
-Next steps
-  - Add cloud keys:   parliament keys set <provider> <key>
-  - Local models?     Install Ollama from https://ollama.com, then `ollama pull llama3.1`
-  - Run the TUI:      parliament
-```
-
-Exit code is `0` if the install is functional (regardless of whether you
-have keys/Ollama configured), or `1` if something is broken (e.g. Python
-too old).
-
-## Configuration
-
-Your personal config lives at `~/.parliament/config.yaml` (or
-`%USERPROFILE%\.parliament\config.yaml` on Windows) — outside the repo, so
-your settings never end up in git.
-
-On first run (triggered by `parliament doctor`, `parliament ask`, or launching
-the TUI), a setup wizard runs automatically. It detects your API keys, local
-Ollama models, and available RAM, then proposes a matching preset:
-
-```text
-Welcome to Parliament. No config found - let's set one up.
-
-Detected:
-  ✓ ANTHROPIC_API_KEY (configured)
-  ℹ OPENAI_API_KEY (not set)
-  ✓ GOOGLE_API_KEY (configured)
-  ℹ OPENROUTER_API_KEY (not set)
-  ℹ Ollama: not reachable
-  System RAM: 16 GB
-
-Proposed preset: cloud-anthropic-google (Anthropic + Google)
-  - Claude (anthropic / claude-sonnet-4-6)
-  - Claude-Haiku (anthropic / claude-haiku-4-5-20251001)
-  - Gemini (google / gemini-2.5-flash)
-
-Use these defaults? [Y/n]:
-```
-
-Confirm with `Y` and the config is written. If no keys or Ollama are detected,
-you get a working mock preset — no setup needed to verify the install. Edit
-members later via the TUI (`parliament`) or directly in the file.
-
-With `OPENROUTER_API_KEY`, the wizard can propose three labs through one
-account. Two or three direct provider keys keep their existing presets, and
-three reachable local models that fit RAM take priority over OpenRouter.
-Otherwise OpenRouter wins over mixed, single-provider and mock presets.
-Its proposal warns that API usage may incur charges. Declining any proposal
-writes a mock preset, not the next available cloud or local preset.
-
-**[`docs/configuration.md`](docs/configuration.md)** is the complete reference:
-every key, its type, its real default, and the environment variable or CLI flag
-that overrides it — plus `settings.json`, which the TUI writes and this file
-does not cover.
-
-### Choosing the Speaker
-
-The Speaker writes the final verdict. By default it is one of the members: the
-strongest by tier, or the first listed when they tie. A model the tool cannot
-rate is picked only when no member is rated. In our tests a member
-Speaker tended to side with its own position, even with member names hidden
-from it. A Speaker that did not debate has no position to defend:
-
-```yaml
-parliament:
-  members:
-    - {name: Claude, provider: openrouter, model: anthropic/claude-sonnet-5.5}
-    - {name: GPT,    provider: openrouter, model: openai/gpt-5.6-sol}
-    - {name: Gemini, provider: openrouter, model: google/gemini-3.1-pro-preview}
-  speaker:
-    name: Grok
-    provider: openrouter
-    model: x-ai/grok-4.7
-```
-
-Pick a model that is not on the panel. `parliament ask` warns when the Speaker
-shares a member's model, and when tied members leave the choice to list order.
-If the outside Speaker fails, a member takes over, and `--speaker <member>`
-still overrides it.
-
-## Optional: Local Models (Ollama)
-
-Ollama runs LLMs locally — free, private, no API keys. Install it
-separately, then point a parliament member at it.
-
-1. Install Ollama from <https://ollama.com> and start the daemon.
-2. Pull a model:
-   ```bash
-   ollama pull llama3.1
-   ```
-3. Edit `~/.parliament/config.yaml` (or use the TUI) to add an Ollama
-   member:
-   ```yaml
-   parliament:
-     members:
-       - name: Llama
-         provider: ollama
-         model: llama3.1
-   providers:
-     ollama:
-       base_url: http://localhost:11434/v1
-   ```
-4. Run `parliament` to start a debate.
-
-> **Note:** All providers default to no timeout (`timeout: null`), so a
-> slow local model on modest hardware won't be cut off. If you want a
-> hard limit, set `timeout: 600.0` on the relevant `providers.<name>`
-> block.
-
-## Optional: Cloud Models
-
-**Easiest path: one OpenRouter key.** One signup and one key reach models from
-several labs, so you do not need a separate account for each. Export the key
-in your shell profile before the first run and the wizard picks it up:
-
-```bash
-export OPENROUTER_API_KEY=sk-or-...
-parliament doctor   # wizard fires, detects the key, proposes a three-lab preset
-```
-
-Usage is billed by OpenRouter. It also lists some free models; check its
-[model list](https://openrouter.ai/models) for what is free today, since that
-changes. See [OpenRouter](#openrouter) below for the config and key commands.
-
-**Direct provider keys** — if you already have them, export them instead; the
-wizard picks those up the same way:
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-export GOOGLE_API_KEY=...
-parliament doctor   # wizard fires, detects keys, writes a cloud preset
-```
-
-**After first run** — add or change keys at any time:
-
-```bash
-parliament keys set anthropic sk-ant-...
-parliament keys set google ...
-parliament keys set openai sk-...
-```
-
-Keys are saved to the OS native credential store. Then edit members via the
-TUI (`parliament`) or directly in `~/.parliament/config.yaml`:
-
-```yaml
-parliament:
-  members:
-    - name: Claude
-      provider: anthropic
-      model: claude-sonnet-4-6
-    - name: Gemini
-      provider: google
-      model: gemini-2.5-flash
-```
-
-You can also export `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and
-`GOOGLE_API_KEY` directly in your environment instead of using the keyring.
-
-Useful key commands:
-
-```bash
-parliament keys list
-parliament keys migrate   # move existing keys.env entries to the OS keyring
-parliament keys remove openai
-```
-
-## Optional: OpenAI-compatible providers (Groq, Mistral, OpenRouter)
-
-Groq and Mistral speak the OpenAI API and are available directly as `groq`
-and `mistral` providers. Store each key separately:
-
-```bash
-parliament keys set groq gsk_...
-parliament keys set mistral your-mistral-key
-```
-
-Both providers can coexist with OpenAI and OpenRouter in the same parliament:
-
-```yaml
-parliament:
-  members:
-    - name: Groq
-      provider: groq
-      model: llama-3.3-70b-versatile
-    - name: Mistral
-      provider: mistral
-      model: mistral-large-latest
-```
-
-They appear in the TUI provider picker and `/key`. `parliament doctor` checks
-the required keys for configured Groq and Mistral members; they do not have
-separate rows in its Providers section.
-Groq reads `GROQ_API_KEY`; Mistral reads `MISTRAL_API_KEY`. A missing vendor
-key never falls back to `OPENAI_API_KEY`, including during model discovery.
-Optional `providers.groq` and `providers.mistral` entries can override the
-`base_url` or supply an explicit `api_key`.
-
-Existing `provider: openai` configurations with a custom `base_url` still
-work, using `providers.openai.api_key` or `OPENAI_API_KEY` as before. Move to
-the named providers to keep vendor credentials and endpoints separate.
-
-Their models retain their tier labels and the usual tier-gap warnings.
-
-### OpenRouter
-
-OpenRouter is also OpenAI-compatible, but it is common enough to deserve its
-own line in `parliament keys`, its own button in the TUI provider picker, and
-its own row in `parliament doctor`. Name it directly:
-
-```bash
-parliament keys set openrouter sk-or-...
-```
-
-```yaml
-parliament:
-  members:
-    - name: Claude
-      provider: openrouter
-      model: anthropic/claude-sonnet-4.6
-```
-
-The address (`https://openrouter.ai/api/v1`) and the key variable
-(`OPENROUTER_API_KEY`) come from `model_catalog.OPENAI_COMPATIBLE`; you do not
-set a `base_url`. The TUI's model picker fetches OpenRouter's live catalogue
-the same way it does for Anthropic, OpenAI, and Google.
-
-## Other OpenAI-compatible endpoints
-
-Any service speaking the OpenAI API that is not its own first-class provider
-can use `provider: openai`: point `providers.openai` at its
-`base_url` and give it a key. Aggregators such as one-api, self-hosted
-gateways, and small vendors that ship only an OpenAI-shaped endpoint all fall
-into this category.
-
-## When it helps — measured
-
-We ran live tests on Windows through OpenRouter (October 2026). The full
-method, every run and the raw tallies are in
-[`docs/live-test-windows.md`](docs/live-test-windows.md). In short:
-
-- **Easy or settled questions: no gain.** When the answer is a best practice
-  (how to store passwords, say), all three members agree, and one good model
-  gives the same answer faster and cheaper.
-- **An uneven panel acts like its strongest member.** With one strong model and
-  two cheap ones, the cheap members came round to the strong one. The verdict
-  was the strong model's answer, at about 3× the time.
-- **Contested judgement calls: a consistent way to decide, not a fixed answer.**
-  On a question where experts genuinely differ, with three evenly matched
-  frontier models and an outside Speaker, 8 debates chose one option 6 times
-  and another twice. All 8 gave the same first step and the same conditions
-  for switching. In 5 of 8 a member changed its mind on a peer's argument.
-  A single model asked the same question gave different answers depending on
-  the wording.
-- **The Speaker matters.** Re-judging the same 8 debates, three outside
-  Speakers agreed on 7. A Speaker running the same model as a member sided
-  with that member. See [Choosing the Speaker](#choosing-the-speaker).
-
-Use it for decisions with real trade-offs, and read the Split and the
-conditions for switching, not only the recommended option.
-
-## Does it cost 3× more?
-
-Yes — Parliament makes more API calls than asking a single model: 3 for First
-Reading, 3 for Debate, 1 for Division (7 total). On cloud APIs, that's real money.
-
-**Approximate cost per query:**
-
-| Setup | Cost | When to use |
-|-------|------|-------------|
-| Single GPT-4o | ~$0.02 | Quick lookups, drafting, anything with an obvious answer |
-| Parliament — 3× cheap (Haiku + Flash-Lite + GPT-4o-mini) | ~$0.04–0.06 | Decisions with real trade-offs |
-| Parliament — 3× mid-tier (Sonnet + GPT-4o + Flash) | ~$0.15–0.30 | High-stakes architecture or strategy calls |
-| Parliament — local Ollama models | ~$0.00 | Any decision, no API cost |
-
-Measured on OpenRouter in October 2026: under $0.10 a debate for Sonnet 4.6,
-GPT-4o-mini and Gemini 2.5 Flash, and about $0.25 for Sonnet 5.5, GPT-5.6 Sol
-and Gemini 3.1 Pro with an outside Speaker. A debate took about 1.5–3 minutes;
-a single call to one of those models took 20–50 seconds.
-
-**The right question is whether that cost is worth it for the specific decision.**
-
-Parliament is designed for decisions where being wrong is expensive — architecture
-choices, technical trade-offs, strategy calls. Getting those wrong can cost days
-or weeks of rework. The token cost of a debate is a rounding error compared to
-the cost of a wrong call.
-
-For quick lookups, summaries, or anything with an obvious answer, use a single
-model. Parliament is a deliberation tool, not a throughput tool.
-
-**Three reasons the cost argument flips:**
-
-1. **Tier mixing cuts the cost, but also the disagreement.** One strong model
-   plus two cheap ones (as in the OpenRouter wizard preset) costs much less
-   than three strong ones. In our tests, though, the cheap members came round
-   to the strong one, so the verdict was mostly that model's answer. For a real
-   debate, use evenly matched members.
-
-2. **Local models make it free.** Ollama runs 3B–13B models on commodity hardware
-   at no API cost. For anyone who can run two small local models, the "3×" concern
-   disappears entirely.
-
-3. **One good answer beats three mediocre ones.** A single-model answer on a hard
-   architectural question has blind spots the model doesn't know it has. The debate
-   surfaces them. If it prevents one wrong architectural decision, it has paid for
-   months of usage.
-
-**Three ways to keep costs low:**
-
-| Approach | Effect |
-|----------|--------|
-| Three evenly matched cheaper members, with a stronger model as the outside `speaker` | Strong judgement only where it is spent once (not measured yet) |
-| Run local Ollama models for some or all members | No API cost — just electricity |
-| `parliament ask "..." --mock` | Zero cost — useful for exploring the format |
-
-The first-run wizard (`parliament doctor` on a fresh install) automatically
-suggests a cost-aware preset based on what keys and local models you have
-available. You can also mix cloud and local: e.g. one Anthropic member + two
-Ollama members keeps the cloud bill minimal while still getting the debate benefit.
-
-**Rule of thumb:** if the cost of being wrong on this decision exceeds $1, the
-debate is worth it.
-
-## CLI Usage
-
-```bash
-# Check that the install is healthy
-parliament doctor
-
-# Use mock providers for fast local testing
-parliament ask "Is this architecture too complex?" --mock
-
-# Show the full transcript before the verdict (post-hoc dump)
-parliament ask "Which queue should we use?" --verbose
-
-# Print the full Hansard as JSON for scripts and jq pipelines
-parliament ask "Which queue should we use?" --json
-
-# Hide the live debate panels and only print the final verdict
-parliament ask "Quick check?" --no-show-debate
-
-# Make a member the Speaker (overrides parliament.speaker; see "Choosing the Speaker")
-parliament ask "What are the main risks?" --speaker Claude
-
-# Show configured members
-parliament members
-
-# Open the full TUI dashboard
-parliament
-
-# Open the TUI with mock providers, no Ollama/API keys needed
-parliament --mock
-
-# Browse the same dashboard with a specific config
-parliament tui --config /path/to/custom-config.yaml
-
-# Serve the parliament to coding agents (see "Use it from a coding agent")
-parliament mcp
-```
-
-### Live debate view
-
-By default, `parliament ask` and the curses TUI render the debate live: a
-panel pops in for each member as their analysis lands, and stage headers mark
-the transitions through First Reading → Debate → Division. This makes it
-obvious *which* model is currently working and *what* they said.
-
-The view is toggleable via three precedence-ordered sources:
-
-| Precedence | Source | Example |
-| --- | --- | --- |
-| 1 (highest) | CLI flag | `parliament ask "..." --no-show-debate` |
-| 2 | Environment variable | `PARLIAMENT_SHOW_DEBATE=0 parliament ask "..."` |
-| 3 | YAML config | `display:\n  show_debate: false` |
-| 4 (default) | Built-in | live view is **on** |
-
-`--show-debate` controls whether the live panels appear during the run.
-
-### Hansard detail levels
-
-By default the post-run terminal output is `verdict` — the full four-part
-synthesis: what the members agreed on, where they split, the risks any of them
-flagged, and the Speaker's recommendation. The split is the part a single model
-cannot give you, so it ships without anyone having to ask for it. Prefer the
-recommendation alone? `--hansard=minimal`. Saved `.md` files are always written
-at `archive` level regardless of the display level, so nothing is lost from the
-record either way. Older runs that printed the full debate text are opt-in via
-`--hansard=full`.
-
-Four levels:
-
-| Level | Includes | Roughly |
-|---|---|---|
-| `minimal` | Recommendation only | one paragraph, "just tell me what to do" |
-| `verdict` | Full four-part synthesis | **default** — concise but complete |
-| `archive` | + YAML frontmatter + session footer | searchable in Obsidian, no walls of text |
-| `full` | + First Reading + Debate transcripts | today's full record (≈ what `--verbose` used to print) |
-
-Set the level via three precedence-ordered sources:
-
-| Precedence | Source | Example |
-| --- | --- | --- |
-| 1 (highest) | CLI flag | `parliament ask "..." --hansard archive` |
-| 2 | Environment variable | `PARLIAMENT_HANSARD_LEVEL=full parliament ask "..."` |
-| 3 | YAML config | `hansard:\n  level: archive` |
-| 4 (default) | Built-in | `verdict` |
-
-`--verbose` continues to work; it's an alias for `--hansard=full`.
-The level applies to the post-run terminal output only — saved `.md` files are
-always written at `archive`, and `--json` is never gated by level. The live
-in-flight debate view is independent — toggle it separately with
-`--show-debate` / `--no-show-debate`.
-
-For machine-readable output, `parliament ask --json` prints the complete
-Hansard object. See [docs/hansard-schema.md](docs/hansard-schema.md) for the
-JSON fields and practical `jq` examples.
-
-TUI controls:
-
-```text
-Type                Edit the question field
-Enter               Run debate when question is focused
-Tab                 Switch between question and members
-Up/down or j/k      Move through models
-Enter               Open selected member settings when members are focused
-s                   Open settings when members are focused; save result from verdict screen
-e                   Edit the selected member from the detail view
-Left/backspace/Esc  Return from settings to dashboard
-Ctrl+U              Clear the question field
-Ctrl+S              Save member edits
-q                   Quit when focused on members/settings
-Ctrl+Q              Quit from anywhere
-```
-
-The TUI settings screen lets you set the local directory used for saved
-Hansard Markdown responses. By default, saved responses go to
-`~/.parliament/hansards`.
-
-Member editing stays inside the TUI. The editor lets you change `Name`,
-`Provider`, `Model`, and `Base URL`, while `Tier`, `Role`, and API key status
-remain derived and read-only. Model pickers include supported presets plus a
-`Custom model` escape hatch.
-
-Inside the member editor, `Enter` opens provider/model pickers when those
-fields are focused and saves the edit when the base URL field is focused.
-
-## Use it from a coding agent (MCP)
-
-`parliament mcp` runs the parliament as an
-[MCP](https://modelcontextprotocol.io) server. A coding agent (Claude Code,
-Cursor, Codex) can then convene a debate itself when it reaches a decision
-with real trade-offs. The server has three tools:
-
-- `debate(question)` runs the full debate on your configured panel and
-  returns a short result, described below.
-- `ask(member, question)` sends the question to one configured model (a panel
-  member or the outside Speaker) for a quick second opinion: one model call,
-  no debate. It returns the answer and saves a record under
-  `~/.parliament/hansards/asks/`. It does not wait behind a running debate.
-- `consult(question, members)` collects independent answers from two or more
-  panel members (the whole panel by default) in parallel: no critique, no
-  Speaker, no verdict. It returns each answer and self-reported stance for the
-  agent to compare, and saves a record under `~/.parliament/hansards/consults/`.
-  It waits behind a running debate.
-
-The `debate` result:
-
-- `summary.contested`: whether the members still recommend different courses
-  of action after the debate (`null` if the Speaker didn't say), and
-  `summary.contested_on`: what they disagree on.
-- `summary.positions`, `summary.warnings` and `summary.degraded`.
-- `verdict`: the Speaker's consensus, split, risks and recommendation.
-- `hansard_path`: the full record, saved under `~/.parliament/hansards/` as
-  the same JSON `parliament ask --json` prints
-  ([schema](docs/hansard-schema.md)). The members' answers stay in that file:
-  together they are larger than agents accept from one tool call.
-
-**Install.** The server needs an optional extra:
-
-```bash
-pipx install --force "llm-parliament[mcp]"
-parliament doctor        # the server uses the same config and keys
-```
-
-> **Not released yet.** The `[mcp]` extra and `parliament mcp` arrive in the
-> first release after 0.2.0; 0.2.0 on PyPI has neither. Until then, install
-> from a clone: `git clone` the repo, then run `pipx install --force ".[mcp]"`
-> inside it.
-
-Store keys with `parliament keys set` rather than in your shell profile: an
-editor started from a desktop icon does not see variables your shell exports.
-
-**Connect your agent.**
-
-Claude Code:
-
-```bash
-claude mcp add --scope user parliament -- parliament mcp
-```
-
-Cursor, in `~/.cursor/mcp.json`:
+**A review panel for solo developers.** When you face a hard-to-undo technical
+decision and have no team to argue it with, LLM Parliament puts it to three
+models from different labs. They answer on their own, critique each other, and
+an outside Speaker writes the verdict: what they agree on, where they still
+split, the risks any of them raised, and a recommendation. Your coding agent
+can call it mid-task.
+
+## What it does
+
+A debate runs in three phases:
+
+1. **First Reading.** Each member answers the question independently and states its position.
+2. **Debate.** Each member reads the others and critiques them. A member may change its mind.
+3. **Division.** A Speaker that took no part in the debate writes the verdict:
+   Consensus, Split, Risks, Recommendation. It also says whether the members
+   still disagree (`contested`) and on what.
+
+From a real decision: how an amp plugin should map digital level to input volts.
 
 ```json
-{
-  "mcpServers": {
-    "parliament": { "command": "parliament", "args": ["mcp"] }
-  }
+"summary": {
+  "contested": true,
+  "contested_on": "0 dBFS = 1 V peak (Grok) or +12.2 dBu / 4.47 V peak (Gemini)"
 }
 ```
 
-Codex, in `~/.codex/config.toml`:
+The same verdict caught a wrong number in the question itself: +8 to +12 dBu
+is 2.8 to 4.4 V peak, not 2 to 3.5 V.
 
-```toml
-[mcp_servers.parliament]
-command = "parliament"
-args = ["mcp"]
-tool_timeout_sec = 600
-```
+## Why a solo developer would use it
 
-If the agent reports that `parliament` is not found, use the full path that
-`which parliament` (`where parliament` on Windows) prints. `--config PATH` and
-`--speaker NAME` work as they do for `parliament ask`; add them after `mcp`.
+Each point comes from a real run, logged in
+[`docs/live-test-windows.md`](https://github.com/elarmuzik1993/llm-parliament/blob/main/docs/live-test-windows.md).
 
-**Timeouts.** A debate takes one to three minutes, which is longer than some
-agents wait for a tool. The server reports progress after each member's answer.
+- **It checks your own brief.** In two of three real decisions it corrected the
+  question: a wrong voltage range, and a CPU target it judged unrealistic, which
+  it turned into a stretch goal.
+- **The members check each other.** In one debate a member withdrew three
+  claims after critique. In another, members corrected a member's account of
+  the Redis licence history.
+- **You see the disagreement, not just an answer.** One model gives one
+  confident answer. A debate names the split, so you know which questions are
+  still open and what would change the choice.
+- **It reorders your plan by risk.** On the CPU-budget decision, the panel moved
+  the riskiest part to the front, so problems show up early.
+- **It lives in your editor.** Through MCP, Claude Code (or Cursor, or Codex)
+  can call it when it reaches a decision. Every verdict is saved as a file, so
+  you get a decision log for free.
+- **Start cheap, escalate when it matters.** `ask` gets one model's second
+  opinion and `consult` gets several independent answers. Hold a full `debate`
+  only when they disagree.
 
-| Agent | Works? |
-|-------|--------|
-| Claude Code | Yes. A call that runs past two minutes moves to the background and finishes there. |
-| Cursor (editor) | Yes. It waits up to an hour while progress keeps arriving. |
-| Codex | Only with `tool_timeout_sec` raised, as above. The default is 60 seconds. |
-| Cursor CLI | No. It stops every tool call after 60 seconds, and the limit can't be changed. |
+## What we measured
 
-**Cost.** Each `debate` call makes 2n+1 model calls (7 for three members) at your
-panel's prices; see [Does it cost 3× more?](#does-it-cost-3-more). The tool's
-description tells the agent this, and to save it for consequential choices,
-not facts or small edits. An `ask` is one model call; a `consult` is n, one per
-member asked. A live run on 2026-11-01 (Opus 5.5, GPT-5.1 and
-Gemini 3.1 Pro, with Grok 4.7 as outside Speaker) took three minutes and cost
-about $0.20. Debates and consults run one at a time: a second call waits for the first.
+| Situation | Result |
+|---|---|
+| Easy or settled question (how to store passwords) | **No gain.** All members agree; one good model gives the same answer faster and cheaper. |
+| Uneven panel (one strong model, two cheap ones) | **Echoes the strongest member.** The cheap members came round to it, at about 3× the time. |
+| Contested judgement call, evenly matched panel, outside Speaker | **A steady plan, not a fixed answer.** 8 debates chose one option 6 times and another twice. All 8 gave the same first step and the same conditions for switching. A single model changed its answer with the wording. |
+| The Speaker | **Matters.** Three outside Speakers re-judging the same 8 debates agreed on 7. A Speaker running a member's model sided with that member. |
+| Three real decisions from Claude Code (2026-11-02) | **Worth it for hard-to-undo choices.** It caught wrong numbers in the brief, reported real splits and gathered the risks. It does not give a more correct answer than one model on contested questions. |
 
-**Try it free.** `parliament mcp --mock` serves a mock panel, to check the
-connection; its verdicts are fake. Without `--mock` the server refuses to start
-on a panel made only of mock members, so an agent never acts on a fake verdict.
+Use it for decisions with real trade-offs that are expensive to reverse. Read
+the Split and the conditions for switching, not only the recommendation.
+Agreement between models is not proof, and neither is one model's answer.
 
-## Development
-
-Clone the repo and create a virtual environment.
-
-Linux / macOS:
-
-```bash
-git clone https://github.com/elarmuzik1993/llm-parliament.git
-cd llm-parliament
-
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-python -m pip install -e ".[dev]"
-```
-
-Windows (PowerShell):
-
-```powershell
-git clone https://github.com/elarmuzik1993/llm-parliament.git
-cd llm-parliament
-
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -U pip
-python -m pip install -e ".[dev]"
-```
-
-(In `cmd.exe`, use `.venv\Scripts\activate.bat` instead.)
-
-Run the test suite:
+## Quick start
 
 ```bash
-python -m pytest
+pipx install llm-parliament
+export OPENROUTER_API_KEY=sk-or-...   # one key for models from several labs
+parliament doctor                     # checks the install; the wizard proposes a panel
+parliament ask "Should our 6-person team split checkout into its own service?"
 ```
 
-Run Ruff:
+No key yet? `parliament ask "..." --mock` runs the whole flow on fake models
+for free. Already have Anthropic, OpenAI, Google, Groq or Mistral keys, or a
+local Ollama? Those work directly. See the
+[usage guide](https://github.com/elarmuzik1993/llm-parliament/blob/main/docs/usage.md#providers).
+
+## Use it from your coding agent (MCP)
+
+`parliament mcp` runs your panel as an [MCP](https://modelcontextprotocol.io)
+server with three tools, from cheapest to most thorough:
+
+| Tool | What it does | Use it for |
+|---|---|---|
+| `ask(member, question)` | One model answers, with no debate. Any panel member or the outside Speaker. | A quick second opinion from a different model |
+| `consult(question, members?)` | Two or more panel members answer independently and in parallel, each with its stance. Nothing judges whether they agree. | Seeing whether models agree before paying for a debate |
+| `debate(question)` | The full three-phase debate and verdict | A consequential decision with real trade-offs |
+
+The models cannot see your files, so the agent has to put the context in the
+question. Every answer is saved under `~/.parliament/hansards/`.
 
 ```bash
-ruff check .
+pipx install --force "llm-parliament[mcp]"
+claude mcp add --scope user parliament -- parliament mcp
 ```
 
-Try the CLI without external services:
+> **Not released yet.** The MCP server arrives in the release after 0.2.0.
+> Until then, clone the repo and run `pipx install --force ".[mcp]"` inside it.
 
-```bash
-parliament ask "What should we test first?" --mock
-```
+Cursor and Codex setup, result fields and timeouts are in the
+[usage guide](https://github.com/elarmuzik1993/llm-parliament/blob/main/docs/usage.md#coding-agents-mcp-in-detail).
 
-## Project Layout
+## Cost and time
 
-```text
-src/parliament/
-  cli.py                  Click CLI (parliament ask / doctor / keys / members / mcp / tui / update)
-  commands.py             Slash commands (/help, /update, /doctor, /history, /copy, …)
-  config.py               YAML config loading, key management, resolve_* precedence helpers
-  doctor.py               Health-check logic (Python, curses, terminal, providers, Ollama)
-  model_catalog.py        Provider model presets + tier data for pickers
-  mcp_server.py           `parliament mcp`: MCP server, `debate`, `ask` and `consult` tools (optional [mcp] extra)
-  tui.py                  Curses TUI — all screens, key handling, main loop
-  core/                   Parliament orchestrator, dataclasses, ProgressEvent
-  procedures/             First Reading, Debate, and Division phases
-  providers/              Adapters for Ollama, OpenAI, Anthropic, Google, plus Mock
-  render/                 HansardLevel + terminal/markdown renderers + live CLI/TUI views
-tests/                    Pytest suite (pytest-asyncio)
-docs/
-  configuration.md        Every config key, default and override
-  hansard-schema.md       JSON schema emitted by `parliament ask --json`
-  live-test-windows.md    Live test plan and results (what the debate adds, and when)
-scripts/
-  diagnose-render.py      Render diagnostic — colors + spinner debugging
-config.example.yaml       Default config template (fallback if first-run wizard fails)
-config.cloud.yaml         Cloud-only example (Anthropic + Google + OpenAI)
-config.mixed.yaml         Mixed example (Ollama + cloud)
-AGENTS.md                 Contributor source-of-truth (architecture, conventions)
-CHANGELOG.md              Release history (Keep-a-Changelog)
-RELEASING.md              PyPI release procedure
-```
+A debate makes 2n+1 model calls (7 for three members), so it costs about 7×
+one call. Measured on OpenRouter:
+
+| Panel | Per debate | Time |
+|---|---|---|
+| Frontier models, outside Speaker (Grok 4.7, GPT-6.1 Sol Pro, Gemini 4 Argon; Opus 5.5 as Speaker) | about $0.40–0.50 | 4.5–7.5 min |
+| Earlier flagships with an outside Speaker (October 2026) | about $0.25 | 1.5–3 min |
+| Cheap models (Sonnet 4.6, GPT-4o-mini, Gemini 2.5 Flash) | under $0.10 | 1.5–3 min |
+| Local Ollama models | $0 | depends on your hardware |
+
+A single call to one of those models took 20–50 seconds. `ask` is one call.
+`consult` is one call per member asked. If being wrong would cost you more
+than a dollar or an afternoon, a debate is worth it.
+
+## Configure
+
+The first-run wizard writes `~/.parliament/config.yaml` from the keys and local
+models it finds. Change the panel in the TUI (`parliament`) or in the file.
+Use an outside Speaker, a model not on the panel, so the judge has no position
+of its own to defend.
+
+- [Usage guide](https://github.com/elarmuzik1993/llm-parliament/blob/main/docs/usage.md): install per OS, providers, CLI and TUI, MCP details
+- [Configuration reference](https://github.com/elarmuzik1993/llm-parliament/blob/main/docs/configuration.md): every key, default and override
+- [Hansard JSON schema](https://github.com/elarmuzik1993/llm-parliament/blob/main/docs/hansard-schema.md): the output of `parliament ask --json`
 
 ## Contributing
 
-Yes, please. This project is early and there is a lot of easy ground to cover —
-bug reports, docs fixes, terminal-compatibility reports, and code are all
-welcome, and small PRs are genuinely fine.
-
-| Start here | |
-|---|---|
-| [Good first issues](https://github.com/elarmuzik1993/llm-parliament/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) | Small, well-scoped, no deep context needed |
-| [Help wanted](https://github.com/elarmuzik1993/llm-parliament/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) | Bigger pieces looking for an owner |
-| [Roadmap](https://github.com/elarmuzik1993/llm-parliament/issues/15) | Where the project is heading |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, the dev loop, and PR expectations |
-| [Discussions](https://github.com/elarmuzik1993/llm-parliament/discussions) | Questions, ideas, and show-and-tell |
-
-The whole test suite runs on mock providers, so you can develop and test
-without an API key or a running Ollama:
-
-```bash
-python -m pip install -e ".[dev]"
-python -m pytest -q
-parliament ask "What should we test first?" --mock
-```
-
-CI runs `pytest` and `ruff` on Linux, macOS, and Windows across Python
-3.11–3.13, so a PR gets checked on platforms you may not have.
-
-### For AI agents and automated tools
-
-This repo is meant to be navigable without reading every file:
-
-- **[AGENTS.md](AGENTS.md)** — the machine-readable source of truth: repository
-  layout, the debate pipeline, threading model, config precedence, conventions,
-  and step-by-step recipes for adding a provider or a slash command.
-  Agents read it directly; there is no per-tool copy.
-- **[docs/hansard-schema.md](docs/hansard-schema.md)** — the JSON schema emitted
-  by `parliament ask --json`, with `jq` recipes.
-- **`--mock`** — every entry point accepts it, giving deterministic output with
-  no network access, which makes the project safe to run in a sandbox.
-- **Project Layout** below and the table in `CONTRIBUTING.md` map change areas
-  to the files that own them.
-
-## Disclaimer
-
-LLM Parliament is an orchestration framework. It coordinates multiple AI models
-to provide structured debate and synthesis. Users are responsible for complying
-with the Terms of Service and Usage Policies of their respective LLM providers
-(e.g., Ollama, OpenAI, Anthropic, Google). This tool does not bypass safety filters or
-usage restrictions of the underlying models.
+This is my first public project. Feedback, issues and pull requests are
+very welcome. Start with
+[CONTRIBUTING.md](https://github.com/elarmuzik1993/llm-parliament/blob/main/CONTRIBUTING.md),
+the [good first issues](https://github.com/elarmuzik1993/llm-parliament/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+or the [roadmap](https://github.com/elarmuzik1993/llm-parliament/issues/15).
+The test suite runs on mock providers, so you need no API key. Coding agents
+should read [AGENTS.md](https://github.com/elarmuzik1993/llm-parliament/blob/main/AGENTS.md)
+first.
 
 ## Privacy
 
-LLM Parliament is a local tool with no telemetry, analytics, or remote
-reporting of any kind. The author receives no data from your usage.
-
-**What leaves your machine and where it goes:**
-
-| Traffic | Destination | When |
-|---------|-------------|------|
-| Your debate question + LLM responses | Your configured providers only (Anthropic / OpenAI / Google / Ollama) | During a debate |
-| Model list request (for TUI picker) | Same provider API, using your key | When you open the member picker |
-| Ollama reachability probe | `localhost:11434` — never leaves the machine | On `parliament doctor` and first-run wizard |
-
-**What never leaves your machine:**
-
-- API keys — stored in the OS keyring or `~/.parliament/keys.env`, never
-  logged or included in any output
-- Saved Hansard files — written to `~/.parliament/hansards/` locally only
-- Config — `~/.parliament/config.yaml` is read locally, never transmitted
-
-You can verify this by inspecting the source: all outbound calls are in
-`src/parliament/providers/` (debate traffic to your providers) and
-`src/parliament/model_catalog.py` (model list fetches to your providers).
-There are no other network calls in the codebase.
+No telemetry. Your question goes only to the providers you configure. Keys stay
+in your OS keyring or `~/.parliament/keys.env`, and saved verdicts stay in
+`~/.parliament/hansards/`. All outbound calls are in `src/parliament/providers/`
+and `src/parliament/model_catalog.py`. You are responsible for following each
+provider's terms of use.
 
 ## License
 
-AGPLv3
-
-
- 
+[AGPLv3](https://github.com/elarmuzik1993/llm-parliament/blob/main/LICENSE). See
+[CHANGELOG.md](https://github.com/elarmuzik1993/llm-parliament/blob/main/CHANGELOG.md)
+for the release history.
