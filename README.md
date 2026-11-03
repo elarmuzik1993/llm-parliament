@@ -81,8 +81,8 @@ The three real decisions in the log passed all three:
 
 - **It won't pick a better option than one good model.** Tested side by side
   on contested questions, the debate's choice was no better than single
-  calls'. What it adds is the
-  caught mistakes, the named split and the gathered risks.
+  calls'. What it adds is the caught mistakes, the named split and the
+  gathered risks.
 - **No gain on easy or settled questions.** All members agree, and one model
   gives the same answer in a fraction of the time and cost.
 - **The panel needs to be even.** One strong model with two cheap ones just
