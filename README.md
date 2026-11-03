@@ -77,17 +77,22 @@ The three real decisions in the log passed all three:
 | How to turn the amp circuit into code | Every later stage of the plugin is built on it. |
 | The CPU and latency budget | Every later feature has to fit inside it. |
 
-## Limits
+## What to expect
 
-- **It won't pick a better option than one good model.** Tested side by side
-  on contested questions, the debate's choice was no better than single
-  calls'. What it adds is the caught mistakes, the named split and the
-  gathered risks.
-- **No gain on easy or settled questions.** All members agree, and one model
-  gives the same answer in a fraction of the time and cost.
-- **The panel needs to be even.** One strong model with two cheap ones just
-  echoes the strong one.
-- **Agreement is not proof.** Three models can share the same blind spot.
+It is a double check, not an oracle. Before you commit to an important
+decision, two or three independent models test your reasoning and each
+other's. When they agree after trying to pick each other apart, you can
+commit with more confidence. When they don't, you know exactly where the
+doubt is, before it costs you a rewrite.
+
+What it doesn't do:
+
+- **It won't pick a better option than one good model.** Its value is the
+  checking: the caught mistakes, the named split and the gathered risks.
+- **It adds nothing on easy or settled questions.** One model is enough there.
+- **It needs an even panel.** One strong model with two cheap ones just echoes
+  the strong one.
+- **Agreement raises confidence; it is not proof.** Models can share a blind spot.
 - **`ask` and `consult` are new** and have not yet been tried on real decisions.
 
 ## Quick start
